@@ -1,10 +1,10 @@
 'use client';
 
 import * as React from 'react';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { getAuth, signInWithEmailAndPassword, GoogleAuthProvider, signInWithPopup, setPersistence, browserSessionPersistence } from 'firebase/auth';
-import { app, isFirebaseInitialized } from '@/lib/firebase'; // Import isFirebaseInitialized
+import { app, isFirebaseInitialized, getFirebaseConfigError } from '@/lib/firebase'; // Import helpers
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -31,66 +31,103 @@ export default function Login() {
   const [loading, setLoading] = useState(false);
   const [googleLoading, setGoogleLoading] = useState(false);
   const router = useRouter();
-  const firebaseReady = isFirebaseInitialized(); // Check if Firebase is ready
+  const [firebaseReady, setFirebaseReady] = useState(false);
+  const [configError, setConfigError] = useState<string | null>(null);
 
-  // Get auth instance only if Firebase is initialized
+  // Get auth instance only if Firebase is ready
   const auth = firebaseReady ? getAuth(app!) : null;
+
+  useEffect(() => {
+    const ready = isFirebaseInitialized();
+    setFirebaseReady(ready);
+    if (!ready) {
+      setConfigError(getFirebaseConfigError() || "Firebase is not configured correctly. Please check the console and environment variables.");
+    } else {
+      setConfigError(null); // Clear config error if Firebase is ready now
+    }
+  }, []); // Run only once on mount
+
 
   const handleLogin = async (event: React.FormEvent) => {
     event.preventDefault();
-    setError(null);
+    setError(null); // Clear previous login errors
 
-    if (!auth) {
-        setError("Authentication service is not available. Please check configuration.");
+    if (!firebaseReady || !auth) {
+        setError(configError || "Authentication service is not available.");
         return;
     }
 
     setLoading(true);
     try {
+      // Set session persistence
       await setPersistence(auth, browserSessionPersistence);
+      // Sign in
       await signInWithEmailAndPassword(auth, email, password);
       router.push('/dashboard'); // Redirect to dashboard on successful login
     } catch (err: any) {
       console.error("Firebase login error:", err);
-      if (err.code === 'auth/invalid-api-key') {
-          setError('Configuration error: Invalid API Key. Please contact the administrator.');
-      } else if (err.code === 'auth/invalid-credential' || err.code === 'auth/user-not-found' || err.code === 'auth/wrong-password') {
-          setError('Invalid email or password. Please try again.');
-      } else {
-          setError(err.message || 'Failed to log in. Please check your credentials or try again later.');
+      let userFriendlyError = 'Failed to log in. Please check your credentials or try again later.';
+      switch (err.code) {
+          case 'auth/invalid-api-key':
+          case 'auth/operation-not-allowed': // Often indicates email/pass or provider not enabled
+             userFriendlyError = 'Authentication configuration error. Please contact the administrator.';
+             break;
+          case 'auth/invalid-credential':
+          case 'auth/user-not-found':
+          case 'auth/wrong-password':
+             userFriendlyError = 'Invalid email or password. Please try again.';
+             break;
+          case 'auth/too-many-requests':
+             userFriendlyError = 'Too many login attempts. Please try again later.';
+             break;
+          // Add other specific error codes as needed
       }
+      setError(userFriendlyError);
     } finally {
       setLoading(false);
     }
   };
 
   const handleGoogleSignIn = async () => {
-    setError(null);
+    setError(null); // Clear previous login errors
 
-    if (!auth) {
-        setError("Authentication service is not available. Please check configuration.");
-        return;
+    if (!firebaseReady || !auth) {
+      setError(configError || "Authentication service is not available.");
+      return;
     }
 
     setGoogleLoading(true);
     const provider = new GoogleAuthProvider();
     try {
+       // Set session persistence
       await setPersistence(auth, browserSessionPersistence);
+       // Sign in with popup
       await signInWithPopup(auth, provider);
       router.push('/dashboard'); // Redirect to dashboard on successful Google sign-in
     } catch (err: any) {
       console.error("Google sign-in error:", err);
-       if (err.code === 'auth/invalid-api-key') {
-           setError('Configuration error: Invalid API Key for Google Sign-In. Please contact the administrator.');
-       } else if (err.code === 'auth/popup-closed-by-user') {
-           setError('Google Sign-In cancelled.');
-       } else {
-           setError(err.message || 'Failed to sign in with Google. Please try again.');
+      let userFriendlyError = 'Failed to sign in with Google. Please try again.';
+       switch (err.code) {
+           case 'auth/invalid-api-key':
+           case 'auth/operation-not-allowed': // Often indicates Google Sign-In not enabled
+               userFriendlyError = 'Google Sign-In configuration error. Please contact the administrator.';
+               break;
+           case 'auth/popup-closed-by-user':
+               userFriendlyError = 'Google Sign-In cancelled.';
+               break;
+           case 'auth/cancelled-popup-request':
+           case 'auth/popup-blocked':
+               userFriendlyError = 'Google Sign-In popup was blocked or closed before completion. Please try again.';
+               break;
+            // Add other specific error codes as needed
        }
+      setError(userFriendlyError);
     } finally {
       setGoogleLoading(false);
     }
   };
+
+  const isSubmitDisabled = loading || googleLoading || !firebaseReady;
 
   return (
     <div className="flex items-center justify-center min-h-screen bg-secondary p-4">
@@ -100,11 +137,11 @@ export default function Login() {
           <CardDescription>Welcome back! Please log in to your account.</CardDescription>
         </CardHeader>
         <CardContent>
-          {!firebaseReady && (
+           {configError && (
              <Alert variant="destructive" className="mb-4">
                 <AlertTriangle className="h-4 w-4" />
                 <AlertTitle>Configuration Error</AlertTitle>
-                <AlertDescription>Authentication service is unavailable. Please contact support.</AlertDescription>
+                <AlertDescription>{configError}</AlertDescription>
               </Alert>
           )}
           <form onSubmit={handleLogin} className="space-y-4">
@@ -121,7 +158,7 @@ export default function Login() {
                   required
                   className="pl-10"
                   aria-label="Email address"
-                  disabled={!firebaseReady}
+                  disabled={!firebaseReady} // Disable input if Firebase isn't ready
                 />
               </div>
             </div>
@@ -138,30 +175,31 @@ export default function Login() {
                   required
                   className="pl-10"
                   aria-label="Password"
-                  disabled={!firebaseReady}
+                  disabled={!firebaseReady} // Disable input if Firebase isn't ready
                 />
               </div>
             </div>
-            {error && (
+            {error && !configError && ( // Only show login errors if config error isn't present
               <Alert variant="destructive">
                 <AlertTriangle className="h-4 w-4" />
                 <AlertTitle>Login Failed</AlertTitle>
                 <AlertDescription>{error}</AlertDescription>
               </Alert>
             )}
-            <Button type="submit" className="w-full" disabled={loading || !firebaseReady}>
+            <Button type="submit" className="w-full" disabled={isSubmitDisabled}>
               {loading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
               Log In
             </Button>
           </form>
            <Separator className="my-6" />
-           <Button variant="outline" className="w-full flex items-center justify-center gap-2" onClick={handleGoogleSignIn} disabled={googleLoading || !firebaseReady}>
+           <Button variant="outline" className="w-full flex items-center justify-center gap-2" onClick={handleGoogleSignIn} disabled={isSubmitDisabled}>
              {googleLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <GoogleIcon />}
              Sign in with Google
            </Button>
         </CardContent>
         <CardFooter className="text-center text-sm text-muted-foreground">
-          {/* Add link to sign up or forgot password if needed */}
+           {/* Add link to sign up or forgot password if needed */}
+           {/* Example: <p>Don't have an account? <a href="/signup" className="text-primary hover:underline">Sign up</a></p> */}
         </CardFooter>
       </Card>
     </div>
