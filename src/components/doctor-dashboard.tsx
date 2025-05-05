@@ -2,9 +2,9 @@
 
 import * as React from 'react';
 import { useState, useEffect, useMemo } from 'react';
-import { User } from 'firebase/auth';
+// Removed: import { User } from 'firebase/auth';
 import { collection, query, where, onSnapshot, doc, getDoc, updateDoc, Timestamp, orderBy, limit, addDoc } from 'firebase/firestore';
-import { db } from '@/lib/firebase';
+import { db, isFirebaseInitialized, getFirebaseConfigError } from '@/lib/firebase'; // Import helpers
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
@@ -21,9 +21,9 @@ import { generateCarePlan } from '@/ai/flows/generate-care-plan'; // AI Care Pla
 import { generateSuggestedInterventions } from '@/ai/flows/generate-suggested-interventions'; // AI Interventions Flow (reused)
 import { useToast } from '@/hooks/use-toast';
 
-interface DoctorDashboardProps {
-  user: User; // Doctor's user object
-}
+// Removed: interface DoctorDashboardProps {
+//   user: User; // Doctor's user object
+// }
 
 interface Patient {
   id: string; // Firestore document ID (usually user.uid for the patient)
@@ -31,7 +31,7 @@ interface Patient {
   email?: string; // Optional
   photoURL?: string; // Optional
   lastActivity?: Timestamp; // Optional: For sorting or display
-  // Add other relevant patient metadata if needed (e.g., assignedDoctorId)
+  assignedDoctorId?: string; // Keep this field for filtering
   readmissionRisk?: 'low' | 'medium' | 'high'; // Simulated or from AI
 }
 
@@ -66,10 +66,14 @@ interface AISuggestion {
     patientId: string; // Link suggestion to patient
 }
 
-export default function DoctorDashboard({ user }: DoctorDashboardProps) {
+// Using a placeholder ID since authentication is removed
+const PLACEHOLDER_DOCTOR_ID = 'test-doctor-id';
+const PLACEHOLDER_DOCTOR_NAME = 'Dr. Placeholder';
+
+export default function DoctorDashboard(/* Removed: { user }: DoctorDashboardProps */) {
   const [patients, setPatients] = useState<Patient[]>([]);
   const [selectedPatientId, setSelectedPatientId] = useState<string | null>(null);
-  const [selectedPatientData, setSelectedPatientData] = useState<any>(null); // Simplified patient data for now
+  const [selectedPatientData, setSelectedPatientData] = useState<any>(null);
   const [patientHealthData, setPatientHealthData] = useState<PatientHealthData[]>([]);
   const [patientMedications, setPatientMedications] = useState<PatientMedication[]>([]);
   const [aiSuggestions, setAiSuggestions] = useState<AISuggestion[]>([]);
@@ -85,41 +89,60 @@ export default function DoctorDashboard({ user }: DoctorDashboardProps) {
   const [loadingSummary, setLoadingSummary] = useState(false);
   const [carePlan, setCarePlan] = useState<string | null>(null);
   const [loadingCarePlan, setLoadingCarePlan] = useState(false);
+  const [firebaseActive, setFirebaseActive] = useState(false);
   const { toast } = useToast();
 
 
-   // Fetch list of patients assigned to this doctor
-   // This assumes a 'patients' collection where each doc has an 'assignedDoctorId' field.
-   // Adjust the query based on your actual Firestore structure.
    useEffect(() => {
-      setLoadingPatients(true);
-      setError(null);
-      const patientsQuery = query(collection(db, 'users'), where('role', '==', 'patient'), where('assignedDoctorId', '==', user.uid)); // Example query
+        const firebaseReady = isFirebaseInitialized();
+        setFirebaseActive(firebaseReady);
+        if (!firebaseReady) {
+            setError(getFirebaseConfigError() || "Firebase is not available.");
+            setLoadingPatients(false);
+            // Reset other loading states as well
+            setLoadingPatientData(false);
+            setLoadingAiSuggestions(false);
+            setLoadingChat(false);
+            setLoadingSummary(false);
+            setLoadingCarePlan(false);
+            return; // Stop if Firebase isn't working
+        }
+        // If Firebase is ready, proceed
+        setError(null); // Clear potential config error
 
-      const unsubscribe = onSnapshot(patientsQuery, (snapshot) => {
-         const patientList = snapshot.docs.map(doc => ({
-           id: doc.id, // The patient's UID is the document ID here
-           name: doc.data().displayName || 'Unknown Patient', // Assuming display name is stored
-           email: doc.data().email,
-           photoURL: doc.data().photoURL,
-           // You might fetch/calculate lastActivity separately if needed
-           readmissionRisk: doc.data().readmissionRisk || (Math.random() > 0.7 ? 'high' : Math.random() > 0.4 ? 'medium' : 'low') // Simulate risk
-         } as Patient));
-         setPatients(patientList);
-         setLoadingPatients(false);
-       }, (err) => {
-         console.error("Error fetching patients:", err);
-         setError("Could not load patient list.");
-         setLoadingPatients(false);
-       });
+        setLoadingPatients(true);
+        // Fetch patients assigned to the placeholder doctor ID
+        const patientsQuery = query(
+            collection(db!, 'users'), // Use non-null assertion db!
+            where('role', '==', 'patient'),
+            where('assignedDoctorId', '==', PLACEHOLDER_DOCTOR_ID) // Filter by placeholder doctor
+        );
 
-     return () => unsubscribe();
-   }, [user.uid]);
+        const unsubscribe = onSnapshot(patientsQuery, (snapshot) => {
+            const patientList = snapshot.docs.map(doc => ({
+                id: doc.id,
+                name: doc.data().displayName || 'Unknown Patient',
+                email: doc.data().email,
+                photoURL: doc.data().photoURL,
+                assignedDoctorId: doc.data().assignedDoctorId,
+                readmissionRisk: doc.data().readmissionRisk || (Math.random() > 0.7 ? 'high' : Math.random() > 0.4 ? 'medium' : 'low')
+            } as Patient));
+            setPatients(patientList);
+            setLoadingPatients(false);
+        }, (err) => {
+            console.error("Error fetching patients:", err);
+            setError("Could not load patient list.");
+            setLoadingPatients(false);
+        });
+
+        return () => unsubscribe();
+   }, []); // Run only once on mount
 
 
    // Fetch data for the selected patient when selectedPatientId changes
    useEffect(() => {
-        if (!selectedPatientId) {
+        if (!firebaseActive || !selectedPatientId) {
+            // Reset states if Firebase is off or no patient selected
             setSelectedPatientData(null);
             setPatientHealthData([]);
             setPatientMedications([]);
@@ -127,50 +150,64 @@ export default function DoctorDashboard({ user }: DoctorDashboardProps) {
             setChatMessages([]);
             setHistorySummary(null);
             setCarePlan(null);
+            // Set loading states to false if not loading patients
+            if (!loadingPatients) {
+                setLoadingPatientData(false);
+                setLoadingAiSuggestions(false);
+                setLoadingChat(false);
+                setLoadingSummary(false);
+                setLoadingCarePlan(false);
+            }
             return;
         }
 
+        // Proceed if Firebase is active and a patient is selected
         setLoadingPatientData(true);
         setLoadingAiSuggestions(true);
         setLoadingChat(true);
         setLoadingSummary(true);
-        setLoadingCarePlan(true); // Start loading care plan
+        setLoadingCarePlan(true);
         setError(null);
 
-        // --- Fetch Patient Profile ---
-        const fetchPatientProfile = async () => {
+        let unsubscribeHealth: (() => void) | null = null;
+        let unsubscribeMeds: (() => void) | null = null;
+        let unsubscribeSuggestions: (() => void) | null = null;
+        let unsubscribeChat: (() => void) | null = null;
+
+
+        // --- Fetch Patient Profile and Generate AI Content ---
+        const fetchPatientProfileAndAI = async () => {
              try {
-                const patientDocRef = doc(db, 'users', selectedPatientId);
+                const patientDocRef = doc(db!, 'users', selectedPatientId); // Use db!
                 const patientDoc = await getDoc(patientDocRef);
                 if (patientDoc.exists()) {
-                   setSelectedPatientData({ id: patientDoc.id, ...patientDoc.data() });
+                   const patientData = { id: patientDoc.id, ...patientDoc.data() };
+                   setSelectedPatientData(patientData);
 
                    // --- Generate Patient History Summary ---
-                    const history = patientDoc.data()?.medicalHistory || "No detailed history available."; // Get history field
-                    if (history) {
-                        try {
-                            const summaryResult = await summarizePatientHistory({ patientId: selectedPatientId, medicalHistory: history });
-                            setHistorySummary(summaryResult.summary);
-                        } catch (summaryError) {
-                            console.error("Error generating history summary:", summaryError);
-                            setHistorySummary("Could not generate summary."); // Show error inline
-                        } finally {
-                            setLoadingSummary(false);
-                        }
-                    } else {
-                       setHistorySummary("No medical history provided for summarization.");
-                       setLoadingSummary(false);
+                    const history = patientData?.medicalHistory || "No detailed history available.";
+                    setLoadingSummary(true);
+                    try {
+                        const summaryResult = await summarizePatientHistory({ patientId: selectedPatientId, medicalHistory: history });
+                        setHistorySummary(summaryResult.summary);
+                    } catch (summaryError) {
+                        console.error("Error generating history summary:", summaryError);
+                        setHistorySummary("Could not generate summary.");
+                    } finally {
+                        setLoadingSummary(false);
                     }
 
                     // --- Generate Care Plan ---
-                    const predictedRisks = patientDoc.data()?.readmissionRisk ? `Readmission Risk: ${patientDoc.data()?.readmissionRisk}` : "No specific risks predicted."; // Example risk data
-                    const currentMedsString = patientMedications.map(m => `${m.name} (${m.dosage})`).join(', ') || "None listed";
+                    const predictedRisks = patientData?.readmissionRisk ? `Readmission Risk: ${patientData?.readmissionRisk}` : "No specific risks predicted.";
+                    // Note: patientMedications might not be loaded yet when this runs first time
+                    const currentMedsString = medications.map(m => `${m.name} (${m.dosage})`).join(', ') || "None listed";
+                    setLoadingCarePlan(true);
                      try {
                        const carePlanResult = await generateCarePlan({
                          patientId: selectedPatientId,
                          predictedRisks: predictedRisks,
                          medicalHistory: history,
-                         currentMedications: currentMedsString
+                         currentMedications: currentMedsString // May be empty initially
                        });
                        setCarePlan(carePlanResult.carePlan);
                      } catch (carePlanError) {
@@ -193,106 +230,64 @@ export default function DoctorDashboard({ user }: DoctorDashboardProps) {
                 setLoadingSummary(false);
                 setLoadingCarePlan(false);
             } finally {
-                 setLoadingPatientData(false); // Profile loading finished (data or error)
+                 setLoadingPatientData(false);
             }
         };
 
-
-        fetchPatientProfile();
+        fetchPatientProfileAndAI();
 
         // --- Health Data Listener ---
          const healthQuery = query(
-            collection(db, `patients/${selectedPatientId}/healthData`),
+            collection(db!, `patients/${selectedPatientId}/healthData`),
             orderBy('timestamp', 'desc'),
-            limit(10) // Limit displayed entries if needed
+            limit(10)
         );
-        const unsubscribeHealth = onSnapshot(healthQuery, (snapshot) => {
+        unsubscribeHealth = onSnapshot(healthQuery, (snapshot) => {
             const data = snapshot.docs.map(doc => doc.data() as PatientHealthData);
             setPatientHealthData(data);
-        }, (err) => {
-            console.error("Error fetching patient health data:", err);
-            // Don't set global error, maybe show inline indicator
-        });
+        }, (err) => console.error("Error fetching patient health data:", err));
 
 
          // --- Medication Listener ---
-         const medsQuery = query(collection(db, `patients/${selectedPatientId}/medications`));
-         const unsubscribeMeds = onSnapshot(medsQuery, (snapshot) => {
+         const medsQuery = query(collection(db!, `patients/${selectedPatientId}/medications`));
+         unsubscribeMeds = onSnapshot(medsQuery, (snapshot) => {
              const meds = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as PatientMedication));
-              // Simulate adherence if not present
              const medsWithAdherence = meds.map(med => ({
                 ...med,
-                adherence: med.adherence ?? Math.floor(Math.random() * 31) + 70 // Simulate 70-100% adherence
+                adherence: med.adherence ?? Math.floor(Math.random() * 31) + 70
              }));
              setPatientMedications(medsWithAdherence);
-         }, (err) => {
-             console.error("Error fetching patient medications:", err);
-         });
+             // Re-generate care plan if meds data influences it significantly and plan wasn't generated yet
+             // This logic might be complex, consider if really needed or generate plan once profile loads
+             // if (!loadingCarePlan && carePlan === "No care plan generated yet.") {
+             //    fetchPatientProfileAndAI(); // Re-trigger fetch/generation
+             // }
+         }, (err) => console.error("Error fetching patient medications:", err));
 
 
         // --- AI Suggestions Listener ---
-        // Assuming suggestions are stored per-patient
         const suggestionsQuery = query(
-            collection(db, `patients/${selectedPatientId}/aiSuggestions`),
+            collection(db!, `patients/${selectedPatientId}/aiSuggestions`),
             orderBy('timestamp', 'desc')
         );
-        const unsubscribeSuggestions = onSnapshot(suggestionsQuery, (snapshot) => {
+        unsubscribeSuggestions = onSnapshot(suggestionsQuery, (snapshot) => {
             const suggestions = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as AISuggestion));
             setAiSuggestions(suggestions);
             setLoadingAiSuggestions(false);
+            // Optionally trigger generation if no pending suggestions exist
+            // generateNewSuggestionsIfNeeded(suggestions);
         }, (err) => {
             console.error("Error fetching AI suggestions:", err);
             setLoadingAiSuggestions(false);
-            // Maybe show inline error
         });
 
-       // --- Generate New Suggestions if needed ---
-        const generateNewSuggestions = async () => {
-           // Avoid generating if already loading or recently generated
-            if (loadingAiSuggestions || aiSuggestions.some(s => s.status === 'pending')) return;
-
-            setLoadingAiSuggestions(true);
-            try {
-                const latestHealth = patientHealthData.length > 0 ? patientHealthData[0] : {}; // Assuming descending order
-                const healthSummary = `Latest Health: Steps: ${latestHealth.steps ?? 'N/A'}, HR: ${latestHealth.heartRate ?? 'N/A'}. `;
-                const adherenceSummary = patientMedications.map(m => `${m.name}: ${m.adherence ?? 'N/A'}%`).join(', ');
-                // We might not have symptom reports readily available here without another query
-                // const symptomsSummary = ...
-
-                const input = {
-                patientHealthData: `${healthSummary} Medication Adherence: ${adherenceSummary}.`,
-                riskPredictions: `Readmission Risk: ${selectedPatientData?.readmissionRisk || 'Unknown'}.`, // Use fetched patient data
-                };
-
-                const result = await generateSuggestedInterventions(input);
-
-                 // Add the new suggestion to Firestore with 'pending' status
-                 await addDoc(collection(db, `patients/${selectedPatientId}/aiSuggestions`), {
-                    suggestionText: result.suggestedInterventions,
-                    timestamp: Timestamp.now(),
-                    status: 'pending',
-                    patientId: selectedPatientId,
-                 });
-                // The listener above will pick up the change and update the state.
-
-            } catch (genError) {
-                console.error('Error generating new suggestions:', genError);
-                toast({ title: "Suggestion Generation Failed", description: "Could not generate new AI suggestions.", variant: "destructive" });
-            } finally {
-                // Listener will set loading to false
-                // setLoadingAiSuggestions(false);
-            }
-        };
-        // Optionally trigger suggestion generation based on some condition (e.g., no pending suggestions)
-        // generateNewSuggestions();
-
-
          // --- Chat Messages Listener ---
+        const chatId = getChatId(PLACEHOLDER_DOCTOR_ID, selectedPatientId);
         const chatQuery = query(
-            collection(db, `chats/${getChatId(user.uid, selectedPatientId)}/messages`),
-            orderBy('timestamp', 'asc') // Show oldest first
+            collection(db!, `chats/${chatId}/messages`),
+            orderBy('timestamp', 'asc')
         );
-        const unsubscribeChat = onSnapshot(chatQuery, (snapshot) => {
+        unsubscribeChat = onSnapshot(chatQuery, (snapshot) => {
             const messages = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as ChatMessage));
             setChatMessages(messages);
             setLoadingChat(false);
@@ -303,13 +298,13 @@ export default function DoctorDashboard({ user }: DoctorDashboardProps) {
 
 
         return () => {
-             unsubscribeHealth();
-             unsubscribeMeds();
-             unsubscribeSuggestions();
-             unsubscribeChat();
+             unsubscribeHealth?.();
+             unsubscribeMeds?.();
+             unsubscribeSuggestions?.();
+             unsubscribeChat?.();
         };
 
-   }, [selectedPatientId, user.uid]); // Re-run when patient selection changes
+   }, [selectedPatientId, firebaseActive]); // Re-run when patient or firebase status changes
 
 
    // Helper to create a consistent chat ID between doctor and patient
@@ -318,18 +313,21 @@ export default function DoctorDashboard({ user }: DoctorDashboardProps) {
    };
 
    const handleSendMessage = async () => {
-      if (!newMessage.trim() || !selectedPatientId) return;
+      if (!firebaseActive || !db || !newMessage.trim() || !selectedPatientId) {
+          toast({ title: "Cannot Send", description: "Message is empty or connection issue.", variant: "destructive"});
+          return;
+      }
 
       setSendingMessage(true);
-      const chatId = getChatId(user.uid, selectedPatientId);
+      const chatId = getChatId(PLACEHOLDER_DOCTOR_ID, selectedPatientId);
       try {
         await addDoc(collection(db, `chats/${chatId}/messages`), {
-          senderId: user.uid, // Doctor's ID
-          senderName: user.displayName || 'Doctor',
+          senderId: PLACEHOLDER_DOCTOR_ID, // Doctor's placeholder ID
+          senderName: PLACEHOLDER_DOCTOR_NAME, // Doctor's placeholder Name
           text: newMessage,
           timestamp: Timestamp.now(),
         });
-        setNewMessage(''); // Clear input after sending
+        setNewMessage('');
       } catch (err) {
         console.error("Error sending message:", err);
         toast({ title: "Message Failed", description: "Could not send message.", variant: "destructive" });
@@ -339,7 +337,10 @@ export default function DoctorDashboard({ user }: DoctorDashboardProps) {
    };
 
    const handleSuggestionAction = async (suggestionId: string, action: 'approve' | 'reject') => {
-        if (!selectedPatientId) return;
+        if (!firebaseActive || !db || !selectedPatientId) {
+            toast({ title: "Action Failed", description: "Connection issue.", variant: "destructive"});
+            return;
+        }
         const suggestionRef = doc(db, `patients/${selectedPatientId}/aiSuggestions`, suggestionId);
         try {
             await updateDoc(suggestionRef, {
@@ -364,6 +365,9 @@ export default function DoctorDashboard({ user }: DoctorDashboardProps) {
        return patients.find(p => p.id === selectedPatientId);
     }, [patients, selectedPatientId]);
 
+  // Determine if core patient data is loading
+  const coreDataLoading = firebaseActive && (loadingPatientData || loadingSummary || loadingCarePlan || loadingAiSuggestions || loadingChat);
+
 
   return (
     <div className="space-y-6">
@@ -379,6 +383,16 @@ export default function DoctorDashboard({ user }: DoctorDashboardProps) {
         </Alert>
       )}
 
+       {!firebaseActive && !error && (
+           <Alert variant="default" className="bg-yellow-50 border-yellow-200 text-yellow-800">
+               <AlertTriangle className="h-4 w-4 text-yellow-600" />
+               <AlertTitle>Firebase Disabled</AlertTitle>
+               <AlertDescription>
+                   Database features are currently offline. Patient data cannot be loaded or updated.
+               </AlertDescription>
+           </Alert>
+       )}
+
       <Card>
          <CardHeader>
             <CardTitle className="flex items-center gap-2">
@@ -390,9 +404,13 @@ export default function DoctorDashboard({ user }: DoctorDashboardProps) {
            {loadingPatients ? (
                <Skeleton className="h-10 w-full" />
            ) : (
-               <Select onValueChange={setSelectedPatientId} value={selectedPatientId || ''}>
+               <Select
+                 onValueChange={setSelectedPatientId}
+                 value={selectedPatientId || ''}
+                 disabled={!firebaseActive || patients.length === 0} // Disable if Firebase off or no patients
+                >
                  <SelectTrigger className="w-full md:w-[300px]">
-                   <SelectValue placeholder="Select a patient..." />
+                   <SelectValue placeholder={firebaseActive ? "Select a patient..." : "Patient list unavailable"} />
                  </SelectTrigger>
                  <SelectContent>
                    {patients.length > 0 ? (
@@ -413,7 +431,9 @@ export default function DoctorDashboard({ user }: DoctorDashboardProps) {
                        </SelectItem>
                      ))
                    ) : (
-                     <div className="p-4 text-center text-muted-foreground">No patients assigned.</div>
+                     <div className="p-4 text-center text-muted-foreground">
+                        {firebaseActive ? "No patients assigned." : "Patient data unavailable."}
+                     </div>
                    )}
                  </SelectContent>
                </Select>
@@ -422,8 +442,8 @@ export default function DoctorDashboard({ user }: DoctorDashboardProps) {
       </Card>
 
       {/* Patient Detail Section */}
-      {selectedPatientId && (
-         loadingPatientData || loadingSummary ? (
+      {selectedPatientId && firebaseActive && (
+         coreDataLoading ? (
             <DashboardSkeleton /> // Show skeleton while core data loads
          ) : selectedPatientData ? (
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -448,6 +468,7 @@ export default function DoctorDashboard({ user }: DoctorDashboardProps) {
                         </CardHeader>
                         <CardContent>
                             {/* Add more patient details if needed */}
+                            <p className="text-xs text-muted-foreground">Patient ID: {selectedPatient?.id}</p>
                         </CardContent>
                     </Card>
 
@@ -489,8 +510,7 @@ export default function DoctorDashboard({ user }: DoctorDashboardProps) {
                             )}
                         </CardContent>
                          <CardFooter>
-                             <Button size="sm" variant="outline" disabled={loadingCarePlan}>
-                                 {/* Add functionality to edit/approve */}
+                             <Button size="sm" variant="outline" disabled={loadingCarePlan || !firebaseActive}>
                                  Edit/Approve Plan
                              </Button>
                          </CardFooter>
@@ -508,7 +528,7 @@ export default function DoctorDashboard({ user }: DoctorDashboardProps) {
                         <CardContent>
                              {patientHealthData.length > 0 ? (
                                 <ul className="space-y-2 text-sm">
-                                {patientHealthData.slice(0, 5).map((data, index) => ( // Show latest 5
+                                {patientHealthData.slice(0, 5).map((data, index) => (
                                     <li key={index} className="flex justify-between items-center border-b pb-1">
                                         <span>{formatTimestamp(data.timestamp)}</span>
                                         <div className="flex gap-3 text-xs text-muted-foreground">
@@ -523,7 +543,7 @@ export default function DoctorDashboard({ user }: DoctorDashboardProps) {
                             )}
                         </CardContent>
                          <CardFooter>
-                              <Button variant="link" size="sm">View All Health Data</Button> {/* Link to full history */}
+                              <Button variant="link" size="sm" disabled={!firebaseActive}>View All Health Data</Button>
                          </CardFooter>
                     </Card>
 
@@ -549,7 +569,7 @@ export default function DoctorDashboard({ user }: DoctorDashboardProps) {
                              )}
                          </CardContent>
                          <CardFooter>
-                              <Button variant="link" size="sm">Manage Medications</Button> {/* Link to med management */}
+                              <Button variant="link" size="sm" disabled={!firebaseActive}>Manage Medications</Button>
                          </CardFooter>
                      </Card>
 
@@ -574,10 +594,10 @@ export default function DoctorDashboard({ user }: DoctorDashboardProps) {
                                              <span className="text-xs text-muted-foreground">{formatTimestamp(suggestion.timestamp)}</span>
                                               {suggestion.status === 'pending' ? (
                                                 <div className="flex gap-2">
-                                                    <Button size="sm" variant="outline" className="h-7 px-2 py-1 text-xs border-green-500 text-green-600 hover:bg-green-50" onClick={() => handleSuggestionAction(suggestion.id, 'approve')}>
+                                                    <Button size="sm" variant="outline" className="h-7 px-2 py-1 text-xs border-green-500 text-green-600 hover:bg-green-50" onClick={() => handleSuggestionAction(suggestion.id, 'approve')} disabled={!firebaseActive}>
                                                         <Check className="h-3 w-3 mr-1" /> Approve
                                                     </Button>
-                                                     <Button size="sm" variant="outline" className="h-7 px-2 py-1 text-xs border-red-500 text-red-600 hover:bg-red-50" onClick={() => handleSuggestionAction(suggestion.id, 'reject')}>
+                                                     <Button size="sm" variant="outline" className="h-7 px-2 py-1 text-xs border-red-500 text-red-600 hover:bg-red-50" onClick={() => handleSuggestionAction(suggestion.id, 'reject')} disabled={!firebaseActive}>
                                                         <X className="h-3 w-3 mr-1" /> Reject
                                                     </Button>
                                                 </div>
@@ -596,8 +616,7 @@ export default function DoctorDashboard({ user }: DoctorDashboardProps) {
                             )}
                         </CardContent>
                           <CardFooter>
-                             {/* Optionally add button to explicitly trigger generation */}
-                             {/* <Button size="sm" variant="outline" onClick={generateNewSuggestions} disabled={loadingAiSuggestions}>
+                             {/* <Button size="sm" variant="outline" onClick={generateNewSuggestions} disabled={loadingAiSuggestions || !firebaseActive}>
                                 {loadingAiSuggestions ? <Loader2 className="h-4 w-4 animate-spin mr-1"/> : null} Generate New Suggestions
                              </Button> */}
                           </CardFooter>
@@ -617,10 +636,10 @@ export default function DoctorDashboard({ user }: DoctorDashboardProps) {
                                 ) : chatMessages.length > 0 ? (
                                     <div className="space-y-4">
                                     {chatMessages.map(msg => (
-                                        <div key={msg.id} className={`flex ${msg.senderId === user.uid ? 'justify-end' : 'justify-start'}`}>
-                                        <div className={`p-2 rounded-lg max-w-[75%] ${msg.senderId === user.uid ? 'bg-primary text-primary-foreground' : 'bg-muted'}`}>
+                                        <div key={msg.id} className={`flex ${msg.senderId === PLACEHOLDER_DOCTOR_ID ? 'justify-end' : 'justify-start'}`}>
+                                        <div className={`p-2 rounded-lg max-w-[75%] ${msg.senderId === PLACEHOLDER_DOCTOR_ID ? 'bg-primary text-primary-foreground' : 'bg-muted'}`}>
                                             <p className="text-sm">{msg.text}</p>
-                                            <p className={`text-xs mt-1 ${msg.senderId === user.uid ? 'text-primary-foreground/80' : 'text-muted-foreground'}`}>
+                                            <p className={`text-xs mt-1 ${msg.senderId === PLACEHOLDER_DOCTOR_ID ? 'text-primary-foreground/80' : 'text-muted-foreground'}`}>
                                             {msg.senderName} - {formatTimestamp(msg.timestamp)}
                                             </p>
                                         </div>
@@ -645,8 +664,9 @@ export default function DoctorDashboard({ user }: DoctorDashboardProps) {
                                         handleSendMessage();
                                     }
                                 }}
+                                 disabled={sendingMessage || !firebaseActive} // Disable if sending or Firebase inactive
                                 />
-                                <Button onClick={handleSendMessage} disabled={sendingMessage || !newMessage.trim()} size="icon">
+                                <Button onClick={handleSendMessage} disabled={sendingMessage || !newMessage.trim() || !firebaseActive} size="icon">
                                     {sendingMessage ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
                                 </Button>
                             </div>
@@ -654,7 +674,7 @@ export default function DoctorDashboard({ user }: DoctorDashboardProps) {
                     </Card>
                 </div>
             </div>
-         ) : selectedPatientId ? ( // Still selected but data is null (likely error state)
+         ) : selectedPatientId && !coreDataLoading ? ( // Handle error case after loading finishes
             <Alert variant="destructive">
                <AlertTriangle className="h-4 w-4" />
                <AlertTitle>Error Loading Patient Data</AlertTitle>
@@ -662,6 +682,15 @@ export default function DoctorDashboard({ user }: DoctorDashboardProps) {
             </Alert>
          ) : null /* No patient selected view handled by lack of selectedPatientId */
       )}
+
+        {/* Display message if Firebase is disabled and no patient is selected */}
+        {!selectedPatientId && !firebaseActive && (
+             <Card>
+                 <CardContent className="pt-6">
+                     <p className="text-center text-muted-foreground">Select a patient to view details (Feature requires active database connection).</p>
+                 </CardContent>
+             </Card>
+        )}
     </div>
   );
 }

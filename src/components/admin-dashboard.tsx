@@ -2,19 +2,20 @@
 
 import * as React from 'react';
 import { useState, useEffect } from 'react';
-import { User } from 'firebase/auth';
+// Removed: import { User } from 'firebase/auth';
 import { collection, onSnapshot, query, orderBy, limit } from 'firebase/firestore';
-import { db } from '@/lib/firebase';
+import { db, isFirebaseInitialized, getFirebaseConfigError } from '@/lib/firebase'; // Import helpers
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Users, Activity, ShieldCheck } from 'lucide-react'; // Added icons
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'; // Import Alert components
+import { Users, Activity, ShieldCheck, AlertTriangle } from 'lucide-react'; // Added icons
 
-interface AdminDashboardProps {
-  user: User; // Admin's user object
-}
+// Removed: interface AdminDashboardProps {
+//   user: User; // Admin's user object
+// }
 
 interface AppUser {
   id: string;
@@ -37,19 +38,33 @@ interface AuditLog {
     details?: string; // Optional details
 }
 
+// Placeholder admin info since auth is removed
+const PLACEHOLDER_ADMIN_ID = 'test-admin-id';
+const PLACEHOLDER_ADMIN_EMAIL = 'admin@example.com';
 
-export default function AdminDashboard({ user }: AdminDashboardProps) {
+export default function AdminDashboard(/* Removed: { user }: AdminDashboardProps */) {
   const [users, setUsers] = useState<AppUser[]>([]);
   const [loadingUsers, setLoadingUsers] = useState(true);
   const [auditLogs, setAuditLogs] = useState<AuditLog[]>([]); // State for logs
   const [loadingLogs, setLoadingLogs] = useState(true); // Loading state for logs
   const [error, setError] = useState<string | null>(null);
+  const [firebaseActive, setFirebaseActive] = useState(false);
 
-  // Fetch all users from Firestore 'users' collection
+
   useEffect(() => {
+    const firebaseReady = isFirebaseInitialized();
+    setFirebaseActive(firebaseReady);
+    if (!firebaseReady) {
+        setError(getFirebaseConfigError() || "Firebase is not available.");
+        setLoadingUsers(false);
+        setLoadingLogs(false);
+        return; // Stop if Firebase isn't working
+    }
+    // If Firebase is ready, proceed
+    setError(null); // Clear potential config error
+
     setLoadingUsers(true);
-    setError(null);
-    const usersQuery = query(collection(db, 'users')); // Adjust if your collection name is different
+    const usersQuery = query(collection(db!, 'users')); // Use db! non-null assertion
 
     const unsubscribeUsers = onSnapshot(usersQuery, (snapshot) => {
       const userList = snapshot.docs.map(doc => ({
@@ -64,18 +79,15 @@ export default function AdminDashboard({ user }: AdminDashboardProps) {
       setLoadingUsers(false);
     });
 
-    // Simulate fetching audit logs (replace with actual Firestore query)
+    // Simulate fetching audit logs (replace with actual Firestore query if needed later)
     setLoadingLogs(true);
     const fetchLogs = async () => {
-        // --- Replace with actual Firestore query ---
-        // Example: const logsQuery = query(collection(db, 'auditLogs'), orderBy('timestamp', 'desc'), limit(20));
-        // const unsubscribeLogs = onSnapshot(logsQuery, ...);
         // --- Simulation Starts ---
         await new Promise(resolve => setTimeout(resolve, 1500)); // Simulate network delay
         const simulatedLogs: AuditLog[] = [
             { id: 'log1', timestamp: new Date(), userId: 'doctor_abc', userEmail: 'dr.smith@hospital.org', action: 'view_patient_data', details: 'Patient ID: patient_xyz' },
             { id: 'log2', timestamp: new Date(Date.now() - 60000 * 5), userId: 'patient_xyz', userEmail: 'patient@mail.com', action: 'symptom_report', details: 'Severity: moderate' },
-            { id: 'log3', timestamp: new Date(Date.now() - 60000 * 10), userId: user.uid, userEmail: user.email || undefined, action: 'login', details: 'Admin logged in' },
+            { id: 'log3', timestamp: new Date(Date.now() - 60000 * 10), userId: PLACEHOLDER_ADMIN_ID, userEmail: PLACEHOLDER_ADMIN_EMAIL, action: 'login', details: 'Admin logged in (Simulated)' },
             { id: 'log4', timestamp: new Date(Date.now() - 60000 * 15), userId: 'doctor_abc', userEmail: 'dr.smith@hospital.org', action: 'approve_suggestion', details: 'Suggestion ID: sug_123' },
         ];
         setAuditLogs(simulatedLogs);
@@ -87,9 +99,9 @@ export default function AdminDashboard({ user }: AdminDashboardProps) {
 
     return () => {
         unsubscribeUsers();
-        // unsubscribeLogs(); // Uncomment when using real Firestore listener
+        // Unsubscribe logs if you implement a real listener
     }
-  }, [user.uid, user.email]); // Depend on admin user info if needed for logs
+  }, []); // Run only once on mount
 
 
   const getInitials = (name: string | null | undefined): string => {
@@ -113,6 +125,8 @@ export default function AdminDashboard({ user }: AdminDashboardProps) {
      return date.toLocaleString();
    };
 
+   // Determine if we should show loading skeletons
+   const showSkeleton = firebaseActive && (loadingUsers || loadingLogs);
 
   return (
     <div className="space-y-6">
@@ -121,10 +135,22 @@ export default function AdminDashboard({ user }: AdminDashboardProps) {
       </h1>
 
       {error && (
-        <div className="p-4 mb-4 text-sm text-red-700 bg-red-100 rounded-lg dark:bg-red-200 dark:text-red-800" role="alert">
-          <span className="font-medium">Error:</span> {error}
-        </div>
+        <Alert variant="destructive">
+            <AlertTriangle className="h-4 w-4" />
+            <AlertTitle>Error</AlertTitle>
+            <AlertDescription>{error}</AlertDescription>
+        </Alert>
       )}
+
+       {!firebaseActive && !error && (
+           <Alert variant="default" className="bg-yellow-50 border-yellow-200 text-yellow-800">
+               <AlertTriangle className="h-4 w-4 text-yellow-600" />
+               <AlertTitle>Firebase Disabled</AlertTitle>
+               <AlertDescription>
+                   Database features are currently offline. User and log data cannot be loaded or managed.
+               </AlertDescription>
+           </Alert>
+       )}
 
       {/* User Management Card */}
       <Card>
@@ -140,11 +166,11 @@ export default function AdminDashboard({ user }: AdminDashboardProps) {
                 <TableHead>Email</TableHead>
                 <TableHead>Role</TableHead>
                 <TableHead>Created On</TableHead>
-                <TableHead>Actions</TableHead> {/* Placeholder for actions */}
+                <TableHead>Actions</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
-              {loadingUsers ? (
+              {showSkeleton ? (
                 // Skeleton Loader for Table Rows
                  Array.from({ length: 5 }).map((_, index) => (
                   <TableRow key={index}>
@@ -155,7 +181,7 @@ export default function AdminDashboard({ user }: AdminDashboardProps) {
                     <TableCell><Skeleton className="h-8 w-16" /></TableCell>
                   </TableRow>
                  ))
-              ) : users.length > 0 ? (
+              ) : firebaseActive && users.length > 0 ? (
                 users.map((u) => (
                   <TableRow key={u.id}>
                     <TableCell>
@@ -175,20 +201,22 @@ export default function AdminDashboard({ user }: AdminDashboardProps) {
                     </TableCell>
                      <TableCell>{formatDate(u.creationTime) || 'N/A'}</TableCell>
                     <TableCell>
-                       {/* Add Edit/Delete buttons here - requires implementation */}
-                       <button className="text-primary hover:underline text-sm">Edit</button>
+                       <Button variant="link" size="sm" className="p-0 h-auto" disabled={!firebaseActive}>
+                            Edit
+                       </Button>
                     </TableCell>
                   </TableRow>
                 ))
               ) : (
                 <TableRow>
-                  <TableCell colSpan={5} className="text-center text-muted-foreground">No users found.</TableCell>
+                  <TableCell colSpan={5} className="text-center text-muted-foreground">
+                    {firebaseActive ? 'No users found.' : 'User data unavailable.'}
+                 </TableCell>
                 </TableRow>
               )}
             </TableBody>
           </Table>
-          {/* TODO: Add functionality for Adding/Editing Users */}
-           {/* <Button className="mt-4">Add New User</Button> */}
+          {/* <Button className="mt-4" disabled={!firebaseActive}>Add New User</Button> */}
         </CardContent>
       </Card>
 
@@ -209,7 +237,7 @@ export default function AdminDashboard({ user }: AdminDashboardProps) {
                         </TableRow>
                     </TableHeader>
                     <TableBody>
-                        {loadingLogs ? (
+                        {showSkeleton ? (
                              Array.from({ length: 5 }).map((_, index) => (
                                 <TableRow key={index}>
                                     <TableCell><Skeleton className="h-4 w-36" /></TableCell>
@@ -218,7 +246,7 @@ export default function AdminDashboard({ user }: AdminDashboardProps) {
                                     <TableCell><Skeleton className="h-4 w-48" /></TableCell>
                                 </TableRow>
                              ))
-                        ) : auditLogs.length > 0 ? (
+                        ) : firebaseActive && auditLogs.length > 0 ? ( // Audit logs are currently simulated, so check firebaseActive for consistency
                             auditLogs.map((log) => (
                                 <TableRow key={log.id}>
                                     <TableCell className="text-xs">{formatDateTime(log.timestamp)}</TableCell>
@@ -231,7 +259,9 @@ export default function AdminDashboard({ user }: AdminDashboardProps) {
                             ))
                         ) : (
                            <TableRow>
-                               <TableCell colSpan={4} className="text-center text-muted-foreground">No audit logs available.</TableCell>
+                               <TableCell colSpan={4} className="text-center text-muted-foreground">
+                                {firebaseActive ? 'No audit logs available.' : 'Audit logs unavailable.'}
+                               </TableCell>
                            </TableRow>
                         )}
                     </TableBody>
@@ -260,7 +290,7 @@ export default function AdminDashboard({ user }: AdminDashboardProps) {
         </CardHeader>
         <CardContent>
            <p className="text-muted-foreground">Functionality to generate HIPAA compliance reports will be added here.</p>
-           {/* <Button>Generate Report</Button> */}
+           {/* <Button disabled={!firebaseActive}>Generate Report</Button> */}
         </CardContent>
       </Card>
     </div>

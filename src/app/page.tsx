@@ -1,8 +1,7 @@
-import Login from '@/components/login';
+
+import { redirect } from 'next/navigation';
 
 export default function Home() {
-  // Initially show the login page. Authentication state will determine
-  // whether to show Login or the appropriate Dashboard.
-  // This logic will be handled client-side.
-  return <Login />;
+  // Redirect to the main dashboard since login is removed
+  redirect('/dashboard');
 }

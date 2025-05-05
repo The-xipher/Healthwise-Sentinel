@@ -3,6 +3,7 @@ import { Geist, Geist_Mono } from 'next/font/google';
 import './globals.css';
 import { SidebarProvider, Sidebar, SidebarInset } from '@/components/ui/sidebar';
 import { Toaster } from '@/components/ui/toaster';
+import Header from '@/components/header'; // Import the simplified header
 
 const geistSans = Geist({
   variable: '--font-geist-sans',
@@ -30,6 +31,7 @@ export default function RootLayout({
         <SidebarProvider defaultOpen={false} >
           <Sidebar variant="inset" collapsible="icon" />
           <SidebarInset>
+             <Header /> {/* Add the simplified Header here */}
             {children}
           </SidebarInset>
         </SidebarProvider>

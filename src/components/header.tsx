@@ -1,47 +1,11 @@
 'use client';
 
 import * as React from 'react';
-import { getAuth, signOut, User } from 'firebase/auth';
-import { useRouter } from 'next/navigation';
-import { Button } from '@/components/ui/button';
-import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu';
-import { LogOut, User as UserIcon, LayoutDashboard } from 'lucide-react';
-import { app } from '@/lib/firebase';
 import Link from 'next/link';
 import { SidebarTrigger } from './ui/sidebar';
 
-interface HeaderProps {
-  user: User;
-}
-
-export default function Header({ user }: HeaderProps) {
-  const auth = getAuth(app);
-  const router = useRouter();
-
-  const handleLogout = async () => {
-    try {
-      await signOut(auth);
-      router.push('/login'); // Redirect to login page after logout
-    } catch (error) {
-      console.error('Error signing out:', error);
-      // Optionally show an error message to the user
-    }
-  };
-
-  const getInitials = (name: string | null | undefined): string => {
-    if (!name) return 'U'; // Default to 'U' for User if no name
-    const names = name.split(' ');
-    if (names.length === 1) return names[0][0].toUpperCase();
-    return (names[0][0] + names[names.length - 1][0]).toUpperCase();
-  };
+// Simplified Header without user authentication elements
+export default function Header() {
 
   return (
     <header className="sticky top-0 z-40 w-full border-b bg-card shadow-sm">
@@ -57,44 +21,8 @@ export default function Header({ user }: HeaderProps) {
           </Link>
         </div>
         <div className="flex items-center gap-4">
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="ghost" className="relative h-8 w-8 rounded-full">
-                <Avatar className="h-8 w-8">
-                  <AvatarImage src={user.photoURL || undefined} alt={user.displayName || 'User Avatar'} />
-                  <AvatarFallback>{getInitials(user.displayName)}</AvatarFallback>
-                </Avatar>
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent className="w-56" align="end" forceMount>
-              <DropdownMenuLabel className="font-normal">
-                <div className="flex flex-col space-y-1">
-                  <p className="text-sm font-medium leading-none">{user.displayName || 'User'}</p>
-                  <p className="text-xs leading-none text-muted-foreground">
-                    {user.email}
-                  </p>
-                </div>
-              </DropdownMenuLabel>
-              <DropdownMenuSeparator />
-               <DropdownMenuItem asChild>
-                <Link href="/dashboard">
-                  <LayoutDashboard className="mr-2 h-4 w-4" />
-                  <span>Dashboard</span>
-                </Link>
-              </DropdownMenuItem>
-              {/* Add other menu items like Profile, Settings etc. */}
-               <DropdownMenuItem>
-                 <UserIcon className="mr-2 h-4 w-4" />
-                 <span>Profile</span>
-                 {/* Link to profile page if exists */}
-               </DropdownMenuItem>
-              <DropdownMenuSeparator />
-              <DropdownMenuItem onClick={handleLogout} className="cursor-pointer text-destructive focus:text-destructive focus:bg-destructive/10">
-                <LogOut className="mr-2 h-4 w-4" />
-                <span>Log out</span>
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
+          {/* Placeholder for potential future actions or static links */}
+          {/* <Button variant="outline">Help</Button> */}
         </div>
       </div>
     </header>

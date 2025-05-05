@@ -2,9 +2,9 @@
 
 import * as React from 'react';
 import { useState, useEffect } from 'react';
-import { User } from 'firebase/auth';
+// Removed: import { User } from 'firebase/auth';
 import { collection, query, where, onSnapshot, addDoc, Timestamp, orderBy, limit } from 'firebase/firestore';
-import { db } from '@/lib/firebase';
+import { db, isFirebaseInitialized, getFirebaseConfigError } from '@/lib/firebase'; // Import helpers
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
@@ -21,9 +21,9 @@ import { useToast } from '@/hooks/use-toast';
 import { generateSuggestedInterventions } from '@/ai/flows/generate-suggested-interventions'; // Import the GenAI flow
 import { Skeleton } from './ui/skeleton';
 
-interface PatientDashboardProps {
-  user: User;
-}
+// Removed: interface PatientDashboardProps {
+//   user: User;
+// }
 
 interface HealthData {
   id: string;
@@ -63,7 +63,10 @@ const symptomFormSchema = z.object({
 
 type SymptomFormValues = z.infer<typeof symptomFormSchema>;
 
-export default function PatientDashboard({ user }: PatientDashboardProps) {
+// Using a placeholder ID since authentication is removed
+const PLACEHOLDER_PATIENT_ID = 'test-patient-id';
+
+export default function PatientDashboard(/* Removed: { user }: PatientDashboardProps */) {
   const [healthData, setHealthData] = useState<HealthData[]>([]);
   const [medications, setMedications] = useState<Medication[]>([]);
   const [symptomReports, setSymptomReports] = useState<SymptomReport[]>([]);
@@ -74,6 +77,7 @@ export default function PatientDashboard({ user }: PatientDashboardProps) {
   const [reportingSymptom, setReportingSymptom] = useState(false);
   const [suggestedInterventions, setSuggestedInterventions] = useState<string | null>(null);
   const [loadingInterventions, setLoadingInterventions] = useState(false);
+  const [firebaseActive, setFirebaseActive] = useState(false);
   const { toast } = useToast();
 
   const form = useForm<SymptomFormValues>({
@@ -84,15 +88,25 @@ export default function PatientDashboard({ user }: PatientDashboardProps) {
     },
   });
 
- useEffect(() => {
-    if (!user) return;
+  useEffect(() => {
+    const firebaseReady = isFirebaseInitialized();
+    setFirebaseActive(firebaseReady);
+    if (!firebaseReady) {
+        setError(getFirebaseConfigError() || "Firebase is not available.");
+        setLoadingHealth(false);
+        setLoadingMeds(false);
+        setLoadingSymptoms(false);
+        setLoadingInterventions(false);
+        return; // Stop if Firebase isn't working
+    }
+    // If Firebase is ready, proceed with listeners
+    setError(null); // Clear potential config error
 
     setLoadingHealth(true);
-    setError(null);
 
     // --- Health Data Listener ---
     const healthQuery = query(
-        collection(db, `patients/${user.uid}/healthData`),
+        collection(db!, `patients/${PLACEHOLDER_PATIENT_ID}/healthData`), // Use db! (non-null assertion)
         orderBy('timestamp', 'desc'),
         limit(30) // Limit to last 30 entries for chart
     );
@@ -108,17 +122,12 @@ export default function PatientDashboard({ user }: PatientDashboardProps) {
 
     // --- Medication Listener ---
      setLoadingMeds(true);
-    // TODO: Replace 'medications' with your actual collection name for patient-specific meds
-    // This might involve querying a general 'medications' collection filtered by patient assignment
-    // or a subcollection like `patients/${user.uid}/assignedMedications`.
-    // The current example assumes a subcollection `patients/${user.uid}/medications`. Adapt as needed.
-    const medsQuery = query(collection(db, `patients/${user.uid}/medications`));
+    const medsQuery = query(collection(db!, `patients/${PLACEHOLDER_PATIENT_ID}/medications`));
     const unsubscribeMeds = onSnapshot(medsQuery, (snapshot) => {
         const meds = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Medication));
-        // Simulate adherence for demo purposes
         const medsWithAdherence = meds.map(med => ({
             ...med,
-            adherence: med.adherence ?? Math.floor(Math.random() * 41) + 60 // Simulate 60-100% adherence if not present
+            adherence: med.adherence ?? Math.floor(Math.random() * 41) + 60
         }));
         setMedications(medsWithAdherence);
         setLoadingMeds(false);
@@ -132,7 +141,7 @@ export default function PatientDashboard({ user }: PatientDashboardProps) {
     // --- Symptom Reports Listener ---
     setLoadingSymptoms(true);
     const symptomsQuery = query(
-        collection(db, `patients/${user.uid}/symptomReports`),
+        collection(db!, `patients/${PLACEHOLDER_PATIENT_ID}/symptomReports`),
         orderBy('timestamp', 'desc'),
         limit(5) // Limit to last 5 reports
     );
@@ -149,11 +158,9 @@ export default function PatientDashboard({ user }: PatientDashboardProps) {
 
     // --- Fetch Suggested Interventions ---
     const fetchInterventions = async () => {
+      if (!firebaseReady) return; // Don't run if Firebase is inactive
       setLoadingInterventions(true);
       try {
-        // Prepare input for the GenAI flow
-        // This requires combining health data, medication adherence, etc. into strings.
-        // You might need more sophisticated data preparation based on the AI model's needs.
         const latestHealth = healthData.length > 0 ? healthData[healthData.length - 1] : {};
         const healthSummary = `Latest Health: Steps: ${latestHealth.steps ?? 'N/A'}, HR: ${latestHealth.heartRate ?? 'N/A'}, Glucose: ${latestHealth.bloodGlucose ?? 'N/A'}. `;
         const adherenceSummary = medications.map(m => `${m.name}: ${m.adherence ?? 'N/A'}%`).join(', ');
@@ -161,7 +168,6 @@ export default function PatientDashboard({ user }: PatientDashboardProps) {
 
         const input = {
           patientHealthData: `${healthSummary} Medication Adherence: ${adherenceSummary}. Recent Symptoms: ${symptomsSummary}`,
-          // Simulate risk predictions for now
           riskPredictions: `Readmission Risk: ${Math.random() > 0.7 ? 'High' : 'Low'}. Potential Complications: Dehydration, Medication side-effects.`,
         };
 
@@ -169,16 +175,12 @@ export default function PatientDashboard({ user }: PatientDashboardProps) {
         setSuggestedInterventions(result.suggestedInterventions);
       } catch (err) {
         console.error('Error generating suggested interventions:', err);
-        // Don't show this error prominently unless needed, it's a background process
-        // setError("Could not fetch AI suggestions.");
       } finally {
         setLoadingInterventions(false);
       }
     };
 
-    // Fetch interventions initially and maybe periodically or based on data changes
-    // For simplicity, fetch when health data is loaded
-     if (!loadingHealth && healthData.length > 0) {
+     if (!loadingHealth && healthData.length > 0 && firebaseReady) {
        fetchInterventions();
      }
 
@@ -189,26 +191,30 @@ export default function PatientDashboard({ user }: PatientDashboardProps) {
         unsubscribeMeds();
         unsubscribeSymptoms();
     };
-  }, [user, loadingHealth]); // Rerun effect if user changes or health data loads
+  }, [loadingHealth]); // Re-run effect only when health data loading state changes
 
 
   const onSubmitSymptom = async (values: SymptomFormValues) => {
+      if (!firebaseActive || !db) {
+        toast({ title: "Error", description: "Cannot submit report. Connection issue.", variant: "destructive" });
+        return;
+      }
       setReportingSymptom(true);
       try {
-          await addDoc(collection(db, `patients/${user.uid}/symptomReports`), {
+          await addDoc(collection(db, `patients/${PLACEHOLDER_PATIENT_ID}/symptomReports`), {
               ...values,
               timestamp: Timestamp.now(),
-              userId: user.uid,
+              userId: PLACEHOLDER_PATIENT_ID, // Use placeholder ID
           });
           toast({
               title: "Symptom Reported",
               description: "Your healthcare provider has been notified.",
-              variant: "default", // Use 'default' or remove for standard styling
-               className: "bg-green-100 border-green-300 text-green-800", // Example custom styling
+              variant: "default",
+               className: "bg-green-100 border-green-300 text-green-800",
                duration: 5000,
                action: <CheckCircle className="text-green-600" />,
           });
-          form.reset(); // Reset form after successful submission
+          form.reset();
       } catch (err) {
           console.error("Error reporting symptom:", err);
           toast({
@@ -249,6 +255,9 @@ export default function PatientDashboard({ user }: PatientDashboardProps) {
      return 'bg-red-500'; // Poor
    }
 
+  // Display skeleton if any core data is still loading (and Firebase is supposed to be active)
+  const showSkeleton = firebaseActive && (loadingHealth || loadingMeds || loadingSymptoms);
+
   return (
     <div className="space-y-6">
        <h1 className="text-3xl font-bold text-foreground">Patient Dashboard</h1>
@@ -261,8 +270,8 @@ export default function PatientDashboard({ user }: PatientDashboardProps) {
         </Alert>
       )}
 
-      {/* Suggested Interventions Card */}
-      {(loadingInterventions || suggestedInterventions) && (
+      {/* Suggested Interventions Card - Only show if Firebase is active */}
+      {firebaseActive && (loadingInterventions || suggestedInterventions) && (
          <Card className="bg-blue-50 border-blue-200 shadow-md hover:shadow-lg transition-shadow">
             <CardHeader>
               <CardTitle className="flex items-center gap-2 text-blue-800">
@@ -288,189 +297,195 @@ export default function PatientDashboard({ user }: PatientDashboardProps) {
           </Card>
        )}
 
-
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-         {/* Health Data Summary Cards */}
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Steps Today</CardTitle>
-            <Activity className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            {loadingHealth ? <Skeleton className="h-8 w-20" /> :
-              <div className="text-2xl font-bold">{healthData[healthData.length - 1]?.steps ?? 'N/A'}</div>
-            }
-             <p className="text-xs text-muted-foreground">Goal: 8,000 steps</p>
-          </CardContent>
-        </Card>
-         <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Heart Rate (avg)</CardTitle>
-            <HeartPulse className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-             {loadingHealth ? <Skeleton className="h-8 w-16" /> :
-               <div className="text-2xl font-bold">{healthData[healthData.length - 1]?.heartRate ?? 'N/A'} bpm</div>
-             }
-            <p className="text-xs text-muted-foreground">Resting average</p>
-          </CardContent>
-        </Card>
-         <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Blood Glucose</CardTitle>
-             <Droplet className="h-4 w-4 text-muted-foreground" /> {/* Example icon */}
-          </CardHeader>
-          <CardContent>
-             {loadingHealth ? <Skeleton className="h-8 w-16" /> :
+      { showSkeleton ? (
+        // Show Skeleton layout if loading
+         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            <Skeleton className="h-24 rounded-lg" />
+            <Skeleton className="h-24 rounded-lg" />
+            <Skeleton className="h-24 rounded-lg" />
+            <Skeleton className="h-[350px] rounded-lg md:col-span-2 lg:col-span-3" />
+            <Skeleton className="h-48 rounded-lg lg:col-span-2" />
+            <Skeleton className="h-72 rounded-lg lg:col-span-1" />
+        </div>
+      ) : (
+        // Show actual dashboard content when loaded
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {/* Health Data Summary Cards */}
+            <Card>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                <CardTitle className="text-sm font-medium">Steps Today</CardTitle>
+                <Activity className="h-4 w-4 text-muted-foreground" />
+            </CardHeader>
+            <CardContent>
+                <div className="text-2xl font-bold">{healthData[healthData.length - 1]?.steps ?? 'N/A'}</div>
+                <p className="text-xs text-muted-foreground">Goal: 8,000 steps</p>
+            </CardContent>
+            </Card>
+            <Card>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                <CardTitle className="text-sm font-medium">Heart Rate (avg)</CardTitle>
+                <HeartPulse className="h-4 w-4 text-muted-foreground" />
+            </CardHeader>
+            <CardContent>
+                <div className="text-2xl font-bold">{healthData[healthData.length - 1]?.heartRate ?? 'N/A'} bpm</div>
+                <p className="text-xs text-muted-foreground">Resting average</p>
+            </CardContent>
+            </Card>
+            <Card>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                <CardTitle className="text-sm font-medium">Blood Glucose</CardTitle>
+                <Droplet className="h-4 w-4 text-muted-foreground" />
+            </CardHeader>
+            <CardContent>
                 <div className="text-2xl font-bold">{healthData[healthData.length - 1]?.bloodGlucose ?? 'N/A'} mg/dL</div>
-             }
-             <p className="text-xs text-muted-foreground">Latest reading</p>
-          </CardContent>
-        </Card>
+                <p className="text-xs text-muted-foreground">Latest reading</p>
+            </CardContent>
+            </Card>
 
 
-        {/* Health Data Chart */}
-        <Card className="md:col-span-2 lg:col-span-3">
-          <CardHeader>
-            <CardTitle>Recent Health Trends</CardTitle>
-            <CardDescription>Steps and Heart Rate over the last recorded entries.</CardDescription>
-          </CardHeader>
-          <CardContent className="h-[300px] md:h-[350px]">
-             {loadingHealth ? <Skeleton className="h-full w-full" /> : healthData.length > 0 ? (
-               <ResponsiveContainer width="100%" height="100%">
-                 <BarChart data={healthData}>
-                   <CartesianGrid strokeDasharray="3 3" />
-                   <XAxis dataKey="timestamp" tickFormatter={formatTimestamp} />
-                   <YAxis yAxisId="left" orientation="left" stroke="#8884d8" label={{ value: 'Steps', angle: -90, position: 'insideLeft', fill: '#8884d8' }} />
-                   <YAxis yAxisId="right" orientation="right" stroke="#82ca9d" label={{ value: 'Heart Rate (bpm)', angle: 90, position: 'insideRight', fill: '#82ca9d' }} />
-                   <Tooltip labelFormatter={formatDate} />
-                   <Legend />
-                   <Bar yAxisId="left" dataKey="steps" fill="hsl(var(--primary))" name="Steps" />
-                   <Bar yAxisId="right" dataKey="heartRate" fill="hsl(var(--accent))" name="Heart Rate" />
-                 </BarChart>
-               </ResponsiveContainer>
-             ) : (
-                <div className="flex items-center justify-center h-full text-muted-foreground">No health data available yet.</div>
-              )}
-          </CardContent>
-        </Card>
-
-         {/* Medication Adherence */}
-        <Card className="lg:col-span-2">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Pill className="h-5 w-5" />
-              Medication Adherence
-            </CardTitle>
-             <CardDescription>Tracking your medication schedule.</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-             {loadingMeds ? (
-                <>
-                 <Skeleton className="h-10 w-full" />
-                 <Skeleton className="h-10 w-full" />
-                </>
-             ) : medications.length > 0 ? (
-                medications.map((med) => (
-                  <div key={med.id} className="space-y-1">
-                    <div className="flex justify-between items-center">
-                        <span className="font-medium">{med.name} ({med.dosage}, {med.frequency})</span>
-                        <Badge variant={med.adherence && med.adherence >= 90 ? 'default' : med.adherence && med.adherence >= 70 ? 'secondary' : 'destructive'}
-                              className={getAdherenceColor(med.adherence)}>
-                            {med.adherence !== undefined ? `${med.adherence}%` : 'N/A'}
-                        </Badge>
+            {/* Health Data Chart */}
+            <Card className="md:col-span-2 lg:col-span-3">
+            <CardHeader>
+                <CardTitle>Recent Health Trends</CardTitle>
+                <CardDescription>Steps and Heart Rate over the last recorded entries.</CardDescription>
+            </CardHeader>
+            <CardContent className="h-[300px] md:h-[350px]">
+                {firebaseActive && healthData.length > 0 ? (
+                <ResponsiveContainer width="100%" height="100%">
+                    <BarChart data={healthData}>
+                    <CartesianGrid strokeDasharray="3 3" />
+                    <XAxis dataKey="timestamp" tickFormatter={formatTimestamp} />
+                    <YAxis yAxisId="left" orientation="left" stroke="#8884d8" label={{ value: 'Steps', angle: -90, position: 'insideLeft', fill: '#8884d8' }} />
+                    <YAxis yAxisId="right" orientation="right" stroke="#82ca9d" label={{ value: 'Heart Rate (bpm)', angle: 90, position: 'insideRight', fill: '#82ca9d' }} />
+                    <Tooltip labelFormatter={formatDate} />
+                    <Legend />
+                    <Bar yAxisId="left" dataKey="steps" fill="hsl(var(--primary))" name="Steps" />
+                    <Bar yAxisId="right" dataKey="heartRate" fill="hsl(var(--accent))" name="Heart Rate" />
+                    </BarChart>
+                </ResponsiveContainer>
+                ) : (
+                    <div className="flex items-center justify-center h-full text-muted-foreground">
+                        {firebaseActive ? "No health data available yet." : "Health data unavailable."}
                     </div>
-                    <Progress value={med.adherence} className={`h-2 ${getAdherenceColor(med.adherence)}`} aria-label={`${med.name} adherence ${med.adherence}%`} />
-                    {med.lastTaken && <p className="text-xs text-muted-foreground">Last taken: {formatDate(med.lastTaken)} {formatTimestamp(med.lastTaken)}</p>}
-                    {/* TODO: Add button to mark as taken */}
-                  </div>
-                ))
-             ) : (
-                <p className="text-sm text-muted-foreground">No medications assigned yet.</p>
-             )}
-          </CardContent>
-        </Card>
+                )}
+            </CardContent>
+            </Card>
 
-        {/* Symptom Reporting */}
-        <Card className="lg:col-span-1">
-          <CardHeader>
-            <CardTitle>Report Symptoms</CardTitle>
-            <CardDescription>Let your doctor know how you're feeling.</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <Form {...form}>
-              <form onSubmit={form.handleSubmit(onSubmitSymptom)} className="space-y-4">
-                 <FormField
-                    control={form.control}
-                    name="severity"
-                    render={({ field }) => (
-                      <FormItem className="space-y-3">
-                        <FormLabel>How severe are your symptoms?</FormLabel>
-                        <FormControl>
-                           {/* Using Buttons as Radio Group for better styling */}
-                           <div className="flex gap-2">
-                               {(['mild', 'moderate', 'severe'] as const).map((severity) => (
-                                   <Button
-                                      key={severity}
-                                      type="button"
-                                      variant={field.value === severity ? 'default' : 'outline'}
-                                      onClick={() => field.onChange(severity)}
-                                      className={`flex-1 capitalize ${field.value === severity ? 'ring-2 ring-primary ring-offset-2' : ''}`}
+            {/* Medication Adherence */}
+            <Card className="lg:col-span-2">
+            <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                <Pill className="h-5 w-5" />
+                Medication Adherence
+                </CardTitle>
+                <CardDescription>Tracking your medication schedule.</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+                {firebaseActive && medications.length > 0 ? (
+                    medications.map((med) => (
+                    <div key={med.id} className="space-y-1">
+                        <div className="flex justify-between items-center">
+                            <span className="font-medium">{med.name} ({med.dosage}, {med.frequency})</span>
+                            <Badge variant={med.adherence && med.adherence >= 90 ? 'default' : med.adherence && med.adherence >= 70 ? 'secondary' : 'destructive'}
+                                className={getAdherenceColor(med.adherence)}>
+                                {med.adherence !== undefined ? `${med.adherence}%` : 'N/A'}
+                            </Badge>
+                        </div>
+                        <Progress value={med.adherence} className={`h-2 ${getAdherenceColor(med.adherence)}`} aria-label={`${med.name} adherence ${med.adherence}%`} />
+                        {med.lastTaken && <p className="text-xs text-muted-foreground">Last taken: {formatDate(med.lastTaken)} {formatTimestamp(med.lastTaken)}</p>}
+                    </div>
+                    ))
+                ) : (
+                    <p className="text-sm text-muted-foreground">
+                        {firebaseActive ? "No medications assigned yet." : "Medication data unavailable."}
+                    </p>
+                )}
+            </CardContent>
+            </Card>
+
+            {/* Symptom Reporting */}
+            <Card className="lg:col-span-1">
+            <CardHeader>
+                <CardTitle>Report Symptoms</CardTitle>
+                <CardDescription>Let your doctor know how you're feeling.</CardDescription>
+            </CardHeader>
+            <CardContent>
+                <Form {...form}>
+                <form onSubmit={form.handleSubmit(onSubmitSymptom)} className="space-y-4">
+                    <FormField
+                        control={form.control}
+                        name="severity"
+                        render={({ field }) => (
+                        <FormItem className="space-y-3">
+                            <FormLabel>How severe are your symptoms?</FormLabel>
+                            <FormControl>
+                            <div className="flex gap-2">
+                                {(['mild', 'moderate', 'severe'] as const).map((severity) => (
+                                    <Button
+                                        key={severity}
+                                        type="button"
+                                        variant={field.value === severity ? 'default' : 'outline'}
+                                        onClick={() => field.onChange(severity)}
+                                        className={`flex-1 capitalize ${field.value === severity ? 'ring-2 ring-primary ring-offset-2' : ''}`}
+                                        disabled={!firebaseActive} // Disable if Firebase inactive
                                     >
-                                      {getSeverityIcon(severity)}
-                                      <span className="ml-2">{severity}</span>
-                                   </Button>
-                               ))}
-                            </div>
+                                        {getSeverityIcon(severity)}
+                                        <span className="ml-2">{severity}</span>
+                                    </Button>
+                                ))}
+                                </div>
+                            </FormControl>
+                            <FormMessage />
+                        </FormItem>
+                        )}
+                    />
+
+                    <FormField
+                    control={form.control}
+                    name="description"
+                    render={({ field }) => (
+                        <FormItem>
+                        <FormLabel>Describe your symptoms</FormLabel>
+                        <FormControl>
+                            <Textarea
+                            placeholder="e.g., Feeling dizzy, short of breath..."
+                            {...field}
+                             disabled={!firebaseActive} // Disable if Firebase inactive
+                            />
                         </FormControl>
                         <FormMessage />
-                      </FormItem>
+                        </FormItem>
                     )}
-                  />
-
-                <FormField
-                  control={form.control}
-                  name="description"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Describe your symptoms</FormLabel>
-                      <FormControl>
-                        <Textarea
-                          placeholder="e.g., Feeling dizzy, short of breath..."
-                          {...field}
-                        />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-                <Button type="submit" disabled={reportingSymptom} className="w-full">
-                  {reportingSymptom ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
-                  Report Symptom
-                </Button>
-              </form>
-            </Form>
-            {/* Display recent reports */}
-             <div className="mt-6 space-y-3">
-                <h4 className="text-sm font-medium text-muted-foreground">Recent Reports:</h4>
-                 {loadingSymptoms ? <Skeleton className="h-16 w-full" /> :
-                   symptomReports.length > 0 ? (
-                     symptomReports.map(report => (
-                        <div key={report.id} className="text-xs p-2 border rounded-md bg-muted/50 flex items-start gap-2">
-                             {getSeverityIcon(report.severity)}
-                             <div>
-                                <span className="font-semibold capitalize">{report.severity}</span> on {formatDate(report.timestamp)}:
-                                <p className="text-muted-foreground">{report.description}</p>
+                    />
+                    <Button type="submit" disabled={reportingSymptom || !firebaseActive} className="w-full">
+                    {reportingSymptom ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+                    Report Symptom
+                    </Button>
+                </form>
+                </Form>
+                {/* Display recent reports */}
+                <div className="mt-6 space-y-3">
+                    <h4 className="text-sm font-medium text-muted-foreground">Recent Reports:</h4>
+                    {firebaseActive && symptomReports.length > 0 ? (
+                        symptomReports.map(report => (
+                            <div key={report.id} className="text-xs p-2 border rounded-md bg-muted/50 flex items-start gap-2">
+                                {getSeverityIcon(report.severity)}
+                                <div>
+                                    <span className="font-semibold capitalize">{report.severity}</span> on {formatDate(report.timestamp)}:
+                                    <p className="text-muted-foreground">{report.description}</p>
+                                </div>
                             </div>
-                        </div>
-                    ))
-                 ) : (
-                     <p className="text-xs text-muted-foreground">No recent reports.</p>
-                 )}
-            </div>
-          </CardContent>
-        </Card>
-      </div>
+                        ))
+                    ) : (
+                        <p className="text-xs text-muted-foreground">
+                           {firebaseActive ? "No recent reports." : "Symptom reports unavailable."}
+                        </p>
+                    )}
+                </div>
+            </CardContent>
+            </Card>
+        </div>
+        )}
     </div>
   );
 }
