@@ -4,7 +4,7 @@ import * as React from 'react';
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { getAuth, signInWithEmailAndPassword, GoogleAuthProvider, signInWithPopup, setPersistence, browserSessionPersistence } from 'firebase/auth';
-import { app } from '@/lib/firebase'; // Assuming firebase is configured in lib/firebase.ts
+import { app, isFirebaseInitialized } from '@/lib/firebase'; // Import isFirebaseInitialized
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -31,11 +31,20 @@ export default function Login() {
   const [loading, setLoading] = useState(false);
   const [googleLoading, setGoogleLoading] = useState(false);
   const router = useRouter();
-  const auth = getAuth(app);
+  const firebaseReady = isFirebaseInitialized(); // Check if Firebase is ready
+
+  // Get auth instance only if Firebase is initialized
+  const auth = firebaseReady ? getAuth(app!) : null;
 
   const handleLogin = async (event: React.FormEvent) => {
     event.preventDefault();
     setError(null);
+
+    if (!auth) {
+        setError("Authentication service is not available. Please check configuration.");
+        return;
+    }
+
     setLoading(true);
     try {
       await setPersistence(auth, browserSessionPersistence);
@@ -43,7 +52,13 @@ export default function Login() {
       router.push('/dashboard'); // Redirect to dashboard on successful login
     } catch (err: any) {
       console.error("Firebase login error:", err);
-      setError(err.message || 'Failed to log in. Please check your credentials.');
+      if (err.code === 'auth/invalid-api-key') {
+          setError('Configuration error: Invalid API Key. Please contact the administrator.');
+      } else if (err.code === 'auth/invalid-credential' || err.code === 'auth/user-not-found' || err.code === 'auth/wrong-password') {
+          setError('Invalid email or password. Please try again.');
+      } else {
+          setError(err.message || 'Failed to log in. Please check your credentials or try again later.');
+      }
     } finally {
       setLoading(false);
     }
@@ -51,6 +66,12 @@ export default function Login() {
 
   const handleGoogleSignIn = async () => {
     setError(null);
+
+    if (!auth) {
+        setError("Authentication service is not available. Please check configuration.");
+        return;
+    }
+
     setGoogleLoading(true);
     const provider = new GoogleAuthProvider();
     try {
@@ -59,7 +80,13 @@ export default function Login() {
       router.push('/dashboard'); // Redirect to dashboard on successful Google sign-in
     } catch (err: any) {
       console.error("Google sign-in error:", err);
-      setError(err.message || 'Failed to sign in with Google. Please try again.');
+       if (err.code === 'auth/invalid-api-key') {
+           setError('Configuration error: Invalid API Key for Google Sign-In. Please contact the administrator.');
+       } else if (err.code === 'auth/popup-closed-by-user') {
+           setError('Google Sign-In cancelled.');
+       } else {
+           setError(err.message || 'Failed to sign in with Google. Please try again.');
+       }
     } finally {
       setGoogleLoading(false);
     }
@@ -73,6 +100,13 @@ export default function Login() {
           <CardDescription>Welcome back! Please log in to your account.</CardDescription>
         </CardHeader>
         <CardContent>
+          {!firebaseReady && (
+             <Alert variant="destructive" className="mb-4">
+                <AlertTriangle className="h-4 w-4" />
+                <AlertTitle>Configuration Error</AlertTitle>
+                <AlertDescription>Authentication service is unavailable. Please contact support.</AlertDescription>
+              </Alert>
+          )}
           <form onSubmit={handleLogin} className="space-y-4">
             <div className="space-y-2">
               <Label htmlFor="email">Email</Label>
@@ -87,6 +121,7 @@ export default function Login() {
                   required
                   className="pl-10"
                   aria-label="Email address"
+                  disabled={!firebaseReady}
                 />
               </div>
             </div>
@@ -103,6 +138,7 @@ export default function Login() {
                   required
                   className="pl-10"
                   aria-label="Password"
+                  disabled={!firebaseReady}
                 />
               </div>
             </div>
@@ -113,13 +149,13 @@ export default function Login() {
                 <AlertDescription>{error}</AlertDescription>
               </Alert>
             )}
-            <Button type="submit" className="w-full" disabled={loading}>
+            <Button type="submit" className="w-full" disabled={loading || !firebaseReady}>
               {loading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
               Log In
             </Button>
           </form>
            <Separator className="my-6" />
-           <Button variant="outline" className="w-full flex items-center justify-center gap-2" onClick={handleGoogleSignIn} disabled={googleLoading}>
+           <Button variant="outline" className="w-full flex items-center justify-center gap-2" onClick={handleGoogleSignIn} disabled={googleLoading || !firebaseReady}>
              {googleLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <GoogleIcon />}
              Sign in with Google
            </Button>

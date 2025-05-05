@@ -23,63 +23,76 @@ const requiredConfigKeys: (keyof typeof firebaseConfig)[] = [
   'projectId',
 ];
 
-const missingKeys = requiredConfigKeys.filter(key => !firebaseConfig[key] || firebaseConfig[key] === `YOUR_${key.toUpperCase().replace('FIREBASE_', '')}`);
+let isFirebaseConfigValid = true;
+const missingOrPlaceholderKeys = requiredConfigKeys.filter(key => {
+    const value = firebaseConfig[key];
+    return !value || value.startsWith('YOUR_') || value.startsWith('NEXT_PUBLIC_') || value === '[PLACEHOLDER]';
+});
 
-if (missingKeys.length > 0) {
-  console.error(`Firebase configuration is missing or incomplete in your .env file. Missing or placeholder keys: ${missingKeys.join(', ')}. Please update .env with your actual Firebase project credentials.`);
-  // You might want to throw an error here or handle it differently
-  // depending on whether the app can function without Firebase.
-  // throw new Error(`Missing Firebase configuration: ${missingKeys.join(', ')}`);
+if (missingOrPlaceholderKeys.length > 0) {
+  console.error(`🔴 FATAL: Firebase configuration is missing or uses placeholder values in your .env file. Missing or placeholder keys: ${missingOrPlaceholderKeys.join(', ')}. Please update your environment variables with your actual Firebase project credentials.`);
+  isFirebaseConfigValid = false;
+  // In a real application, you might throw an error here or prevent the app from fully loading.
+  // For this environment, we'll log the error and attempt to continue, but services will likely fail.
 }
 
-// Initialize Firebase
-let app: FirebaseApp;
-let auth: Auth;
-let db: Firestore;
-let functions: Functions;
-let storage: FirebaseStorage;
+// Initialize Firebase services
+let app: FirebaseApp | null = null;
+let auth: Auth | null = null;
+let db: Firestore | null = null;
+let functions: Functions | null = null;
+let storage: FirebaseStorage | null = null;
 let messaging: Messaging | null = null;
 
-try {
-    if (!getApps().length) {
-      app = initializeApp(firebaseConfig);
-    } else {
-      app = getApp();
-    }
-
-    auth = getAuth(app);
-    db = getFirestore(app);
-    functions = getFunctions(app);
-    storage = getStorage(app);
-
-    // Initialize messaging only in the browser environment
-    if (typeof window !== 'undefined' && firebaseConfig.messagingSenderId && firebaseConfig.messagingSenderId !== 'YOUR_MESSAGING_SENDER_ID') {
-        try {
-            messaging = getMessaging(app);
-        } catch (error) {
-            console.warn("Firebase Messaging could not be initialized (this might be normal if not configured or in SSR):", error);
-            // Handle cases where messaging is not supported (e.g., missing VAPID key, service worker issues)
+if (isFirebaseConfigValid) {
+    try {
+        if (!getApps().length) {
+        app = initializeApp(firebaseConfig);
+        } else {
+        app = getApp();
         }
-    }
-} catch (error: any) {
-    console.error("Failed to initialize Firebase:", error);
-    // Provide a more specific message for common errors
-    if (error.code === 'auth/invalid-api-key') {
-         console.error("Firebase Error: Invalid API Key. Please check NEXT_PUBLIC_FIREBASE_API_KEY in your .env file.");
-    }
-     // Set services to null or handle the error appropriately
-     // to prevent downstream errors in components trying to use them.
-     // For now, we let the error propagate, but you might want a fallback.
-     app = null!; // Using null assertion, handle potential nulls where used if needed
-     auth = null!;
-     db = null!;
-     functions = null!;
-     storage = null!;
-     messaging = null;
 
-     // Optionally re-throw or throw a custom error to stop app execution if Firebase is critical
-     // throw new Error("Firebase initialization failed. Please check your configuration and console logs.");
+        auth = getAuth(app);
+        db = getFirestore(app);
+        functions = getFunctions(app);
+        storage = getStorage(app);
+
+        // Initialize messaging only in the browser environment and if configured
+        if (typeof window !== 'undefined' && firebaseConfig.messagingSenderId && !firebaseConfig.messagingSenderId.startsWith('YOUR_')) {
+            try {
+                messaging = getMessaging(app);
+            } catch (error) {
+                console.warn("Firebase Messaging could not be initialized (this might be normal if not configured or in SSR):", error);
+                // Handle cases where messaging is not supported
+            }
+        }
+    } catch (error: any) {
+        console.error("🔴 FATAL: Failed to initialize Firebase services:", error);
+        // Provide a more specific message for common errors
+        if (error.code === 'auth/invalid-api-key' || error.message?.includes('invalid-api-key')) {
+            console.error("Firebase Error Detail: Invalid API Key. Please ensure NEXT_PUBLIC_FIREBASE_API_KEY in your environment variables is correct and the Firebase project is properly configured.");
+        } else {
+             console.error("Firebase Error Detail:", error.code, error.message);
+        }
+        // Set services to null to prevent downstream errors in components trying to use them.
+        app = null;
+        auth = null;
+        db = null;
+        functions = null;
+        storage = null;
+        messaging = null;
+
+        // Optionally re-throw or throw a custom error to stop app execution if Firebase is critical
+        // throw new Error("Firebase initialization failed. Please check your configuration and console logs.");
+    }
+} else {
+     console.error("🔴 Firebase initialization skipped due to invalid configuration.");
 }
 
-
+// Export potentially null services. Components using these should handle null cases.
 export { app, auth, db, functions, storage, messaging };
+
+// Helper function to check if Firebase was initialized successfully
+export function isFirebaseInitialized(): boolean {
+    return !!app && !!auth && !!db;
+}
