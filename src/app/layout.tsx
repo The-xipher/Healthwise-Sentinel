@@ -1,9 +1,11 @@
 import type { Metadata } from 'next';
 import { Geist, Geist_Mono } from 'next/font/google';
 import './globals.css';
-import { SidebarProvider, Sidebar, SidebarInset } from '@/components/ui/sidebar';
+import { SidebarProvider, Sidebar, SidebarInset, SidebarMenu, SidebarMenuItem, SidebarMenuButton } from '@/components/ui/sidebar';
 import { Toaster } from '@/components/ui/toaster';
 import Header from '@/components/header'; // Import the simplified header
+import Link from 'next/link'; // Import Link
+import { Home, Database, Settings } from 'lucide-react'; // Import icons
 
 const geistSans = Geist({
   variable: '--font-geist-sans',
@@ -28,8 +30,40 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body className={`${geistSans.variable} ${geistMono.variable} antialiased`}>
-        <SidebarProvider defaultOpen={false} >
-          <Sidebar variant="inset" collapsible="icon" />
+        <SidebarProvider defaultOpen={true} > {/* Keep sidebar open by default */}
+          <Sidebar variant="inset" collapsible="icon">
+             {/* Add Navigation Items */}
+             <SidebarMenu className="flex-grow p-2">
+                <SidebarMenuItem>
+                    <Link href="/dashboard" legacyBehavior passHref>
+                        <SidebarMenuButton tooltip="Dashboard">
+                         <Home />
+                         <span>Dashboard</span>
+                        </SidebarMenuButton>
+                    </Link>
+                </SidebarMenuItem>
+                 {/* Add Seed Data Link (conditionally render for development?) */}
+                 {process.env.NODE_ENV === 'development' && (
+                    <SidebarMenuItem>
+                        <Link href="/seed" legacyBehavior passHref>
+                        <SidebarMenuButton tooltip="Seed Database">
+                            <Database />
+                            <span>Seed Data</span>
+                        </SidebarMenuButton>
+                        </Link>
+                    </SidebarMenuItem>
+                 )}
+                 {/* Add other navigation items here if needed */}
+                  {/* <SidebarMenuItem>
+                      <Link href="/settings" legacyBehavior passHref>
+                          <SidebarMenuButton tooltip="Settings">
+                           <Settings />
+                           <span>Settings</span>
+                          </SidebarMenuButton>
+                      </Link>
+                  </SidebarMenuItem> */}
+             </SidebarMenu>
+          </Sidebar>
           <SidebarInset>
              <Header /> {/* Add the simplified Header here */}
             {children}
