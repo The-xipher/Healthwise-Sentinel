@@ -20,6 +20,7 @@ import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '
 import { useToast } from '@/hooks/use-toast';
 import { generateSuggestedInterventions } from '@/ai/flows/generate-suggested-interventions'; // Import the GenAI flow
 import { Skeleton } from './ui/skeleton';
+import { Label } from './ui/label'; // Import Label for disabled form placeholder
 
 // Removed: interface PatientDashboardProps {
 //   user: User;
@@ -103,6 +104,8 @@ export default function PatientDashboard(/* Removed: { user }: PatientDashboardP
     setError(null); // Clear potential config error
 
     setLoadingHealth(true);
+    setLoadingMeds(true);
+    setLoadingSymptoms(true);
 
     // --- Health Data Listener ---
     const healthQuery = query(
@@ -114,6 +117,8 @@ export default function PatientDashboard(/* Removed: { user }: PatientDashboardP
         const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as HealthData));
         setHealthData(data.reverse()); // Reverse for chronological chart order
         setLoadingHealth(false);
+        // Trigger AI suggestions fetch after health data is loaded
+        fetchInterventionsIfNeeded(data.reverse());
     }, (err) => {
         console.error("Error fetching health data:", err);
         setError("Could not load health data.");
@@ -121,7 +126,6 @@ export default function PatientDashboard(/* Removed: { user }: PatientDashboardP
     });
 
     // --- Medication Listener ---
-     setLoadingMeds(true);
     const medsQuery = query(collection(db!, `patients/${PLACEHOLDER_PATIENT_ID}/medications`));
     const unsubscribeMeds = onSnapshot(medsQuery, (snapshot) => {
         const meds = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Medication));
@@ -139,7 +143,6 @@ export default function PatientDashboard(/* Removed: { user }: PatientDashboardP
 
 
     // --- Symptom Reports Listener ---
-    setLoadingSymptoms(true);
     const symptomsQuery = query(
         collection(db!, `patients/${PLACEHOLDER_PATIENT_ID}/symptomReports`),
         orderBy('timestamp', 'desc'),
@@ -156,18 +159,21 @@ export default function PatientDashboard(/* Removed: { user }: PatientDashboardP
     });
 
 
-    // --- Fetch Suggested Interventions ---
-    const fetchInterventions = async () => {
-      if (!firebaseReady) return; // Don't run if Firebase is inactive
+    // --- Function to fetch suggested interventions ---
+    const fetchInterventionsIfNeeded = async (currentHealthData: HealthData[]) => {
+      if (!firebaseReady || loadingInterventions || suggestedInterventions !== null) return; // Don't run if Firebase inactive, already loading, or already fetched
+
       setLoadingInterventions(true);
       try {
-        const latestHealth = healthData.length > 0 ? healthData[healthData.length - 1] : {};
+        const latestHealth = currentHealthData.length > 0 ? currentHealthData[currentHealthData.length - 1] : {};
+        // Get summaries even if some data is loading/empty
         const healthSummary = `Latest Health: Steps: ${latestHealth.steps ?? 'N/A'}, HR: ${latestHealth.heartRate ?? 'N/A'}, Glucose: ${latestHealth.bloodGlucose ?? 'N/A'}. `;
-        const adherenceSummary = medications.map(m => `${m.name}: ${m.adherence ?? 'N/A'}%`).join(', ');
-        const symptomsSummary = symptomReports.map(s => `${s.severity}: ${s.description}`).join(' | ');
+        const adherenceSummary = medications.map(m => `${m.name}: ${m.adherence ?? 'N/A'}%`).join(', ') || "No medication data yet.";
+        const symptomsSummary = symptomReports.map(s => `${s.severity}: ${s.description}`).join(' | ') || "No recent symptoms reported.";
 
         const input = {
           patientHealthData: `${healthSummary} Medication Adherence: ${adherenceSummary}. Recent Symptoms: ${symptomsSummary}`,
+          // Simplified risk prediction for example
           riskPredictions: `Readmission Risk: ${Math.random() > 0.7 ? 'High' : 'Low'}. Potential Complications: Dehydration, Medication side-effects.`,
         };
 
@@ -175,14 +181,12 @@ export default function PatientDashboard(/* Removed: { user }: PatientDashboardP
         setSuggestedInterventions(result.suggestedInterventions);
       } catch (err) {
         console.error('Error generating suggested interventions:', err);
+        // Avoid setting error state here to not overwrite primary Firebase errors
+        toast({ title: "AI Suggestion Error", description: "Could not generate AI suggestions.", variant: "destructive"});
       } finally {
         setLoadingInterventions(false);
       }
     };
-
-     if (!loadingHealth && healthData.length > 0 && firebaseReady) {
-       fetchInterventions();
-     }
 
 
     // Cleanup listeners on unmount
@@ -191,12 +195,12 @@ export default function PatientDashboard(/* Removed: { user }: PatientDashboardP
         unsubscribeMeds();
         unsubscribeSymptoms();
     };
-  }, [loadingHealth]); // Re-run effect only when health data loading state changes
+  }, [firebaseActive]); // Re-run effect only when firebaseActive changes
 
 
   const onSubmitSymptom = async (values: SymptomFormValues) => {
       if (!firebaseActive || !db) {
-        toast({ title: "Error", description: "Cannot submit report. Connection issue.", variant: "destructive" });
+        toast({ title: "Error", description: "Cannot submit report. Database connection inactive.", variant: "destructive" });
         return;
       }
       setReportingSymptom(true);
@@ -211,8 +215,8 @@ export default function PatientDashboard(/* Removed: { user }: PatientDashboardP
               description: "Your healthcare provider has been notified.",
               variant: "default",
                className: "bg-green-100 border-green-300 text-green-800",
-               duration: 5000,
-               action: <CheckCircle className="text-green-600" />,
+               duration: 5000
+              //  action: <CheckCircle className="text-green-600" /> // Removed due to syntax error and potential incorrect usage
           });
           form.reset();
       } catch (err) {
@@ -231,12 +235,14 @@ export default function PatientDashboard(/* Removed: { user }: PatientDashboardP
 
   const formatTimestamp = (timestamp: Timestamp | undefined): string => {
     if (!timestamp) return 'N/A';
-    return timestamp.toDate().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    // Format for chart axis (short time)
+    return timestamp.toDate().toLocaleTimeString([], { hour: 'numeric', minute:'2-digit' });
   };
 
    const formatDate = (timestamp: Timestamp | undefined): string => {
     if (!timestamp) return 'N/A';
-    return timestamp.toDate().toLocaleDateString();
+    // Format for tooltips/display (date + time)
+    return timestamp.toDate().toLocaleString();
    };
 
    const getSeverityIcon = (severity: 'mild' | 'moderate' | 'severe') => {
@@ -271,12 +277,12 @@ export default function PatientDashboard(/* Removed: { user }: PatientDashboardP
       )}
 
       {/* Suggested Interventions Card - Only show if Firebase is active */}
-      {firebaseActive && (loadingInterventions || suggestedInterventions) && (
+      {firebaseActive && (loadingInterventions || suggestedInterventions !== null) && (
          <Card className="bg-blue-50 border-blue-200 shadow-md hover:shadow-lg transition-shadow">
             <CardHeader>
               <CardTitle className="flex items-center gap-2 text-blue-800">
                 <Info className="h-5 w-5" />
-                AI Suggestions & Insights
+                AI Suggestions &amp; Insights
               </CardTitle>
                <CardDescription className="text-blue-600">
                 Based on your recent data, here are some suggestions. Always consult your doctor before making changes.
@@ -291,7 +297,7 @@ export default function PatientDashboard(/* Removed: { user }: PatientDashboardP
               ) : suggestedInterventions ? (
                  <p className="text-sm text-blue-700 whitespace-pre-line">{suggestedInterventions}</p>
               ) : (
-                 <p className="text-sm text-blue-600">No specific suggestions at this time.</p>
+                 <p className="text-sm text-blue-600">No specific suggestions available at this time.</p>
               )}
             </CardContent>
           </Card>
@@ -328,7 +334,7 @@ export default function PatientDashboard(/* Removed: { user }: PatientDashboardP
             </CardHeader>
             <CardContent>
                 <div className="text-2xl font-bold">{healthData[healthData.length - 1]?.heartRate ?? 'N/A'} bpm</div>
-                <p className="text-xs text-muted-foreground">Resting average</p>
+                <p className="text-xs text-muted-foreground">Latest reading</p> {/* Updated description */}
             </CardContent>
             </Card>
             <Card>
@@ -354,10 +360,10 @@ export default function PatientDashboard(/* Removed: { user }: PatientDashboardP
                 <ResponsiveContainer width="100%" height="100%">
                     <BarChart data={healthData}>
                     <CartesianGrid strokeDasharray="3 3" />
-                    <XAxis dataKey="timestamp" tickFormatter={formatTimestamp} />
-                    <YAxis yAxisId="left" orientation="left" stroke="#8884d8" label={{ value: 'Steps', angle: -90, position: 'insideLeft', fill: '#8884d8' }} />
-                    <YAxis yAxisId="right" orientation="right" stroke="#82ca9d" label={{ value: 'Heart Rate (bpm)', angle: 90, position: 'insideRight', fill: '#82ca9d' }} />
-                    <Tooltip labelFormatter={formatDate} />
+                    <XAxis dataKey="timestamp" tickFormatter={(ts) => formatTimestamp(ts)} /> {/* Use specific formatter */}
+                    <YAxis yAxisId="left" orientation="left" stroke="hsl(var(--primary))" label={{ value: 'Steps', angle: -90, position: 'insideLeft', fill: 'hsl(var(--primary))' }} />
+                    <YAxis yAxisId="right" orientation="right" stroke="hsl(var(--accent))" label={{ value: 'Heart Rate (bpm)', angle: 90, position: 'insideRight', fill: 'hsl(var(--accent))' }} />
+                    <Tooltip labelFormatter={(label, payload) => formatDate(payload?.[0]?.payload?.timestamp)} /> {/* Format tooltip label */}
                     <Legend />
                     <Bar yAxisId="left" dataKey="steps" fill="hsl(var(--primary))" name="Steps" />
                     <Bar yAxisId="right" dataKey="heartRate" fill="hsl(var(--accent))" name="Heart Rate" />
@@ -365,8 +371,7 @@ export default function PatientDashboard(/* Removed: { user }: PatientDashboardP
                 </ResponsiveContainer>
                 ) : (
                     <div className="flex items-center justify-center h-full text-muted-foreground">
-                        {firebaseActive ? "No health data available yet." : "Health data unavailable."}
-                    </div>
+                        {firebaseActive ? "No health data available yet." : "Health data unavailable (Firebase inactive)."}</div>
                 )}
             </CardContent>
             </Card>
@@ -392,13 +397,12 @@ export default function PatientDashboard(/* Removed: { user }: PatientDashboardP
                             </Badge>
                         </div>
                         <Progress value={med.adherence} className={`h-2 ${getAdherenceColor(med.adherence)}`} aria-label={`${med.name} adherence ${med.adherence}%`} />
-                        {med.lastTaken && <p className="text-xs text-muted-foreground">Last taken: {formatDate(med.lastTaken)} {formatTimestamp(med.lastTaken)}</p>}
+                        {med.lastTaken && <p className="text-xs text-muted-foreground">Last taken: {formatDate(med.lastTaken)}</p>} {/* Simplified date format */}
                     </div>
                     ))
                 ) : (
                     <p className="text-sm text-muted-foreground">
-                        {firebaseActive ? "No medications assigned yet." : "Medication data unavailable."}
-                    </p>
+                        {firebaseActive ? "No medications assigned yet." : "Medication data unavailable (Firebase inactive)."}</p>
                 )}
             </CardContent>
             </Card>
@@ -410,59 +414,88 @@ export default function PatientDashboard(/* Removed: { user }: PatientDashboardP
                 <CardDescription>Let your doctor know how you're feeling.</CardDescription>
             </CardHeader>
             <CardContent>
-                <Form {...form}>
-                <form onSubmit={form.handleSubmit(onSubmitSymptom)} className="space-y-4">
-                    <FormField
+                {!firebaseActive && (
+                     <Alert variant="default" className="mb-4 bg-yellow-50 border-yellow-200 text-yellow-800">
+                       <AlertTriangle className="h-4 w-4 text-yellow-600" />
+                       <AlertTitle>Database Connection Required</AlertTitle>
+                       <AlertDescription>
+                         Symptom reporting requires an active database connection. Please ensure Firebase is configured correctly.
+                       </AlertDescription>
+                     </Alert>
+                 )}
+                 {firebaseActive ? (
+                    <Form {...form}>
+                    <form onSubmit={form.handleSubmit(onSubmitSymptom)} className="space-y-4">
+                        <FormField
+                            control={form.control}
+                            name="severity"
+                            render={({ field }) => (
+                            <FormItem className="space-y-3">
+                                <FormLabel>How severe are your symptoms?</FormLabel>
+                                <FormControl>
+                                <div className="flex gap-2">
+                                    {(['mild', 'moderate', 'severe'] as const).map((severity) => (
+                                        <Button
+                                            key={severity}
+                                            type="button"
+                                            variant={field.value === severity ? 'default' : 'outline'}
+                                            onClick={() => field.onChange(severity)}
+                                            className={`flex-1 capitalize ${field.value === severity ? 'ring-2 ring-primary ring-offset-2' : ''}`}
+                                            disabled={!firebaseActive || reportingSymptom} // Disable if Firebase inactive or submitting
+                                        >
+                                            {getSeverityIcon(severity)}
+                                            <span className="ml-2">{severity}</span>
+                                        </Button>
+                                    ))}
+                                    </div>
+                                </FormControl>
+                                <FormMessage />
+                            </FormItem>
+                            )}
+                        />
+
+                        <FormField
                         control={form.control}
-                        name="severity"
+                        name="description"
                         render={({ field }) => (
-                        <FormItem className="space-y-3">
-                            <FormLabel>How severe are your symptoms?</FormLabel>
+                            <FormItem>
+                            <FormLabel>Describe your symptoms</FormLabel>
                             <FormControl>
-                            <div className="flex gap-2">
-                                {(['mild', 'moderate', 'severe'] as const).map((severity) => (
-                                    <Button
-                                        key={severity}
-                                        type="button"
-                                        variant={field.value === severity ? 'default' : 'outline'}
-                                        onClick={() => field.onChange(severity)}
-                                        className={`flex-1 capitalize ${field.value === severity ? 'ring-2 ring-primary ring-offset-2' : ''}`}
-                                        disabled={!firebaseActive} // Disable if Firebase inactive
-                                    >
-                                        {getSeverityIcon(severity)}
-                                        <span className="ml-2">{severity}</span>
-                                    </Button>
-                                ))}
-                                </div>
+                                <Textarea
+                                placeholder="e.g., Feeling dizzy, short of breath..."
+                                {...field}
+                                disabled={!firebaseActive || reportingSymptom} // Disable if Firebase inactive or submitting
+                                />
                             </FormControl>
                             <FormMessage />
-                        </FormItem>
+                            </FormItem>
                         )}
-                    />
-
-                    <FormField
-                    control={form.control}
-                    name="description"
-                    render={({ field }) => (
-                        <FormItem>
-                        <FormLabel>Describe your symptoms</FormLabel>
-                        <FormControl>
-                            <Textarea
-                            placeholder="e.g., Feeling dizzy, short of breath..."
-                            {...field}
-                             disabled={!firebaseActive} // Disable if Firebase inactive
-                            />
-                        </FormControl>
-                        <FormMessage />
-                        </FormItem>
-                    )}
-                    />
-                    <Button type="submit" disabled={reportingSymptom || !firebaseActive} className="w-full">
-                    {reportingSymptom ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
-                    Report Symptom
-                    </Button>
-                </form>
-                </Form>
+                        />
+                        <Button type="submit" disabled={reportingSymptom || !firebaseActive} className="w-full">
+                        {reportingSymptom ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+                        Report Symptom
+                        </Button>
+                    </form>
+                    </Form>
+                 ) : (
+                    // Optional: Show a disabled placeholder form if needed
+                    <div className="space-y-4 opacity-50 cursor-not-allowed">
+                        {/* Placeholder for disabled form elements */}
+                         <div className="space-y-3">
+                            <Label>How severe are your symptoms?</Label>
+                            <div className="flex gap-2">
+                                <Button type="button" variant='outline' className="flex-1 capitalize" disabled><Smile className="h-5 w-5 mr-2" />mild</Button>
+                                <Button type="button" variant='outline' className="flex-1 capitalize" disabled><Meh className="h-5 w-5 mr-2" />moderate</Button>
+                                <Button type="button" variant='outline' className="flex-1 capitalize" disabled><Frown className="h-5 w-5 mr-2" />severe</Button>
+                            </div>
+                         </div>
+                         <div className="space-y-2">
+                             <Label>Describe your symptoms</Label>
+                             <Textarea placeholder="e.g., Feeling dizzy, short of breath..." disabled />
+                         </div>
+                         <Button type="submit" disabled className="w-full">Report Symptom</Button>
+                    </div>
+                 )}
                 {/* Display recent reports */}
                 <div className="mt-6 space-y-3">
                     <h4 className="text-sm font-medium text-muted-foreground">Recent Reports:</h4>
@@ -478,8 +511,7 @@ export default function PatientDashboard(/* Removed: { user }: PatientDashboardP
                         ))
                     ) : (
                         <p className="text-xs text-muted-foreground">
-                           {firebaseActive ? "No recent reports." : "Symptom reports unavailable."}
-                        </p>
+                           {firebaseActive ? "No recent reports." : "Symptom reports unavailable (Firebase inactive)."}</p>
                     )}
                 </div>
             </CardContent>
