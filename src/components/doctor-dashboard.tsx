@@ -171,7 +171,7 @@ export default function DoctorDashboard() {
     }
 
     fetchPatientAllData();
-  }, [selectedPatientId]); // Removed PLACEHOLDER_DOCTOR_ID from deps as it's constant
+  }, [selectedPatientId]); 
 
   const handleSendMessage = async () => {
     if (!newMessage.trim() || !selectedPatientId) {
@@ -231,7 +231,7 @@ export default function DoctorDashboard() {
     try {
       return new Date(timestamp).toLocaleString();
     } catch {
-      return String(timestamp); // Fallback if not a valid date string for new Date()
+      return String(timestamp); 
     }
   };
   
@@ -242,7 +242,7 @@ export default function DoctorDashboard() {
     return (names[0][0] + names[names.length - 1][0]).toUpperCase();
   };
 
-  const coreDataLoading = loadingPatientDetails && selectedPatientId; // Only show main skeleton if patient is selected and loading
+  const coreDataLoading = loadingPatientDetails && selectedPatientId; 
 
   return (
     <div className="space-y-6 p-4 md:p-6 lg:p-8">
@@ -546,8 +546,8 @@ export default function DoctorDashboard() {
             <AlertTitle>Patient Data Not Found</AlertTitle>
             <AlertDescription>{error || "Could not load data for the selected patient. They might not have any records or an error occurred. Please try again or select a different patient."}</AlertDescription>
           </Alert>
-        ) : null 
-      )}
+        ) : null
+      }
 
       {!selectedPatientId && dbAvailable && !loadingPatients && ( 
         <Card className="shadow-md">
@@ -625,3 +625,5 @@ function DashboardSkeleton() {
     </div>
   );
 }
+
+    
