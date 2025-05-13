@@ -6,7 +6,7 @@ import { SidebarProvider, Sidebar, SidebarInset, SidebarMenu, SidebarMenuItem, S
 import { Toaster } from '@/components/ui/toaster';
 import Header from '@/components/header';
 import Link from 'next/link';
-import { Home, User, Stethoscope, ShieldCheck, DatabaseCog, LogOut, Users } from 'lucide-react';
+import { Home, User, Stethoscope, ShieldCheck, Database, LogOut, Users } from 'lucide-react'; // Changed DatabaseCog to Database
 import { getSession } from '@/app/actions/authActions'; // Import getSession
 
 const geistSans = Geist({
@@ -99,7 +99,7 @@ export default async function RootLayout({
                 <SidebarMenuItem>
                     <Link href="/seed-database" legacyBehavior passHref>
                         <SidebarMenuButton tooltip="Seed Database">
-                         <DatabaseCog />
+                         <Database /> {/* Changed DatabaseCog to Database */}
                          <span>Seed Data</span>
                         </SidebarMenuButton>
                     </Link>

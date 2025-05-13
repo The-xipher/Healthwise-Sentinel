@@ -11,7 +11,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import { Users, Activity, ShieldCheck, AlertTriangle } from 'lucide-react';
-import { fetchAdminDashboardData, AdminUser } from '@/app/actions/adminActions';
+import { fetchAdminDashboardData, type AdminUser } from '@/app/actions/adminActions';
 
 interface AuditLog {
   id: string;
@@ -27,12 +27,12 @@ interface AdminDashboardProps {
 }
 
 export default function AdminDashboard({ adminUserId }: AdminDashboardProps) {
-  const [users, setUsers = useState([]);
-  const [loadingUsers, setLoadingUsers = useState(true);
-  const [auditLogs, setAuditLogs = useState([]);
-  const [loadingLogs, setLoadingLogs = useState(true);
-  const [error, setError = useState(null);
-  const [dbAvailable, setDbAvailable = useState(true);
+  const [users, setUsers] = useState<AdminUser[]>([]);
+  const [loadingUsers, setLoadingUsers] = useState<boolean>(true);
+  const [auditLogs, setAuditLogs] = useState<AuditLog[]>([]);
+  const [loadingLogs, setLoadingLogs] = useState<boolean>(true);
+  const [error, setError] = useState<string | null>(null);
+  const [dbAvailable, setDbAvailable] = useState<boolean>(true);
 
   useEffect(() => {
     async function loadData() {
@@ -94,7 +94,8 @@ export default function AdminDashboard({ adminUserId }: AdminDashboardProps) {
   };
 
   const formatDateTime = (date: Date | undefined): string => {
-    if (!date) return date.toLocaleString();
+    if (!date) return 'N/A';
+    return date.toLocaleString();
   };
   
   return (
@@ -256,3 +257,4 @@ export default function AdminDashboard({ adminUserId }: AdminDashboardProps) {
     </div>
   );
 }
+

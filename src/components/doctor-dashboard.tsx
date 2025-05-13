@@ -21,11 +21,11 @@ import {
   fetchDoctorPatientDetailsAction,
   sendChatMessageAction,
   updateSuggestionStatusAction,
-  DoctorPatient,
-  DoctorPatientHealthData,
-  DoctorPatientMedication,
-  DoctorChatMessage,
-  DoctorAISuggestion
+  type DoctorPatient,
+  type DoctorPatientHealthData,
+  type DoctorPatientMedication,
+  type DoctorChatMessage,
+  type DoctorAISuggestion
 } from '@/app/actions/doctorActions'; 
 
 interface DoctorDashboardProps {
@@ -35,24 +35,24 @@ interface DoctorDashboardProps {
 }
 
 export default function DoctorDashboard({ doctorId, doctorName, userRole }: DoctorDashboardProps) {
-  const [patients, setPatients = useState([]);
-  const [selectedPatientId, setSelectedPatientId = useState(null);
-  const [selectedPatientData, setSelectedPatientData = useState(null);
-  const [patientHealthData, setPatientHealthData = useState([]);
-  const [patientMedications, setPatientMedications = useState([]);
-  const [aiSuggestions, setAiSuggestions = useState([]);
-  const [loadingPatients, setLoadingPatients = useState(true);
-  const [loadingPatientDetails, setLoadingPatientDetails = useState(false);
-  const [error, setError = useState(null);
-  const [chatMessages, setChatMessages = useState([]);
-  const [newMessage, setNewMessage = useState('');
-  const [sendingMessage, setSendingMessage = useState(false);
-  const [historySummary, setHistorySummary = useState(null);
-  const [loadingSummary, setLoadingSummary = useState(false);
-  const [carePlan, setCarePlan = useState(null);
-  const [loadingCarePlan, setLoadingCarePlan = useState(false);
+  const [patients, setPatients] = useState<DoctorPatient[]>([]);
+  const [selectedPatientId, setSelectedPatientId] = useState<string | null>(null);
+  const [selectedPatientData, setSelectedPatientData] = useState<DoctorPatient | null>(null);
+  const [patientHealthData, setPatientHealthData] = useState<DoctorPatientHealthData[]>([]);
+  const [patientMedications, setPatientMedications] = useState<DoctorPatientMedication[]>([]);
+  const [aiSuggestions, setAiSuggestions] = useState<DoctorAISuggestion[]>([]);
+  const [loadingPatients, setLoadingPatients] = useState<boolean>(true);
+  const [loadingPatientDetails, setLoadingPatientDetails] = useState<boolean>(false);
+  const [error, setError] = useState<string | null>(null);
+  const [chatMessages, setChatMessages] = useState<DoctorChatMessage[]>([]);
+  const [newMessage, setNewMessage] = useState<string>('');
+  const [sendingMessage, setSendingMessage] = useState<boolean>(false);
+  const [historySummary, setHistorySummary] = useState<string | null>(null);
+  const [loadingSummary, setLoadingSummary] = useState<boolean>(false);
+  const [carePlan, setCarePlan] = useState<string | null>(null);
+  const [loadingCarePlan, setLoadingCarePlan] = useState<boolean>(false);
   const { toast } = useToast();
-  const [dbAvailable, setDbAvailable = useState(true);
+  const [dbAvailable, setDbAvailable] = useState<boolean>(true);
 
   useEffect(() => {
     if (!doctorId) {
@@ -630,3 +630,4 @@ function DashboardSkeleton() { // Remains the same, used when coreDataLoading is
     </div>
   );
 }
+
