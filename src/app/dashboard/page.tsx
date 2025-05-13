@@ -16,14 +16,18 @@ export default async function DashboardRedirectPage() {
   switch (session.role) {
     case 'patient':
       redirect('/dashboard/patient');
+      break; 
     case 'doctor':
       redirect('/dashboard/doctor');
+      break;
     case 'admin':
       redirect('/dashboard/admin');
+      break;
     default:
       // Fallback if role is unknown or not set, redirect to login or a generic error page
       console.warn(`Unknown or missing role for user ${session.userId}: ${session.role}. Redirecting to login.`);
       redirect('/login'); 
+      break;
   }
 
   // This part should not be reached if redirection works
