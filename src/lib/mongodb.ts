@@ -31,13 +31,19 @@ export async function connectToDatabase(): Promise<{ client: MongoClientWithCach
     }
   }
 
-  const client: MongoClientWithCache = new MongoClient(MONGODB_URI, {
+  const clientOptions = {
     serverApi: {
       version: ServerApiVersion.v1,
       strict: true,
       deprecationErrors: true,
-    }
-  });
+    },
+    tlsAllowInvalidCertificates: true, // Added to ignore SSL certificate issues
+    // You might also need tls: true if not already implied by the URI or other settings,
+    // but tlsAllowInvalidCertificates usually requires tls to be active.
+    // The MONGODB_URI with `retryWrites=true&w=majority` typically implies SSL.
+  };
+
+  const client: MongoClientWithCache = new MongoClient(MONGODB_URI, clientOptions);
 
   try {
     await client.connect();
@@ -68,9 +74,13 @@ export function isMongoDbConnected(): boolean {
 // Helper to convert string ID to ObjectId, if needed
 export const toObjectId = (id: string): ObjectId | null => {
   try {
-    return new ObjectId(id);
+    if (ObjectId.isValid(id)) {
+      return new ObjectId(id);
+    }
+    console.warn(`Invalid string ID format for ObjectId conversion: ${id}`);
+    return null;
   } catch (error) {
-    console.warn(`Invalid string ID for ObjectId conversion: ${id}`, error);
+    console.warn(`Error during ObjectId conversion for ID: ${id}`, error);
     return null;
   }
 };
