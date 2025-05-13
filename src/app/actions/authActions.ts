@@ -3,11 +3,11 @@
 
 import { cookies } from 'next/headers';
 import { connectToDatabase, ObjectId } from '@/lib/mongodb';
-import { redirect } from 'next/navigation';
+// import { redirect } from 'next/navigation'; // Removed as redirect is now client-side
 
 const SESSION_COOKIE_NAME = 'healthwise_session';
 
-interface UserSession {
+export interface UserSession { // Exporting for potential use elsewhere if needed
   userId: string;
   role: 'patient' | 'doctor' | 'admin';
   displayName: string;
@@ -30,7 +30,7 @@ interface Credential {
   passwordPlainText: string; // In a real app, this would be a hashed password
 }
 
-export async function loginAction(formData: FormData): Promise<{ success: boolean; message: string; }> {
+export async function loginAction(formData: FormData): Promise<{ success: boolean; message: string; role?: UserSession['role'] }> {
   const email = formData.get('email') as string;
   const password = formData.get('password') as string;
 
@@ -75,18 +75,14 @@ export async function loginAction(formData: FormData): Promise<{ success: boolea
       sameSite: 'lax',
     });
 
-    // Redirect to the main dashboard page. It will handle role-based redirection.
-    redirect('/dashboard');
-    // Note: Code after redirect() is not reached.
-    // The function signature implies a return for the success case, 
-    // but redirect() throws an error that Next.js handles for navigation.
+    // Return success and role, client will handle redirect
+    return { success: true, message: 'Login successful. Redirecting...', role: userProfile.role };
+    // redirect('/dashboard'); // Removed server-side redirect
 
   } catch (error: any) {
-    // If the error is a redirect signal, rethrow it so Next.js can handle navigation.
-    if (typeof error.digest === 'string' && error.digest.startsWith('NEXT_REDIRECT')) {
-      throw error;
-    }
-    // For other errors, log and return an error message.
+    // Errors thrown by redirect() are specific. Other errors are handled here.
+    // If redirect() was in use and threw NEXT_REDIRECT, this block might have been skipped.
+    // Now, any operational error in DB connection or query will be caught.
     console.error('Login error in action:', error);
     return { success: false, message: 'An error occurred during login. ' + (error.message || 'Unknown error') };
   }
@@ -94,9 +90,12 @@ export async function loginAction(formData: FormData): Promise<{ success: boolea
 
 export async function logoutAction() {
   cookies().delete(SESSION_COOKIE_NAME);
-  // This action is now called by a form, which should redirect via its action or client-side.
-  // For direct calls if any, or as a fallback:
-  redirect('/login');
+  // This action is primarily called by the API route which handles the redirect.
+  // If called directly (not typical for logout), a redirect here might be needed,
+  // but standard practice is for the caller (form/API route) to handle navigation.
+  // For safety, if Next.js changes behavior and this is somehow called directly AND expected to redirect:
+  // import { redirect } from 'next/navigation';
+  // redirect('/login'); 
 }
 
 export async function getSession(): Promise<UserSession | null> {

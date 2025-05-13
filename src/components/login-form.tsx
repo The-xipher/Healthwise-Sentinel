@@ -2,7 +2,7 @@
 'use client';
 
 import * as React from 'react';
-// useRouter removed as redirect is handled by server action
+import { useRouter } from 'next/navigation'; // Import useRouter
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
@@ -23,7 +23,7 @@ const loginSchema = z.object({
 type LoginFormValues = z.infer<typeof loginSchema>;
 
 export default function LoginForm() {
-  // const router = useRouter(); // No longer needed for client-side redirect on success
+  const router = useRouter(); // Initialize useRouter
   const [isLoading, setIsLoading] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
   const [showPassword, setShowPassword] = React.useState(false);
@@ -46,12 +46,17 @@ export default function LoginForm() {
     formData.append('password', data.password);
 
     try {
-      // loginAction will either redirect (throws NEXT_REDIRECT which is handled by Next.js)
-      // or return an error object if login fails.
+      // loginAction now returns a result object instead of redirecting
       const result = await loginAction(formData);
 
-      // This part is reached ONLY if loginAction did NOT redirect (i.e., it returned an error).
-      if (result && !result.success) {
+      if (result.success) {
+        toast({
+          title: "Login Successful",
+          description: result.message || "Redirecting to your dashboard...",
+        });
+        router.push('/dashboard'); // Client-side redirect
+      } else {
+        // Handle login failure (e.g., invalid credentials)
         setError(result.message);
         toast({
           title: "Login Failed",
@@ -59,25 +64,16 @@ export default function LoginForm() {
           variant: "destructive",
         });
       }
-      // Successful login now results in a server-side redirect from loginAction.
-      // Client-side router.push and success toast are no longer initiated here.
     } catch (caughtError: any) {
-      // This catch block handles errors thrown by loginAction that are NOT NEXT_REDIRECT,
-      // or network errors before the action completes.
-      // NEXT_REDIRECT errors are handled by Next.js itself to perform navigation.
-      if (caughtError.digest?.startsWith('NEXT_REDIRECT')) {
-        // This is an expected signal for redirection, Next.js handles it.
-        // Usually, no client-side action is needed.
-      } else {
-        // Handle other types of errors (e.g., network issues, unhandled server exceptions)
-        const errorMessage = caughtError.message || 'An unexpected error occurred.';
-        setError(errorMessage);
-        toast({
-          title: "Login Error",
-          description: "An unexpected error occurred. Please check your connection and try again.",
-          variant: "destructive",
-        });
-      }
+      // Handle unexpected errors during the action call (e.g., network issues)
+      console.error('LoginForm onSubmit error:', caughtError);
+      const errorMessage = caughtError.message || 'An unexpected error occurred.';
+      setError(errorMessage);
+      toast({
+        title: "Login Error",
+        description: "An unexpected error occurred. Please check your connection and try again.",
+        variant: "destructive",
+      });
     } finally {
       setIsLoading(false);
     }
