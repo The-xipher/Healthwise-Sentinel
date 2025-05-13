@@ -13,6 +13,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter }
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { loginAction } from '@/app/actions/authActions';
 import { Loader2, LogIn, AlertTriangle, Eye, EyeOff } from 'lucide-react';
+import { useToast } from '@/hooks/use-toast';
 
 const loginSchema = z.object({
   email: z.string().email({ message: 'Invalid email address.' }),
@@ -26,6 +27,7 @@ export default function LoginForm() {
   const [isLoading, setIsLoading] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
   const [showPassword, setShowPassword] = React.useState(false);
+  const { toast } = useToast();
 
   const form = useForm<LoginFormValues>({
     resolver: zodResolver(loginSchema),
@@ -46,13 +48,29 @@ export default function LoginForm() {
     try {
       const result = await loginAction(formData);
       if (result.success) {
+        toast({
+          title: "Login Successful",
+          description: `Redirecting to ${result.role} dashboard...`,
+          variant: "default",
+        });
         router.push('/dashboard'); 
         router.refresh(); 
       } else {
         setError(result.message);
+        toast({
+          title: "Login Failed",
+          description: result.message,
+          variant: "destructive",
+        });
       }
     } catch (err: any) {
-      setError(err.message || 'An unexpected error occurred.');
+      const errorMessage = err.message || 'An unexpected error occurred.';
+      setError(errorMessage);
+      toast({
+        title: "Login Error",
+        description: errorMessage,
+        variant: "destructive",
+      });
     } finally {
       setIsLoading(false);
     }
