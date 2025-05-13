@@ -39,7 +39,7 @@ export default async function RootLayout({
                 {/* Always show generic dashboard link, it will redirect based on role */}
                 <SidebarMenuItem>
                     <Link href="/dashboard" passHref legacyBehavior>
-                        <SidebarMenuButton tooltip="My Dashboard" type="button"> {/* Explicitly type="button" for non-submit links */}
+                        <SidebarMenuButton tooltip="My Dashboard"> {/* Removed type="button" */}
                          <Home />
                          <span>My Dashboard</span>
                         </SidebarMenuButton>
@@ -49,7 +49,7 @@ export default async function RootLayout({
                 {session?.role === 'patient' && (
                   <SidebarMenuItem>
                       <Link href="/dashboard/patient" passHref legacyBehavior>
-                          <SidebarMenuButton tooltip="Patient View" type="button">
+                          <SidebarMenuButton tooltip="Patient View"> {/* Removed type="button" */}
                            <User />
                            <span>Patient View</span>
                           </SidebarMenuButton>
@@ -59,7 +59,7 @@ export default async function RootLayout({
                 {session?.role === 'doctor' && (
                   <SidebarMenuItem>
                       <Link href="/dashboard/doctor" passHref legacyBehavior>
-                          <SidebarMenuButton tooltip="Doctor View" type="button">
+                          <SidebarMenuButton tooltip="Doctor View"> {/* Removed type="button" */}
                            <Stethoscope />
                            <span>Doctor View</span>
                           </SidebarMenuButton>
@@ -70,7 +70,7 @@ export default async function RootLayout({
                   <>
                     <SidebarMenuItem>
                         <Link href="/dashboard/admin" passHref legacyBehavior>
-                            <SidebarMenuButton tooltip="Admin View" type="button">
+                            <SidebarMenuButton tooltip="Admin View"> {/* Removed type="button" */}
                              <ShieldCheck />
                              <span>Admin View</span>
                             </SidebarMenuButton>
@@ -78,7 +78,7 @@ export default async function RootLayout({
                     </SidebarMenuItem>
                     <SidebarMenuItem>
                         <Link href="/dashboard/patient" passHref legacyBehavior>
-                            <SidebarMenuButton tooltip="View as Patient (Admin)" type="button">
+                            <SidebarMenuButton tooltip="View as Patient (Admin)"> {/* Removed type="button" */}
                              <User />
                              <span>Patient View (Admin)</span>
                             </SidebarMenuButton>
@@ -86,7 +86,7 @@ export default async function RootLayout({
                     </SidebarMenuItem>
                     <SidebarMenuItem>
                         <Link href="/dashboard/doctor" passHref legacyBehavior>
-                            <SidebarMenuButton tooltip="View as Doctor (Admin)" type="button">
+                            <SidebarMenuButton tooltip="View as Doctor (Admin)"> {/* Removed type="button" */}
                              <Stethoscope />
                              <span>Doctor View (Admin)</span>
                             </SidebarMenuButton>
@@ -97,7 +97,7 @@ export default async function RootLayout({
 
                 <SidebarMenuItem>
                     <Link href="/seed-database" passHref legacyBehavior>
-                        <SidebarMenuButton tooltip="Seed Database" type="button">
+                        <SidebarMenuButton tooltip="Seed Database">  {/* Removed type="button" */}
                          <Database /> 
                          <span>Seed Data</span>
                         </SidebarMenuButton>
@@ -108,7 +108,7 @@ export default async function RootLayout({
                 <SidebarMenu className="p-2 border-t border-sidebar-border">
                     <form action="/api/auth/logout" method="POST" className="w-full"> 
                          <SidebarMenuItem>
-                            <SidebarMenuButton type="submit" tooltip="Logout" className="w-full justify-start">
+                            <SidebarMenuButton type="submit" tooltip="Logout" className="w-full justify-start"> {/* type="submit" is correct here */}
                                 <LogOut />
                                 <span>Logout</span>
                             </SidebarMenuButton>
