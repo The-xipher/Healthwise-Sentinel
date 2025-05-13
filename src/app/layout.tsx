@@ -5,7 +5,7 @@ import { SidebarProvider, Sidebar, SidebarInset, SidebarMenu, SidebarMenuItem, S
 import { Toaster } from '@/components/ui/toaster';
 import Header from '@/components/header'; // Import the simplified header
 import Link from 'next/link'; // Import Link
-import { Home, Database, Settings } from 'lucide-react'; // Import icons
+import { Home } from 'lucide-react'; // Import icons
 
 const geistSans = Geist({
   variable: '--font-geist-sans',
@@ -42,17 +42,6 @@ export default function RootLayout({
                         </SidebarMenuButton>
                     </Link>
                 </SidebarMenuItem>
-                 {/* Add Seed Data Link (conditionally render for development?) */}
-                 {process.env.NODE_ENV === 'development' && (
-                    <SidebarMenuItem>
-                        <Link href="/seed" legacyBehavior passHref>
-                        <SidebarMenuButton tooltip="Seed Database">
-                            <Database />
-                            <span>Seed Data</span>
-                        </SidebarMenuButton>
-                        </Link>
-                    </SidebarMenuItem>
-                 )}
                  {/* Add other navigation items here if needed */}
                   {/* <SidebarMenuItem>
                       <Link href="/settings" legacyBehavior passHref>
