@@ -107,14 +107,12 @@ export default async function RootLayout({
              </SidebarMenu>
              {session && (
                 <SidebarMenu className="p-2 border-t border-sidebar-border">
-                    <form action="/api/auth/logout" method="POST"> {/* Use API route for logout */}
+                    <form action="/api/auth/logout" method="POST" className="w-full"> {/* Ensure form takes full width if button does */}
                          <SidebarMenuItem>
-                            <button type="submit" className="w-full">
-                                <SidebarMenuButton tooltip="Logout">
-                                    <LogOut />
-                                    <span>Logout</span>
-                                </SidebarMenuButton>
-                            </button>
+                            <SidebarMenuButton type="submit" tooltip="Logout" className="w-full justify-start">
+                                <LogOut />
+                                <span>Logout</span>
+                            </SidebarMenuButton>
                         </SidebarMenuItem>
                     </form>
                 </SidebarMenu>
