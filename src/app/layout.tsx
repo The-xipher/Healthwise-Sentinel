@@ -6,7 +6,7 @@ import { SidebarProvider, Sidebar, SidebarInset, SidebarMenu, SidebarMenuItem, S
 import { Toaster } from '@/components/ui/toaster';
 import Header from '@/components/header'; // Import the simplified header
 import Link from 'next/link'; // Import Link
-import { Home, Database } from 'lucide-react'; // Import icons
+import { Home, Database, Stethoscope, ShieldCheck } from 'lucide-react'; // Import icons
 
 const geistSans = Geist({
   variable: '--font-geist-sans',
@@ -33,13 +33,28 @@ export default function RootLayout({
       <body className={`${geistSans.variable} ${geistMono.variable} antialiased`}>
         <SidebarProvider defaultOpen={true} > {/* Keep sidebar open by default */}
           <Sidebar variant="inset" collapsible="icon">
-             {/* Add Navigation Items */}
              <SidebarMenu className="flex-grow p-2">
                 <SidebarMenuItem>
                     <Link href="/dashboard" legacyBehavior passHref>
-                        <SidebarMenuButton tooltip="Dashboard">
+                        <SidebarMenuButton tooltip="Patient Dashboard">
                          <Home />
-                         <span>Dashboard</span>
+                         <span>Patient View</span>
+                        </SidebarMenuButton>
+                    </Link>
+                </SidebarMenuItem>
+                <SidebarMenuItem>
+                    <Link href="/dashboard/doctor" legacyBehavior passHref>
+                        <SidebarMenuButton tooltip="Doctor Dashboard">
+                         <Stethoscope />
+                         <span>Doctor View</span>
+                        </SidebarMenuButton>
+                    </Link>
+                </SidebarMenuItem>
+                <SidebarMenuItem>
+                    <Link href="/dashboard/admin" legacyBehavior passHref>
+                        <SidebarMenuButton tooltip="Admin Dashboard">
+                         <ShieldCheck />
+                         <span>Admin View</span>
                         </SidebarMenuButton>
                     </Link>
                 </SidebarMenuItem>
@@ -51,19 +66,10 @@ export default function RootLayout({
                         </SidebarMenuButton>
                     </Link>
                 </SidebarMenuItem>
-                 {/* Add other navigation items here if needed */}
-                  {/* <SidebarMenuItem>
-                      <Link href="/settings" legacyBehavior passHref>
-                          <SidebarMenuButton tooltip="Settings">
-                           <Settings />
-                           <span>Settings</span>
-                          </SidebarMenuButton>
-                      </Link>
-                  </SidebarMenuItem> */}
              </SidebarMenu>
           </Sidebar>
           <SidebarInset>
-             <Header /> {/* Add the simplified Header here */}
+             <Header /> 
             {children}
           </SidebarInset>
         </SidebarProvider>
