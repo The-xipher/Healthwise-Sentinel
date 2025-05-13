@@ -3,13 +3,40 @@
 import PatientDashboard from '@/components/patient-dashboard';
 import { Suspense } from 'react';
 import { Skeleton } from '@/components/ui/skeleton';
-import { getSession } from '@/app/actions/authActions';
+import { getSession, type UserSession } from '@/app/actions/authActions';
 import { redirect } from 'next/navigation';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
-import { AlertTriangle } from 'lucide-react';
+import { AlertTriangle, Loader2 } from 'lucide-react';
 
 export default async function PatientSpecificDashboardPage() {
-  const session = await getSession();
+  let session: UserSession | null = null;
+  let sessionError: string | null = null;
+  let isLoadingSession = true;
+
+  try {
+    session = await getSession();
+  } catch (error) {
+    console.error("Error getting session in PatientDashboardPage:", error);
+    sessionError = "Failed to retrieve session information.";
+  } finally {
+    isLoadingSession = false;
+  }
+  
+  if (isLoadingSession) {
+    return <PatientDashboardPageSkeleton message="Verifying session..." />;
+  }
+
+  if (sessionError) {
+    return (
+      <div className="flex items-center justify-center min-h-screen p-4">
+        <Alert variant="destructive" className="max-w-md">
+          <AlertTriangle className="h-4 w-4" />
+          <AlertTitle>Session Error</AlertTitle>
+          <AlertDescription>{sessionError}</AlertDescription>
+        </Alert>
+      </div>
+    );
+  }
 
   if (!session) {
     redirect('/login');
@@ -28,9 +55,8 @@ export default async function PatientSpecificDashboardPage() {
   }
   
   // If admin is viewing, they might need to select a patient or use a default.
-  // For now, pass their own ID if they are a patient, or a demo patient ID if admin.
-  // This logic can be refined if admins need to select specific patients.
-  const patientIdToView = session.role === 'patient' ? session.userId : "607f1f77bcf86cd799439011"; // Default patient for admin view
+  // IMPORTANT: Update this demo patient ID if "607f1f77bcf86cd799439011" (Patient Zero) is not appropriate.
+  const patientIdToView = session.role === 'patient' ? session.userId : "607f1f77bcf86cd799439011"; // Default Patient Zero for admin view
 
   return (
     <Suspense fallback={<PatientDashboardPageSkeleton />}>
@@ -41,9 +67,15 @@ export default async function PatientSpecificDashboardPage() {
   );
 }
 
-function PatientDashboardPageSkeleton() {
+function PatientDashboardPageSkeleton({ message }: { message?: string }) {
   return (
     <div className="flex flex-col items-center justify-center min-h-screen p-4 bg-secondary">
+      {message && (
+        <div className="flex items-center text-lg text-foreground mb-6">
+          <Loader2 className="h-6 w-6 animate-spin mr-2" />
+          {message}
+        </div>
+      )}
       <div className="w-full max-w-7xl mx-auto p-8 space-y-8 bg-card rounded-lg shadow-md">
         <Skeleton className="h-10 w-1/3 mb-6" /> {/* Title Skeleton */}
         

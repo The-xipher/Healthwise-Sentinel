@@ -2,13 +2,40 @@
 import DoctorDashboard from '@/components/doctor-dashboard';
 import { Suspense } from 'react';
 import { Skeleton } from '@/components/ui/skeleton';
-import { getSession } from '@/app/actions/authActions';
+import { getSession, type UserSession } from '@/app/actions/authActions';
 import { redirect } from 'next/navigation';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
-import { AlertTriangle } from 'lucide-react';
+import { AlertTriangle, Loader2 } from 'lucide-react';
 
 export default async function DoctorDashboardPage() {
-  const session = await getSession();
+  let session: UserSession | null = null;
+  let sessionError: string | null = null;
+  let isLoadingSession = true;
+
+  try {
+    session = await getSession();
+  } catch (error) {
+    console.error("Error getting session in DoctorDashboardPage:", error);
+    sessionError = "Failed to retrieve session information.";
+  } finally {
+    isLoadingSession = false;
+  }
+  
+  if (isLoadingSession) {
+    return <DoctorDashboardPageSkeleton message="Verifying session..." />;
+  }
+
+  if (sessionError) {
+    return (
+      <div className="flex items-center justify-center min-h-screen p-4">
+        <Alert variant="destructive" className="max-w-md">
+          <AlertTriangle className="h-4 w-4" />
+          <AlertTitle>Session Error</AlertTitle>
+          <AlertDescription>{sessionError}</AlertDescription>
+        </Alert>
+      </div>
+    );
+  }
 
   if (!session) {
     redirect('/login');
@@ -28,7 +55,8 @@ export default async function DoctorDashboardPage() {
   
   // If admin is viewing, they might use a default doctor ID or need a selector.
   // For now, pass their own ID if they are a doctor, or a demo doctor ID if admin.
-  const doctorIdToUse = session.role === 'doctor' ? session.userId : "607f1f77bcf86cd799439012"; // Default doctor for admin view
+  // IMPORTANT: Update this demo doctor ID if "607f1f77bcf86cd799439012" (Dr. Ada Lovelace) is not appropriate or causes issues.
+  const doctorIdToUse = session.role === 'doctor' ? session.userId : "607f1f77bcf86cd799439012"; // Default Dr. Ada for admin view
 
   return (
     <Suspense fallback={<DoctorDashboardPageSkeleton />}>
@@ -39,9 +67,15 @@ export default async function DoctorDashboardPage() {
   );
 }
 
-function DoctorDashboardPageSkeleton() {
+function DoctorDashboardPageSkeleton({ message }: { message?: string }) {
   return (
     <div className="flex flex-col items-center justify-center min-h-screen p-4 bg-secondary">
+      {message && (
+        <div className="flex items-center text-lg text-foreground mb-6">
+          <Loader2 className="h-6 w-6 animate-spin mr-2" />
+          {message}
+        </div>
+      )}
       <div className="w-full max-w-7xl p-8 space-y-8 bg-card rounded-lg shadow-md">
         <Skeleton className="h-10 w-1/3 mb-4" /> {/* Title Skeleton */}
         
