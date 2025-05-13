@@ -2,7 +2,8 @@
 'use client';
 
 import * as React from 'react';
-import { useRouter } from 'next/navigation'; // Import useRouter
+// useRouter is not strictly needed if we use window.location.assign, but keep for now if other navigations exist.
+// import { useRouter } from 'next/navigation'; 
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
@@ -23,7 +24,7 @@ const loginSchema = z.object({
 type LoginFormValues = z.infer<typeof loginSchema>;
 
 export default function LoginForm() {
-  const router = useRouter(); // Initialize useRouter
+  // const router = useRouter(); // Not strictly needed for window.location.assign
   const [isLoading, setIsLoading] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
   const [showPassword, setShowPassword] = React.useState(false);
@@ -46,7 +47,6 @@ export default function LoginForm() {
     formData.append('password', data.password);
 
     try {
-      // loginAction now returns a result object instead of redirecting
       const result = await loginAction(formData);
 
       if (result.success) {
@@ -54,9 +54,9 @@ export default function LoginForm() {
           title: "Login Successful",
           description: result.message || "Redirecting to your dashboard...",
         });
-        router.push('/dashboard'); // Client-side redirect
+        // Replace router.push with window.location.assign for a full page navigation
+        window.location.assign('/dashboard'); 
       } else {
-        // Handle login failure (e.g., invalid credentials)
         setError(result.message);
         toast({
           title: "Login Failed",
@@ -65,7 +65,6 @@ export default function LoginForm() {
         });
       }
     } catch (caughtError: any) {
-      // Handle unexpected errors during the action call (e.g., network issues)
       console.error('LoginForm onSubmit error:', caughtError);
       const errorMessage = caughtError.message || 'An unexpected error occurred.';
       setError(errorMessage);
@@ -158,3 +157,4 @@ export default function LoginForm() {
     </Card>
   );
 }
+
