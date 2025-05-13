@@ -6,8 +6,8 @@ import { SidebarProvider, Sidebar, SidebarInset, SidebarMenu, SidebarMenuItem, S
 import { Toaster } from '@/components/ui/toaster';
 import Header from '@/components/header';
 import Link from 'next/link';
-import { Home, User, Stethoscope, ShieldCheck, Database, LogOut, Users } from 'lucide-react'; // Changed DatabaseCog to Database
-import { getSession } from '@/app/actions/authActions'; // Import getSession
+import { Home, User, Stethoscope, ShieldCheck, Database, LogOut } from 'lucide-react'; // Removed Users icon as it's not used in the updated structure.
+import { getSession } from '@/app/actions/authActions'; 
 
 const geistSans = Geist({
   variable: '--font-geist-sans',
@@ -29,7 +29,7 @@ export default async function RootLayout({
 }: Readonly<{
   children: React.ReactNode;
 }>) {
-  const session = await getSession(); // Fetch session data on the server
+  const session = await getSession(); 
 
   return (
     <html lang="en">
@@ -39,7 +39,7 @@ export default async function RootLayout({
              <SidebarMenu className="flex-grow p-2">
                 {/* Always show generic dashboard link, it will redirect based on role */}
                 <SidebarMenuItem>
-                    <Link href="/dashboard" legacyBehavior passHref>
+                    <Link href="/dashboard" asChild>
                         <SidebarMenuButton tooltip="My Dashboard">
                          <Home />
                          <span>My Dashboard</span>
@@ -49,7 +49,7 @@ export default async function RootLayout({
 
                 {session?.role === 'patient' && (
                   <SidebarMenuItem>
-                      <Link href="/dashboard/patient" legacyBehavior passHref>
+                      <Link href="/dashboard/patient" asChild>
                           <SidebarMenuButton tooltip="Patient View">
                            <User />
                            <span>Patient View</span>
@@ -59,7 +59,7 @@ export default async function RootLayout({
                 )}
                 {session?.role === 'doctor' && (
                   <SidebarMenuItem>
-                      <Link href="/dashboard/doctor" legacyBehavior passHref>
+                      <Link href="/dashboard/doctor" asChild>
                           <SidebarMenuButton tooltip="Doctor View">
                            <Stethoscope />
                            <span>Doctor View</span>
@@ -70,7 +70,7 @@ export default async function RootLayout({
                  {session?.role === 'admin' && (
                   <>
                     <SidebarMenuItem>
-                        <Link href="/dashboard/admin" legacyBehavior passHref>
+                        <Link href="/dashboard/admin" asChild>
                             <SidebarMenuButton tooltip="Admin View">
                              <ShieldCheck />
                              <span>Admin View</span>
@@ -78,7 +78,7 @@ export default async function RootLayout({
                         </Link>
                     </SidebarMenuItem>
                     <SidebarMenuItem>
-                        <Link href="/dashboard/patient" legacyBehavior passHref>
+                        <Link href="/dashboard/patient" asChild>
                             <SidebarMenuButton tooltip="View as Patient (Admin)">
                              <User />
                              <span>Patient View (Admin)</span>
@@ -86,7 +86,7 @@ export default async function RootLayout({
                         </Link>
                     </SidebarMenuItem>
                     <SidebarMenuItem>
-                        <Link href="/dashboard/doctor" legacyBehavior passHref>
+                        <Link href="/dashboard/doctor" asChild>
                             <SidebarMenuButton tooltip="View as Doctor (Admin)">
                              <Stethoscope />
                              <span>Doctor View (Admin)</span>
@@ -97,9 +97,9 @@ export default async function RootLayout({
                 )}
 
                 <SidebarMenuItem>
-                    <Link href="/seed-database" legacyBehavior passHref>
+                    <Link href="/seed-database" asChild>
                         <SidebarMenuButton tooltip="Seed Database">
-                         <Database /> {/* Changed DatabaseCog to Database */}
+                         <Database /> 
                          <span>Seed Data</span>
                         </SidebarMenuButton>
                     </Link>
@@ -107,7 +107,7 @@ export default async function RootLayout({
              </SidebarMenu>
              {session && (
                 <SidebarMenu className="p-2 border-t border-sidebar-border">
-                    <form action="/api/auth/logout" method="POST" className="w-full"> {/* Ensure form takes full width if button does */}
+                    <form action="/api/auth/logout" method="POST" className="w-full"> 
                          <SidebarMenuItem>
                             <SidebarMenuButton type="submit" tooltip="Logout" className="w-full justify-start">
                                 <LogOut />
@@ -119,7 +119,7 @@ export default async function RootLayout({
              )}
           </Sidebar>
           <SidebarInset>
-             <Header session={session} /> {/* Pass session to Header */}
+             <Header session={session} /> 
             {children}
           </SidebarInset>
         </SidebarProvider>
