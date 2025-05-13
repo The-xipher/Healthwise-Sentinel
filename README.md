@@ -14,12 +14,16 @@ This is a Next.js application designed for post-discharge patient care managemen
     ```
 
 2.  **Configure Environment Variables:**
-    *   Create a file named `.env.local` in the root of your project.
-    *   Add the following environment variables:
+    *   Create a file named `.env.local` in the root of your project. If it already exists, update it.
+    *   Add or update the following environment variables:
 
         ```dotenv
         # MongoDB Connection URI
-        MONGODB_URI=your_mongodb_connection_string_here # e.g., mongodb://localhost:27017/healthwisehub or from MongoDB Atlas
+        # Replace 'your_mongodb_password' with your actual MongoDB Atlas password for the 'amithxipher' user.
+        MONGODB_URI=mongodb+srv://amithxipher:your_mongodb_password@health.bqy9gqs.mongodb.net/?retryWrites=true&w=majority&appName=Health
+        
+        # Optional: Specify a database name, or it defaults to 'healthwisehub'
+        MONGODB_DB_NAME=healthwisehub_db 
 
         # Firebase (Optional - if using Firebase Auth or other Firebase services)
         # NEXT_PUBLIC_FIREBASE_API_KEY=YOUR_API_KEY
@@ -33,8 +37,8 @@ This is a Next.js application designed for post-discharge patient care managemen
         # If using GenAI features with Google AI
         GOOGLE_GENAI_API_KEY=YOUR_GOOGLE_AI_API_KEY
         ```
-    *   **Important:** The application relies on `MONGODB_URI` for database connectivity. For Firebase services (like Auth, if re-enabled), ensure the respective `NEXT_PUBLIC_FIREBASE_` variables are set.
-    *   For MongoDB, you can use a local instance or a cloud-hosted service like MongoDB Atlas (which offers a generous free tier).
+    *   **Important:** The application relies on `MONGODB_URI` for database connectivity. Make sure to replace `your_mongodb_password` with your actual password.
+    *   For Firebase services (like Auth, if re-enabled), ensure the respective `NEXT_PUBLIC_FIREBASE_` variables are set.
 
 3.  **Run the Development Server:**
     ```bash
