@@ -533,17 +533,22 @@ const sidebarMenuButtonVariants = cva(
   }
 )
 
+// Define a type that can extend both Button and Anchor attributes
+type PolymorphicProps = React.AnchorHTMLAttributes<HTMLAnchorElement> & React.ButtonHTMLAttributes<HTMLButtonElement>;
+
+
 interface SidebarMenuButtonProps
-  extends React.ButtonHTMLAttributes<HTMLButtonElement>, // Use ButtonHTMLAttributes for default case
+  extends Omit<PolymorphicProps, 'type'>, // Omit type to handle it based on Comp
     VariantProps<typeof sidebarMenuButtonVariants> {
   asChild?: boolean;
   isActive?: boolean;
   tooltip?: string | React.ComponentProps<typeof TooltipContent>;
+  type?: 'submit' | 'reset' | 'button'; // Explicitly type for button case
 }
 
 
 const SidebarMenuButton = React.forwardRef<
-  HTMLButtonElement, // Keep as HTMLButtonElement for simplicity, Slot will forward ref
+  HTMLButtonElement | HTMLAnchorElement, 
   SidebarMenuButtonProps
 >(
   (
@@ -555,31 +560,44 @@ const SidebarMenuButton = React.forwardRef<
       tooltip,
       className,
       children,
+      type: buttonType, // Capture explicit type prop
       ...restProps
     },
     ref
   ) => {
     const { isMobile, state } = useSidebar();
 
-    // Determine if Comp should be Slot:
-    // 1. If propAsChild is explicitly true.
-    // 2. If restProps contains asChild=true (e.g., from a parent <Link asChild>).
-    const renderAsSlot = propAsChild || (restProps as any).asChild;
-    const Comp = renderAsSlot ? Slot : "button";
+    const hasHref = (restProps as any).href !== undefined;
+    
+    // Determine the component type
+    // If propAsChild is true, it's always Slot.
+    // Else, if href is present, it's 'a'.
+    // Else, it's 'button'.
+    const Comp = propAsChild ? Slot : (hasHref ? 'a' : 'button');
 
-    // Remove asChild from restProps to prevent it from being passed to a native DOM element
-    // or to Slot if Slot is the Comp. Slot handles its own asChild logic for its direct children.
-    const { asChild: _removedAsChildFromRest, ...finalRestProps } = restProps as any;
+    // Remove asChild from restProps if it exists, to prevent it from being passed to DOM element
+    // This specifically targets asChild potentially coming from a parent component via restProps.
+    const { asChild: _asChildFromRest, ...finalRestProps } = restProps as any;
+    
+    // Prepare props for the Comp
+    let compProps: any = {
+      ...finalRestProps, // Contains href, onClick, etc. from parent Link or other props
+      ref: ref,
+      "data-sidebar": "menu-button",
+      "data-size": size,
+      "data-active": isActive,
+      className: cn(sidebarMenuButtonVariants({ variant, size, className })),
+    };
+
+    if (Comp === 'button' && !propAsChild) {
+      compProps.type = buttonType || 'button'; // Default to 'button' if Comp is 'button' and no type is specified
+    } else if (Comp === 'a' && compProps.type) {
+      delete compProps.type; // 'type' is not a valid attribute for 'a'
+    }
+
 
     const buttonElement = (
-      <Comp
-        ref={ref}
-        data-sidebar="menu-button"
-        data-size={size}
-        data-active={isActive}
-        className={cn(sidebarMenuButtonVariants({ variant, size, className }))}
-        {...finalRestProps} // Spread potentially href, type="submit", etc.
-      >
+      <Comp {...compProps}>
         {children}
       </Comp>
     );
