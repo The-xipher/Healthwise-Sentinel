@@ -1,9 +1,10 @@
+
 'use client';
 
 import * as React from 'react';
-import { useState, useEffect } from 'react';
-import { connectToDatabase, toObjectId, ObjectId } from '@/lib/mongodb';
-import type { Db } from 'mongodb';
+import { useState, useEffect, useMemo } from 'react';
+// Removed direct mongodb imports: connectToDatabase, toObjectId
+import type { ObjectId } from 'mongodb'; // Keep for type definitions if necessary
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
@@ -11,7 +12,7 @@ import { Progress } from '@/components/ui/progress';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts';
-import { Activity, AlertTriangle, Droplet, HeartPulse, Pill, Smile, Frown, Meh, Loader2, Info, CheckCircle } from 'lucide-react';
+import { Activity, AlertTriangle, Droplet, HeartPulse, Pill, Smile, Frown, Meh, Loader2, Info } from 'lucide-react';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useForm } from 'react-hook-form';
 import { z } from 'zod';
@@ -20,37 +21,13 @@ import { useToast } from '@/hooks/use-toast';
 import { generateSuggestedInterventions } from '@/ai/flows/generate-suggested-interventions';
 import { Skeleton } from './ui/skeleton';
 import { Label } from './ui/label';
-
-interface HealthData {
-  _id?: ObjectId | string;
-  id?: string; // Mapped from _id
-  patientId: string | ObjectId;
-  timestamp: Date;
-  steps?: number;
-  heartRate?: number;
-  bloodGlucose?: number;
-}
-
-interface Medication {
-  _id?: ObjectId | string;
-  id?: string; // Mapped from _id
-  patientId: string | ObjectId;
-  name: string;
-  dosage: string;
-  frequency: string;
-  lastTaken?: Date;
-  adherence?: number;
-}
-
-interface SymptomReport {
-  _id?: ObjectId | string;
-  id?: string; // Mapped from _id
-  patientId: string | ObjectId;
-  timestamp: Date;
-  severity: 'mild' | 'moderate' | 'severe';
-  description: string;
-  userId: string; // Keep if it was part of the original schema
-}
+import {
+  fetchPatientDashboardDataAction,
+  submitSymptomReportAction,
+  PatientHealthData,
+  PatientMedication,
+  PatientSymptomReport
+} from '@/app/actions/patientActions'; // Import server actions
 
 const symptomFormSchema = z.object({
   severity: z.enum(['mild', 'moderate', 'severe'], {
@@ -65,19 +42,19 @@ const symptomFormSchema = z.object({
 
 type SymptomFormValues = z.infer<typeof symptomFormSchema>;
 
-const PLACEHOLDER_PATIENT_ID = 'test-patient-id'; // This will be string, convert to ObjectId for DB ops
+const PLACEHOLDER_PATIENT_ID = 'test-patient-id';
 
 export default function PatientDashboard() {
-  const [dbInstance, setDbInstance] = useState<Db | null>(null);
-  const [healthData, setHealthData] = useState<HealthData[]>([]);
-  const [medications, setMedications] = useState<Medication[]>([]);
-  const [symptomReports, setSymptomReports] = useState<SymptomReport[]>([]);
-  const [loadingData, setLoadingData] = useState(true); // Combined loading state
+  const [healthData, setHealthData] = useState<PatientHealthData[]>([]);
+  const [medications, setMedications] = useState<PatientMedication[]>([]);
+  const [symptomReports, setSymptomReports] = useState<PatientSymptomReport[]>([]);
+  const [loadingData, setLoadingData] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [reportingSymptom, setReportingSymptom] = useState(false);
   const [suggestedInterventions, setSuggestedInterventions] = useState<string | null>(null);
   const [loadingInterventions, setLoadingInterventions] = useState(false);
   const { toast } = useToast();
+  const [dbAvailable, setDbAvailable] = useState(true);
 
   const form = useForm<SymptomFormValues>({
     resolver: zodResolver(symptomFormSchema),
@@ -87,84 +64,54 @@ export default function PatientDashboard() {
     },
   });
   
-  const patientObjectId = useMemo(() => toObjectId(PLACEHOLDER_PATIENT_ID), []);
-
-
   useEffect(() => {
-    async function initializeDb() {
-      try {
-        const { db } = await connectToDatabase();
-        setDbInstance(db);
-      } catch (e) {
-        setError('Failed to connect to the database.');
-        console.error(e);
-        setLoadingData(false);
-        setLoadingInterventions(false);
-      }
-    }
-    initializeDb();
-  }, []);
-
-  useEffect(() => {
-    if (!dbInstance || !patientObjectId) {
-      if (!error) setLoadingData(true); // Only set loading if no db connection error yet
-      return;
-    }
-    
-    async function fetchData() {
+    async function loadData() {
       setLoadingData(true);
+      setError(null);
       try {
-        // Fetch Health Data
-        const healthCollection = dbInstance!.collection<HealthData>('healthData');
-        const fetchedHealthData = await healthCollection.find({ patientId: patientObjectId })
-          .sort({ timestamp: -1 }).limit(30).toArray();
-        setHealthData(fetchedHealthData.reverse().map(d => ({...d, id: d._id?.toString()}))); // Reverse for chronological chart
-
-        // Fetch Medications
-        const medsCollection = dbInstance!.collection<Medication>('medications');
-        const fetchedMeds = await medsCollection.find({ patientId: patientObjectId }).toArray();
-        setMedications(fetchedMeds.map(med => ({
-          ...med,
-          id: med._id?.toString(),
-          adherence: med.adherence ?? Math.floor(Math.random() * 41) + 60
-        })));
-
-        // Fetch Symptom Reports
-        const symptomsCollection = dbInstance!.collection<SymptomReport>('symptomReports');
-        const fetchedSymptoms = await symptomsCollection.find({ patientId: patientObjectId })
-          .sort({ timestamp: -1 }).limit(5).toArray();
-        setSymptomReports(fetchedSymptoms.map(s => ({...s, id: s._id?.toString()})));
-
-        // Trigger AI suggestions fetch after all data is loaded
-        fetchInterventionsIfNeeded(fetchedHealthData.reverse(), fetchedMeds, fetchedSymptoms);
-
-      } catch (err) {
-        console.error("Error fetching patient data:", err);
-        setError("Could not load patient data.");
+        const result = await fetchPatientDashboardDataAction(PLACEHOLDER_PATIENT_ID);
+        if (result.error) {
+          setError(result.error);
+          setDbAvailable(false);
+          setHealthData([]);
+          setMedications([]);
+          setSymptomReports([]);
+        } else {
+          setHealthData(result.healthData || []);
+          setMedications(result.medications || []);
+          setSymptomReports(result.symptomReports || []);
+          setDbAvailable(true);
+          // Trigger AI suggestions fetch after all data is loaded
+          fetchInterventionsIfNeeded(result.healthData || [], result.medications || [], result.symptomReports || []);
+        }
+      } catch (e: any) {
+        setError(e.message || 'An unexpected error occurred fetching patient data.');
+        setDbAvailable(false);
+        console.error(e);
       } finally {
         setLoadingData(false);
       }
     }
-    fetchData();
-  }, [dbInstance, patientObjectId, error]); // Added error to dependency array
+    loadData();
+  }, []);
 
   const fetchInterventionsIfNeeded = async (
-    currentHealthData: HealthData[],
-    currentMedications: Medication[],
-    currentSymptomReports: SymptomReport[]
+    currentHealthData: PatientHealthData[],
+    currentMedications: PatientMedication[],
+    currentSymptomReports: PatientSymptomReport[]
   ) => {
-    if (!dbInstance || loadingInterventions || suggestedInterventions !== null || !patientObjectId) return;
+    if (loadingInterventions || suggestedInterventions !== null || !dbAvailable) return;
 
     setLoadingInterventions(true);
     try {
-      const latestHealth = currentHealthData.length > 0 ? currentHealthData[currentHealthData.length - 1] : {} as HealthData;
+      const latestHealth = currentHealthData.length > 0 ? currentHealthData[currentHealthData.length - 1] : {} as PatientHealthData;
       const healthSummary = `Latest Health: Steps: ${latestHealth.steps ?? 'N/A'}, HR: ${latestHealth.heartRate ?? 'N/A'}, Glucose: ${latestHealth.bloodGlucose ?? 'N/A'}. `;
       const adherenceSummary = currentMedications.map(m => `${m.name}: ${m.adherence ?? 'N/A'}%`).join(', ') || "No medication data yet.";
       const symptomsSummaryText = currentSymptomReports.map(s => `${s.severity}: ${s.description}`).join(' | ') || "No recent symptoms reported.";
 
       const input = {
         patientHealthData: `${healthSummary} Medication Adherence: ${adherenceSummary}. Recent Symptoms: ${symptomsSummaryText}`,
-        riskPredictions: `Readmission Risk: ${Math.random() > 0.7 ? 'High' : 'Low'}. Potential Complications: Dehydration, Medication side-effects.`,
+        riskPredictions: `Readmission Risk: ${Math.random() > 0.7 ? 'High' : 'Low'}. Potential Complications: Dehydration, Medication side-effects.`, // Example risk, can be enhanced
       };
 
       const result = await generateSuggestedInterventions(input);
@@ -172,59 +119,55 @@ export default function PatientDashboard() {
     } catch (err) {
       console.error('Error generating suggested interventions:', err);
       toast({ title: "AI Suggestion Error", description: "Could not generate AI suggestions.", variant: "destructive" });
+      // Do not set dbAvailable to false here as AI failure is different from DB failure
     } finally {
       setLoadingInterventions(false);
     }
   };
   
   const onSubmitSymptom = async (values: SymptomFormValues) => {
-    if (!dbInstance || !patientObjectId) {
-      toast({ title: "Error", description: "Cannot submit report. Database connection inactive.", variant: "destructive" });
-      return;
+    if (!dbAvailable) {
+       toast({ title: "Error", description: "Cannot submit report. Database connection inactive.", variant: "destructive" });
+       return;
     }
     setReportingSymptom(true);
-    const report: Omit<SymptomReport, '_id' | 'id'> = {
-      ...values,
-      patientId: patientObjectId,
-      timestamp: new Date(),
-      userId: PLACEHOLDER_PATIENT_ID, // Using placeholder string ID for userId field
-    };
-
     try {
-      const symptomsCollection = dbInstance.collection<SymptomReport>('symptomReports');
-      const result = await symptomsCollection.insertOne(report as SymptomReport); // Cast to include _id
-      
-      // Optimistically update UI
-      setSymptomReports(prev => [{...report, _id:result.insertedId, id: result.insertedId.toString()}, ...prev].slice(0,5));
-
-      toast({
-        title: "Symptom Reported",
-        description: "Your healthcare provider has been notified.",
-        variant: "default",
-        className: "bg-green-100 border-green-300 text-green-800",
-        duration: 5000,
-        // action: <CheckCircle className="text-green-600 h-5 w-5" /> // Keep if needed, ensure CheckCircle is imported
-      });
-      form.reset();
+      const result = await submitSymptomReportAction(PLACEHOLDER_PATIENT_ID, values.severity, values.description);
+      if (result.error) {
+        toast({
+          title: "Error Reporting Symptom",
+          description: result.error,
+          variant: "destructive",
+        });
+      } else if (result.report) {
+        setSymptomReports(prev => [result.report!, ...prev].slice(0,5));
+        toast({
+          title: "Symptom Reported",
+          description: "Your healthcare provider has been notified.",
+          variant: "default",
+          className: "bg-green-100 border-green-300 text-green-800",
+          duration: 5000,
+        });
+        form.reset();
+      }
     } catch (err) {
       console.error("Error reporting symptom:", err);
       toast({
         title: "Error Reporting Symptom",
         description: "Could not save your report. Please try again.",
         variant: "destructive",
-        duration: 5000,
       });
     } finally {
       setReportingSymptom(false);
     }
   };
 
-  const formatTimestampForChart = (timestamp: Date | undefined): string => {
+  const formatTimestampForChart = (timestamp: Date | string | undefined): string => {
     if (!timestamp) return 'N/A';
     return new Date(timestamp).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
   };
 
-  const formatDateForDisplay = (timestamp: Date | undefined): string => {
+  const formatDateForDisplay = (timestamp: Date | string | undefined): string => {
     if (!timestamp) return 'N/A';
     return new Date(timestamp).toLocaleString();
   };
@@ -245,8 +188,7 @@ export default function PatientDashboard() {
     return 'bg-red-500';
   };
 
-  const dbAvailable = !!dbInstance;
-  const showSkeleton = (!dbAvailable && loadingData && !error) || (dbAvailable && loadingData);
+  const showSkeleton = loadingData && !error; // Show skeleton only during initial load without error
 
   return (
     <div className="space-y-6">
@@ -260,7 +202,7 @@ export default function PatientDashboard() {
         </Alert>
       )}
       
-      {!dbAvailable && !error && (
+      {!dbAvailable && !loadingData && !error && ( // Shown if DB is determined unavailable after load attempt & no other error
          <Alert variant="default" className="bg-yellow-50 border-yellow-200 text-yellow-800">
             <AlertTriangle className="h-4 w-4 text-yellow-600" />
             <AlertTitle>Database Disconnected</AlertTitle>
@@ -270,7 +212,7 @@ export default function PatientDashboard() {
          </Alert>
        )}
 
-      {dbAvailable && (loadingInterventions || suggestedInterventions !== null) && (
+      {(loadingInterventions || suggestedInterventions !== null) && ( // Show AI card if loading or has suggestions
         <Card className="bg-blue-50 border-blue-200 shadow-md hover:shadow-lg transition-shadow">
           <CardHeader>
             <CardTitle className="flex items-center gap-2 text-blue-800">
@@ -290,7 +232,8 @@ export default function PatientDashboard() {
             ) : suggestedInterventions ? (
               <p className="text-sm text-blue-700 whitespace-pre-line">{suggestedInterventions}</p>
             ) : (
-              <p className="text-sm text-blue-600">No specific suggestions available at this time.</p>
+              // Only show "no suggestions" if not loading and db was available for attempt
+              dbAvailable && <p className="text-sm text-blue-600">No specific suggestions available at this time.</p>
             )}
           </CardContent>
         </Card>
@@ -306,6 +249,7 @@ export default function PatientDashboard() {
           <Skeleton className="h-72 rounded-lg lg:col-span-1" />
         </div>
       ) : (
+        !error && dbAvailable && // Only render data cards if no error and db is available
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           <Card>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
@@ -344,14 +288,14 @@ export default function PatientDashboard() {
               <CardDescription>Steps and Heart Rate over the last recorded entries.</CardDescription>
             </CardHeader>
             <CardContent className="h-[300px] md:h-[350px]">
-              {dbAvailable && healthData.length > 0 ? (
+              {healthData.length > 0 ? (
                 <ResponsiveContainer width="100%" height="100%">
                   <BarChart data={healthData}>
                     <CartesianGrid strokeDasharray="3 3" />
-                    <XAxis dataKey="timestamp" tickFormatter={(ts) => formatTimestampForChart(ts as Date)} />
+                    <XAxis dataKey="timestamp" tickFormatter={(ts) => formatTimestampForChart(ts as string)} />
                     <YAxis yAxisId="left" orientation="left" stroke="hsl(var(--primary))" label={{ value: 'Steps', angle: -90, position: 'insideLeft', fill: 'hsl(var(--primary))' }} />
                     <YAxis yAxisId="right" orientation="right" stroke="hsl(var(--accent))" label={{ value: 'Heart Rate (bpm)', angle: 90, position: 'insideRight', fill: 'hsl(var(--accent))' }} />
-                    <Tooltip labelFormatter={(label, payload) => formatDateForDisplay(payload?.[0]?.payload?.timestamp as Date)} />
+                    <Tooltip labelFormatter={(label, payload) => formatDateForDisplay(payload?.[0]?.payload?.timestamp as string)} />
                     <Legend />
                     <Bar yAxisId="left" dataKey="steps" fill="hsl(var(--primary))" name="Steps" />
                     <Bar yAxisId="right" dataKey="heartRate" fill="hsl(var(--accent))" name="Heart Rate" />
@@ -359,7 +303,7 @@ export default function PatientDashboard() {
                 </ResponsiveContainer>
               ) : (
                 <div className="flex items-center justify-center h-full text-muted-foreground">
-                  {dbAvailable ? "No health data available yet." : "Health data unavailable."}
+                  No health data available yet.
                 </div>
               )}
             </CardContent>
@@ -373,7 +317,7 @@ export default function PatientDashboard() {
               <CardDescription>Tracking your medication schedule.</CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
-              {dbAvailable && medications.length > 0 ? (
+              {medications.length > 0 ? (
                 medications.map((med) => (
                   <div key={med.id!} className="space-y-1">
                     <div className="flex justify-between items-center">
@@ -389,7 +333,7 @@ export default function PatientDashboard() {
                 ))
               ) : (
                 <p className="text-sm text-muted-foreground">
-                  {dbAvailable ? "No medications assigned yet." : "Medication data unavailable."}
+                  No medications assigned yet.
                 </p>
               )}
             </CardContent>
@@ -401,16 +345,16 @@ export default function PatientDashboard() {
               <CardDescription>Let your doctor know how you're feeling.</CardDescription>
             </CardHeader>
             <CardContent>
-              {!dbAvailable && (
+              {!dbAvailable && !loadingData && ( // Only show specific disabled state if determined db is not available
                 <Alert variant="default" className="mb-4 bg-yellow-50 border-yellow-200 text-yellow-800">
                   <AlertTriangle className="h-4 w-4 text-yellow-600" />
-                  <AlertTitle>Database Connection Required</AlertTitle>
+                  <AlertTitle>Symptom Reporting Unavailable</AlertTitle>
                   <AlertDescription>
-                    Symptom reporting requires an active database connection.
+                    Database connection is required to report symptoms.
                   </AlertDescription>
                 </Alert>
               )}
-              {dbAvailable ? (
+              {dbAvailable || loadingData ? ( // Allow form interaction if db is available or still loading (optimistic)
                 <Form {...form}>
                   <form onSubmit={form.handleSubmit(onSubmitSymptom)} className="space-y-4">
                     <FormField
@@ -428,7 +372,7 @@ export default function PatientDashboard() {
                                   variant={field.value === severity ? 'default' : 'outline'}
                                   onClick={() => field.onChange(severity)}
                                   className={`flex-1 capitalize ${field.value === severity ? 'ring-2 ring-primary ring-offset-2' : ''}`}
-                                  disabled={!dbAvailable || reportingSymptom}
+                                  disabled={!dbAvailable || reportingSymptom} // Disable if determined DB unavailable or currently reporting
                                 >
                                   {getSeverityIcon(severity)}
                                   <span className="ml-2">{severity}</span>
@@ -463,8 +407,8 @@ export default function PatientDashboard() {
                     </Button>
                   </form>
                 </Form>
-              ) : (
-                <div className="space-y-4 opacity-50 cursor-not-allowed">
+              ) : ( // Fallback to disabled UI if db unavailable and not loading
+                 <div className="space-y-4 opacity-50 cursor-not-allowed">
                   <div className="space-y-3">
                     <Label>How severe are your symptoms?</Label>
                     <div className="flex gap-2">
@@ -482,7 +426,7 @@ export default function PatientDashboard() {
               )}
               <div className="mt-6 space-y-3">
                 <h4 className="text-sm font-medium text-muted-foreground">Recent Reports:</h4>
-                {dbAvailable && symptomReports.length > 0 ? (
+                {symptomReports.length > 0 ? (
                   symptomReports.map(report => (
                     <div key={report.id!} className="text-xs p-2 border rounded-md bg-muted/50 flex items-start gap-2">
                       {getSeverityIcon(report.severity)}

@@ -1,9 +1,10 @@
+
 'use client';
 
 import * as React from 'react';
 import { useState, useEffect, useMemo } from 'react';
-import { connectToDatabase, toObjectId, ObjectId } from '@/lib/mongodb';
-import type { Db } from 'mongodb';
+// Removed direct mongodb imports: connectToDatabase, toObjectId
+import type { ObjectId } from 'mongodb'; // Keep for type definitions if necessary, server actions will handle ObjectId
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
@@ -14,76 +15,36 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { Loader2, AlertTriangle, Users, Stethoscope, Activity, HeartPulse, Pill, MessageSquare, Send, Check, X, Info } from 'lucide-react';
 import { Textarea } from './ui/textarea';
 import { ScrollArea } from './ui/scroll-area';
-// import { Separator } from './ui/separator'; // Not used
 import { summarizePatientHistory } from '@/ai/flows/summarize-patient-history';
 import { generateCarePlan } from '@/ai/flows/generate-care-plan';
-import { generateSuggestedInterventions } from '@/ai/flows/generate-suggested-interventions';
+// import { generateSuggestedInterventions } from '@/ai/flows/generate-suggested-interventions'; // This seems to be Patient specific AI
 import { useToast } from '@/hooks/use-toast';
-
-interface Patient {
-  _id: ObjectId | string;
-  id?: string; // Mapped from _id
-  name: string;
-  email?: string;
-  photoURL?: string;
-  lastActivity?: Date;
-  assignedDoctorId?: string;
-  readmissionRisk?: 'low' | 'medium' | 'high';
-  medicalHistory?: string; // Added for AI summary
-}
-
-interface PatientHealthData {
-  _id?: ObjectId | string;
-  patientId: string | ObjectId;
-  timestamp: Date;
-  steps?: number;
-  heartRate?: number;
-}
-
-interface PatientMedication {
-  _id?: ObjectId | string;
-  id?: string; // Mapped from _id
-  patientId: string | ObjectId;
-  name: string;
-  dosage: string;
-  frequency: string;
-  adherence?: number;
-}
-
-interface ChatMessage {
-  _id?: ObjectId | string;
-  id?: string; // Mapped from _id
-  chatId: string;
-  senderId: string;
-  senderName: string;
-  text: string;
-  timestamp: Date;
-}
-
-interface AISuggestion {
-  _id?: ObjectId | string;
-  id?: string; // Mapped from _id
-  patientId: string | ObjectId;
-  suggestionText: string;
-  timestamp: Date;
-  status: 'pending' | 'approved' | 'rejected';
-}
+import { 
+  fetchDoctorPatientsAction, 
+  fetchDoctorPatientDetailsAction,
+  sendChatMessageAction,
+  updateSuggestionStatusAction,
+  DoctorPatient,
+  DoctorPatientHealthData,
+  DoctorPatientMedication,
+  DoctorChatMessage,
+  DoctorAISuggestion
+} from '@/app/actions/doctorActions'; // Import server actions
 
 const PLACEHOLDER_DOCTOR_ID = 'test-doctor-id';
 const PLACEHOLDER_DOCTOR_NAME = 'Dr. Placeholder';
 
 export default function DoctorDashboard() {
-  const [dbInstance, setDbInstance] = useState<Db | null>(null);
-  const [patients, setPatients] = useState<Patient[]>([]);
+  const [patients, setPatients] = useState<DoctorPatient[]>([]);
   const [selectedPatientId, setSelectedPatientId] = useState<string | null>(null);
-  const [selectedPatientData, setSelectedPatientData] = useState<Patient | null>(null);
-  const [patientHealthData, setPatientHealthData] = useState<PatientHealthData[]>([]);
-  const [patientMedications, setPatientMedications] = useState<PatientMedication[]>([]);
-  const [aiSuggestions, setAiSuggestions] = useState<AISuggestion[]>([]);
+  const [selectedPatientData, setSelectedPatientData] = useState<DoctorPatient | null>(null);
+  const [patientHealthData, setPatientHealthData] = useState<DoctorPatientHealthData[]>([]);
+  const [patientMedications, setPatientMedications] = useState<DoctorPatientMedication[]>([]);
+  const [aiSuggestions, setAiSuggestions] = useState<DoctorAISuggestion[]>([]);
   const [loadingPatients, setLoadingPatients] = useState(true);
-  const [loadingPatientDetails, setLoadingPatientDetails] = useState(false); // Combined loading state for patient details
+  const [loadingPatientDetails, setLoadingPatientDetails] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
+  const [chatMessages, setChatMessages] = useState<DoctorChatMessage[]>([]);
   const [newMessage, setNewMessage] = useState('');
   const [sendingMessage, setSendingMessage] = useState(false);
   const [historySummary, setHistorySummary] = useState<string | null>(null);
@@ -91,49 +52,36 @@ export default function DoctorDashboard() {
   const [carePlan, setCarePlan] = useState<string | null>(null);
   const [loadingCarePlan, setLoadingCarePlan] = useState(false);
   const { toast } = useToast();
+  const [dbAvailable, setDbAvailable] = useState(true);
 
   useEffect(() => {
-    async function initializeDb() {
-      try {
-        const { db } = await connectToDatabase();
-        setDbInstance(db);
-      } catch (e) {
-        setError('Failed to connect to the database.');
-        console.error(e);
-        setLoadingPatients(false);
-        setLoadingPatientDetails(false);
-      }
-    }
-    initializeDb();
-  }, []);
-
-  useEffect(() => {
-    if (!dbInstance) {
-      if (!error) setLoadingPatients(true);
-      return;
-    }
-
-    async function fetchPatients() {
+    async function loadInitialData() {
       setLoadingPatients(true);
+      setError(null);
       try {
-        const usersCollection = dbInstance!.collection<Patient>('users');
-        const patientList = await usersCollection.find({
-          role: 'patient',
-          assignedDoctorId: PLACEHOLDER_DOCTOR_ID
-        }).toArray();
-        setPatients(patientList.map(p => ({...p, id: p._id.toString()})));
-      } catch (err) {
-        console.error("Error fetching patients:", err);
-        setError("Could not load patient list.");
+        const result = await fetchDoctorPatientsAction(PLACEHOLDER_DOCTOR_ID);
+        if (result.error) {
+          setError(result.error);
+          setDbAvailable(false);
+          setPatients([]);
+        } else {
+          setPatients(result.patients || []);
+          setDbAvailable(true);
+        }
+      } catch (e: any) {
+        setError(e.message || 'An unexpected error occurred.');
+        setDbAvailable(false);
+        setPatients([]);
+        console.error(e);
       } finally {
         setLoadingPatients(false);
       }
     }
-    fetchPatients();
-  }, [dbInstance, error]);
+    loadInitialData();
+  }, []);
 
   useEffect(() => {
-    if (!dbInstance || !selectedPatientId) {
+    if (!selectedPatientId) {
       setSelectedPatientData(null);
       setPatientHealthData([]);
       setPatientMedications([]);
@@ -147,117 +95,81 @@ export default function DoctorDashboard() {
 
     async function fetchPatientAllData() {
       setLoadingPatientDetails(true);
-      setError(null);
+      setError(null); // Clear previous patient-specific errors
       setHistorySummary(null);
       setCarePlan(null);
 
       try {
-        const patientObjectId = toObjectId(selectedPatientId);
-        if (!patientObjectId) {
-            setError("Invalid patient ID format.");
-            setLoadingPatientDetails(false);
-            return;
-        }
+        const result = await fetchDoctorPatientDetailsAction(selectedPatientId, PLACEHOLDER_DOCTOR_ID);
+        if (result.error) {
+          setError(result.error);
+          setDbAvailable(false); // Could be a specific patient data fetch error or db connection
+          // Clear out data for safety
+            setSelectedPatientData(null);
+            setPatientHealthData([]);
+            setPatientMedications([]);
+            setAiSuggestions([]);
+            setChatMessages([]);
+        } else {
+          setSelectedPatientData(result.patient || null);
+          setPatientHealthData(result.healthData || []);
+          setPatientMedications(result.medications || []);
+          setAiSuggestions(result.aiSuggestions || []);
+          setChatMessages(result.chatMessages || []);
+          setDbAvailable(true);
 
-        // Fetch Patient Profile
-        const usersCollection = dbInstance!.collection<Patient>('users');
-        const patientData = await usersCollection.findOne({ _id: patientObjectId });
-        setSelectedPatientData(patientData ? {...patientData, id: patientData._id.toString()} : null);
+          if (result.patient) {
+            setLoadingSummary(true);
+            try {
+              const summaryResult = await summarizePatientHistory({
+                patientId: selectedPatientId,
+                medicalHistory: result.patient.medicalHistory || "No detailed history available."
+              });
+              setHistorySummary(summaryResult.summary);
+            } catch (e) { console.error("AI Summary Error", e); setHistorySummary("Could not generate summary."); }
+            finally { setLoadingSummary(false); }
 
-        if (patientData) {
-          // Generate AI Summary
-          setLoadingSummary(true);
-          try {
-            const summaryResult = await summarizePatientHistory({
-              patientId: selectedPatientId,
-              medicalHistory: patientData.medicalHistory || "No detailed history available."
-            });
-            setHistorySummary(summaryResult.summary);
-          } catch (e) { console.error("AI Summary Error", e); setHistorySummary("Could not generate summary.");}
-          finally { setLoadingSummary(false); }
-        }
-        
-        // Fetch Health Data
-        const healthCollection = dbInstance!.collection<PatientHealthData>('healthData');
-        const healthData = await healthCollection.find({ patientId: patientObjectId })
-          .sort({ timestamp: -1 }).limit(10).toArray();
-        setPatientHealthData(healthData.map(d => ({...d, id: d._id?.toString() })));
-
-        // Fetch Medications
-        const medsCollection = dbInstance!.collection<PatientMedication>('medications');
-        let meds = await medsCollection.find({ patientId: patientObjectId }).toArray();
-        meds = meds.map(med => ({
-           ...med,
-           id: med._id?.toString(),
-           adherence: med.adherence ?? Math.floor(Math.random() * 31) + 70
-        }));
-        setPatientMedications(meds);
-        
-        if (patientData) {
-            // Generate Care Plan (after medications are fetched)
             setLoadingCarePlan(true);
             try {
-                const currentMedsString = meds.map(m => `${m.name} (${m.dosage})`).join(', ') || "None listed";
-                const predictedRisks = patientData?.readmissionRisk ? `Readmission Risk: ${patientData?.readmissionRisk}` : "No specific risks predicted.";
+                const currentMedsString = (result.medications || []).map(m => `${m.name} (${m.dosage})`).join(', ') || "None listed";
+                const predictedRisks = result.patient?.readmissionRisk ? `Readmission Risk: ${result.patient?.readmissionRisk}` : "No specific risks predicted.";
                 const carePlanResult = await generateCarePlan({
-                patientId: selectedPatientId,
-                predictedRisks: predictedRisks,
-                medicalHistory: patientData.medicalHistory || "No detailed history available.",
-                currentMedications: currentMedsString
+                  patientId: selectedPatientId,
+                  predictedRisks: predictedRisks,
+                  medicalHistory: result.patient.medicalHistory || "No detailed history available.",
+                  currentMedications: currentMedsString
                 });
                 setCarePlan(carePlanResult.carePlan);
             } catch (e) { console.error("AI Care Plan Error", e); setCarePlan("Could not generate care plan.");}
             finally { setLoadingCarePlan(false); }
+          }
         }
-
-
-        // Fetch AI Suggestions
-        const suggestionsCollection = dbInstance!.collection<AISuggestion>('aiSuggestions');
-        const suggestions = await suggestionsCollection.find({ patientId: patientObjectId })
-          .sort({ timestamp: -1 }).toArray();
-        setAiSuggestions(suggestions.map(s => ({...s, id: s._id?.toString() })));
-
-        // Fetch Chat Messages
-        const chatId = getChatId(PLACEHOLDER_DOCTOR_ID, selectedPatientId);
-        const chatCollection = dbInstance!.collection<ChatMessage>('chatMessages');
-        const messages = await chatCollection.find({ chatId }).sort({ timestamp: 1 }).toArray();
-        setChatMessages(messages.map(m => ({...m, id: m._id?.toString() })));
-
-      } catch (err) {
-        console.error("Error fetching patient details:", err);
-        setError("Could not load patient data.");
+      } catch (e: any) {
+        setError(e.message || "An unexpected error occurred fetching patient details.");
+        setDbAvailable(false);
+        console.error(e);
       } finally {
         setLoadingPatientDetails(false);
       }
     }
 
     fetchPatientAllData();
-  }, [dbInstance, selectedPatientId, error]); // Added error to dependency array
-
-  const getChatId = (doctorId: string, patientId: string): string => {
-    return [doctorId, patientId].sort().join('_');
-  };
+  }, [selectedPatientId]);
 
   const handleSendMessage = async () => {
-    if (!dbInstance || !newMessage.trim() || !selectedPatientId) {
-      toast({ title: "Cannot Send", description: "Message is empty or connection issue.", variant: "destructive" });
+    if (!newMessage.trim() || !selectedPatientId) {
+      toast({ title: "Cannot Send", description: "Message is empty or no patient selected.", variant: "destructive" });
       return;
     }
     setSendingMessage(true);
-    const chatId = getChatId(PLACEHOLDER_DOCTOR_ID, selectedPatientId);
-    const message: Omit<ChatMessage, '_id' | 'id'> = {
-      chatId,
-      senderId: PLACEHOLDER_DOCTOR_ID,
-      senderName: PLACEHOLDER_DOCTOR_NAME,
-      text: newMessage,
-      timestamp: new Date(),
-    };
     try {
-      const chatCollection = dbInstance.collection<ChatMessage>('chatMessages');
-      const result = await chatCollection.insertOne(message as ChatMessage); // Cast to include _id potentially
-      // Optimistically update UI
-      setChatMessages(prev => [...prev, {...message, _id: result.insertedId, id: result.insertedId.toString() }]);
-      setNewMessage('');
+      const result = await sendChatMessageAction(PLACEHOLDER_DOCTOR_ID, PLACEHOLDER_DOCTOR_NAME, selectedPatientId, newMessage);
+      if (result.error) {
+        toast({ title: "Message Failed", description: result.error, variant: "destructive" });
+      } else if (result.message) {
+        setChatMessages(prev => [...prev, result.message!]);
+        setNewMessage('');
+      }
     } catch (err) {
       console.error("Error sending message:", err);
       toast({ title: "Message Failed", description: "Could not send message.", variant: "destructive" });
@@ -267,34 +179,30 @@ export default function DoctorDashboard() {
   };
 
   const handleSuggestionAction = async (suggestionIdStr: string, action: 'approve' | 'reject') => {
-    if (!dbInstance || !selectedPatientId) {
-      toast({ title: "Action Failed", description: "Connection issue.", variant: "destructive" });
+    if (!selectedPatientId) {
+      toast({ title: "Action Failed", description: "No patient selected.", variant: "destructive" });
       return;
     }
-    const suggestionObjectId = toObjectId(suggestionIdStr);
-    if(!suggestionObjectId) {
-        toast({ title: "Action Failed", description: "Invalid suggestion ID.", variant: "destructive" });
-        return;
-    }
-
     try {
-      const suggestionsCollection = dbInstance.collection<AISuggestion>('aiSuggestions');
-      await suggestionsCollection.updateOne(
-        { _id: suggestionObjectId, patientId: toObjectId(selectedPatientId) },
-        { $set: { status: action === 'approve' ? 'approved' : 'rejected' } }
-      );
-      setAiSuggestions(prev => prev.map(s => s.id === suggestionIdStr ? { ...s, status: action === 'approve' ? 'approved' : 'rejected' } : s));
-      toast({
-        title: `Suggestion ${action === 'approve' ? 'Approved' : 'Rejected'}`,
-        description: `The AI suggestion status has been updated.`,
-      });
+      const result = await updateSuggestionStatusAction(suggestionIdStr, selectedPatientId, action);
+      if (result.error) {
+        toast({ title: "Update Failed", description: result.error, variant: "destructive" });
+      } else if (result.updatedSuggestion) {
+        setAiSuggestions(prev => prev.map(s => s.id === suggestionIdStr ? { ...s, status: action === 'approve' ? 'approved' : 'rejected' } : s));
+        toast({
+          title: `Suggestion ${action === 'approve' ? 'Approved' : 'Rejected'}`,
+          description: `The AI suggestion status has been updated.`,
+        });
+      }
     } catch (err) {
       console.error(`Error ${action}ing suggestion:`, err);
       toast({ title: "Update Failed", description: `Could not ${action} the suggestion.`, variant: "destructive" });
+    } finally {
+      setSendingMessage(false);
     }
   };
 
-  const formatTimestamp = (timestamp: Date | undefined): string => {
+  const formatTimestamp = (timestamp: Date | string | undefined): string => {
     if (!timestamp) return 'N/A';
     return new Date(timestamp).toLocaleString();
   };
@@ -303,9 +211,7 @@ export default function DoctorDashboard() {
     return patients.find(p => p.id === selectedPatientId);
   }, [patients, selectedPatientId]);
   
-  const dbAvailable = !!dbInstance;
-  const coreDataLoading = dbAvailable && loadingPatientDetails;
-
+  const coreDataLoading = loadingPatientDetails;
 
   return (
     <div className="space-y-6">
@@ -321,7 +227,7 @@ export default function DoctorDashboard() {
         </Alert>
       )}
 
-      {!dbAvailable && !error && (
+      {!dbAvailable && !loadingPatients && !loadingPatientDetails && (
         <Alert variant="default" className="bg-yellow-50 border-yellow-200 text-yellow-800">
           <AlertTriangle className="h-4 w-4 text-yellow-600" />
           <AlertTitle>Database Disconnected</AlertTitle>
@@ -506,7 +412,7 @@ export default function DoctorDashboard() {
                   <CardDescription>Review and act on AI-driven suggestions.</CardDescription>
                 </CardHeader>
                 <CardContent>
-                  {loadingPatientDetails && !aiSuggestions.length ? ( // Show loader if parent is loading and no suggestions yet
+                  {loadingPatientDetails && !aiSuggestions.length ? ( 
                     <div className="flex items-center justify-center p-4">
                       <Loader2 className="h-6 w-6 animate-spin" />
                     </div>
@@ -594,19 +500,26 @@ export default function DoctorDashboard() {
               </Card>
             </div>
           </div>
-        ) : selectedPatientId && !coreDataLoading ? (
+        ) : selectedPatientId && !coreDataLoading && dbAvailable ? ( // Show if patient selected, not loading, but data is missing (implies an error during fetch)
           <Alert variant="destructive">
             <AlertTriangle className="h-4 w-4" />
             <AlertTitle>Error Loading Patient Data</AlertTitle>
             <AlertDescription>{error || "Could not load data for the selected patient. Please try again or select a different patient."}</AlertDescription>
           </Alert>
-        ) : null
+        ) : null 
       )}
 
-      {!selectedPatientId && !dbAvailable && (
+      {!selectedPatientId && dbAvailable && ( // Shown if no patient selected, but DB connection is fine
         <Card>
           <CardContent className="pt-6">
-            <p className="text-center text-muted-foreground">Select a patient to view details (Feature requires active database connection).</p>
+            <p className="text-center text-muted-foreground">Select a patient to view details.</p>
+          </CardContent>
+        </Card>
+      )}
+       {!selectedPatientId && !dbAvailable && !loadingPatients && ( // Shown if no patient selected and DB is unavailable
+        <Card>
+          <CardContent className="pt-6">
+            <p className="text-center text-muted-foreground">Patient selection unavailable. Database connection issue.</p>
           </CardContent>
         </Card>
       )}

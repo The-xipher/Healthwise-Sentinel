@@ -1,28 +1,18 @@
+
 'use client';
 
 import * as React from 'react';
 import { useState, useEffect } from 'react';
-import { connectToDatabase, toObjectId, ObjectId } from '@/lib/mongodb';
-import type { Db } from 'mongodb';
+import type { ObjectId } from 'mongodb'; // Keep for type definition if AppUser uses it.
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
-import { Button } from '@/components/ui/button'; // Added Button for consistency
+import { Button } from '@/components/ui/button';
 import { Users, Activity, ShieldCheck, AlertTriangle } from 'lucide-react';
-
-interface AppUser {
-  _id: ObjectId | string; // MongoDB uses _id
-  id?: string; // Keep for compatibility if needed, or map _id to id
-  displayName?: string | null;
-  email?: string | null;
-  photoURL?: string | null;
-  role?: 'patient' | 'doctor' | 'admin';
-  lastSignInTime?: string | Date; // From Firebase Auth UserMetadata or custom field
-  creationTime?: string | Date; // From Firebase Auth UserMetadata or custom field
-}
+import { fetchAdminDashboardData, AdminUser } from '@/app/actions/adminActions'; // Import server action and type
 
 interface AuditLog {
   id: string;
@@ -37,54 +27,43 @@ const PLACEHOLDER_ADMIN_ID = 'test-admin-id';
 const PLACEHOLDER_ADMIN_EMAIL = 'admin@example.com';
 
 export default function AdminDashboard() {
-  const [users, setUsers] = useState<AppUser[]>([]);
+  const [users, setUsers] = useState<AdminUser[]>([]);
   const [loadingUsers, setLoadingUsers] = useState(true);
   const [auditLogs, setAuditLogs] = useState<AuditLog[]>([]);
   const [loadingLogs, setLoadingLogs] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [dbInstance, setDbInstance] = useState<Db | null>(null);
+  const [dbAvailable, setDbAvailable] = useState(true); // Assume DB is available, action will tell otherwise
 
   useEffect(() => {
-    async function initializeDb() {
-      try {
-        const { db } = await connectToDatabase();
-        setDbInstance(db);
-      } catch (e) {
-        setError('Failed to connect to the database.');
-        console.error(e);
-        setLoadingUsers(false);
-        setLoadingLogs(false);
-      }
-    }
-    initializeDb();
-  }, []);
-
-  useEffect(() => {
-    if (!dbInstance) {
-      if (!error) setLoadingUsers(true); // Only set loading if no db connection error yet
-      return;
-    }
-
-    async function fetchUsers() {
+    async function loadData() {
       setLoadingUsers(true);
+      setError(null);
       try {
-        const usersCollection = dbInstance!.collection<AppUser>('users');
-        const userList = await usersCollection.find({}).toArray();
-        setUsers(userList.map(u => ({...u, id: u._id.toString()}))); // Map _id to id
-      } catch (err) {
-        console.error("Error fetching users:", err);
-        setError("Could not load user list.");
+        const result = await fetchAdminDashboardData();
+        if (result.error) {
+          setError(result.error);
+          setDbAvailable(false); // Or handle error more granularly
+          setUsers([]);
+        } else {
+          setUsers(result.users || []);
+          setDbAvailable(true);
+        }
+      } catch (e: any) {
+        setError(e.message || 'An unexpected error occurred while fetching admin data.');
+        setDbAvailable(false);
+        setUsers([]);
+        console.error(e);
       } finally {
         setLoadingUsers(false);
       }
     }
 
-    fetchUsers();
+    loadData();
 
     // Simulate fetching audit logs (remains unchanged)
     setLoadingLogs(true);
     const fetchLogs = async () => {
-      await new Promise(resolve => setTimeout(resolve, 1500));
+      await new Promise(resolve => setTimeout(resolve, 1500)); // Simulate delay
       const simulatedLogs: AuditLog[] = [
         { id: 'log1', timestamp: new Date(), userId: 'doctor_abc', userEmail: 'dr.smith@hospital.org', action: 'view_patient_data', details: 'Patient ID: patient_xyz' },
         { id: 'log2', timestamp: new Date(Date.now() - 60000 * 5), userId: 'patient_xyz', userEmail: 'patient@mail.com', action: 'symptom_report', details: 'Severity: moderate' },
@@ -96,7 +75,7 @@ export default function AdminDashboard() {
     };
     fetchLogs();
 
-  }, [dbInstance, error]);
+  }, []);
 
   const getInitials = (name: string | null | undefined): string => {
     if (!name) return '?';
@@ -118,9 +97,8 @@ export default function AdminDashboard() {
     if (!date) return 'N/A';
     return date.toLocaleString();
   };
-
-  const dbAvailable = !!dbInstance;
-  const showSkeleton = !dbAvailable && (loadingUsers || loadingLogs) && !error;
+  
+  const showSkeleton = loadingUsers || loadingLogs;
 
   return (
     <div className="space-y-6">
@@ -136,7 +114,7 @@ export default function AdminDashboard() {
         </Alert>
       )}
 
-      {!dbAvailable && !error && (
+      {!dbAvailable && !loadingUsers && !error && ( // Show if not loading, no other error, and db determined unavailable
         <Alert variant="default" className="bg-yellow-50 border-yellow-200 text-yellow-800">
           <AlertTriangle className="h-4 w-4 text-yellow-600" />
           <AlertTitle>Database Disconnected</AlertTitle>
@@ -163,7 +141,7 @@ export default function AdminDashboard() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {loadingUsers || showSkeleton ? (
+              {loadingUsers ? (
                 Array.from({ length: 5 }).map((_, index) => (
                   <TableRow key={index}>
                     <TableCell><Skeleton className="h-10 w-32" /></TableCell>
@@ -202,7 +180,7 @@ export default function AdminDashboard() {
               ) : (
                 <TableRow>
                   <TableCell colSpan={5} className="text-center text-muted-foreground">
-                    {dbAvailable ? 'No users found.' : 'User data unavailable.'}
+                    {dbAvailable ? 'No users found.' : 'User data unavailable due to connection issues.'}
                   </TableCell>
                 </TableRow>
               )}
@@ -214,7 +192,7 @@ export default function AdminDashboard() {
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2"><Activity className="h-5 w-5" /> System Audit Logs</CardTitle>
-          <CardDescription>Recent activity logs for monitoring and compliance.</CardDescription>
+          <CardDescription>Recent activity logs for monitoring and compliance (Simulated).</CardDescription>
         </CardHeader>
         <CardContent>
           <Table>
@@ -227,7 +205,7 @@ export default function AdminDashboard() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {loadingLogs || showSkeleton ? (
+              {loadingLogs ? (
                 Array.from({ length: 5 }).map((_, index) => (
                   <TableRow key={index}>
                     <TableCell><Skeleton className="h-4 w-36" /></TableCell>
@@ -250,7 +228,7 @@ export default function AdminDashboard() {
               ) : (
                 <TableRow>
                   <TableCell colSpan={4} className="text-center text-muted-foreground">
-                    {dbAvailable ? 'No audit logs available.' : 'Audit logs unavailable.'}
+                    No audit logs available.
                   </TableCell>
                 </TableRow>
               )}
