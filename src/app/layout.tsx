@@ -38,7 +38,7 @@ export default async function RootLayout({
              <SidebarMenu className="flex-grow p-2">
                 {/* Always show generic dashboard link, it will redirect based on role */}
                 <SidebarMenuItem>
-                    <Link href="/dashboard">
+                    <Link href="/dashboard" asChild>
                         <SidebarMenuButton tooltip="My Dashboard">
                          <Home />
                          <span>My Dashboard</span>
@@ -48,7 +48,7 @@ export default async function RootLayout({
 
                 {session?.role === 'patient' && (
                   <SidebarMenuItem>
-                      <Link href="/dashboard/patient">
+                      <Link href="/dashboard/patient" asChild>
                           <SidebarMenuButton tooltip="Patient View">
                            <User />
                            <span>Patient View</span>
@@ -58,7 +58,7 @@ export default async function RootLayout({
                 )}
                 {session?.role === 'doctor' && (
                   <SidebarMenuItem>
-                      <Link href="/dashboard/doctor">
+                      <Link href="/dashboard/doctor" asChild>
                           <SidebarMenuButton tooltip="Doctor View">
                            <Stethoscope />
                            <span>Doctor View</span>
@@ -69,7 +69,7 @@ export default async function RootLayout({
                  {session?.role === 'admin' && (
                   <>
                     <SidebarMenuItem>
-                        <Link href="/dashboard/admin">
+                        <Link href="/dashboard/admin" asChild>
                             <SidebarMenuButton tooltip="Admin View">
                              <ShieldCheck />
                              <span>Admin View</span>
@@ -77,7 +77,7 @@ export default async function RootLayout({
                         </Link>
                     </SidebarMenuItem>
                     <SidebarMenuItem>
-                        <Link href="/dashboard/patient">
+                        <Link href="/dashboard/patient" asChild>
                             <SidebarMenuButton tooltip="View as Patient (Admin)">
                              <User />
                              <span>Patient View (Admin)</span>
@@ -85,7 +85,7 @@ export default async function RootLayout({
                         </Link>
                     </SidebarMenuItem>
                     <SidebarMenuItem>
-                        <Link href="/dashboard/doctor">
+                        <Link href="/dashboard/doctor" asChild>
                             <SidebarMenuButton tooltip="View as Doctor (Admin)">
                              <Stethoscope />
                              <span>Doctor View (Admin)</span>
@@ -96,7 +96,7 @@ export default async function RootLayout({
                 )}
 
                 <SidebarMenuItem>
-                    <Link href="/seed-database">
+                    <Link href="/seed-database" asChild>
                         <SidebarMenuButton tooltip="Seed Database">
                          <Database /> 
                          <span>Seed Data</span>
