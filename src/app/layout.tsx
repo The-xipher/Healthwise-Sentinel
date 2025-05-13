@@ -1,3 +1,4 @@
+
 import type { Metadata } from 'next';
 import { Geist, Geist_Mono } from 'next/font/google';
 import './globals.css';
@@ -5,7 +6,7 @@ import { SidebarProvider, Sidebar, SidebarInset, SidebarMenu, SidebarMenuItem, S
 import { Toaster } from '@/components/ui/toaster';
 import Header from '@/components/header'; // Import the simplified header
 import Link from 'next/link'; // Import Link
-import { Home } from 'lucide-react'; // Import icons
+import { Home, Database } from 'lucide-react'; // Import icons
 
 const geistSans = Geist({
   variable: '--font-geist-sans',
@@ -39,6 +40,14 @@ export default function RootLayout({
                         <SidebarMenuButton tooltip="Dashboard">
                          <Home />
                          <span>Dashboard</span>
+                        </SidebarMenuButton>
+                    </Link>
+                </SidebarMenuItem>
+                <SidebarMenuItem>
+                    <Link href="/seed-database" legacyBehavior passHref>
+                        <SidebarMenuButton tooltip="Seed Database">
+                         <Database />
+                         <span>Seed Data</span>
                         </SidebarMenuButton>
                     </Link>
                 </SidebarMenuItem>
