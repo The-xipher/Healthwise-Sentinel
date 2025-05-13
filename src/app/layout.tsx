@@ -1,4 +1,3 @@
-
 import type { Metadata } from 'next';
 import { Geist, Geist_Mono } from 'next/font/google';
 import './globals.css';
@@ -6,7 +5,7 @@ import { SidebarProvider, Sidebar, SidebarInset, SidebarMenu, SidebarMenuItem, S
 import { Toaster } from '@/components/ui/toaster';
 import Header from '@/components/header';
 import Link from 'next/link';
-import { Home, User, Stethoscope, ShieldCheck, Database, LogOut } from 'lucide-react'; // Removed Users icon as it's not used in the updated structure.
+import { Home, User, Stethoscope, ShieldCheck, Database, LogOut } from 'lucide-react'; 
 import { getSession } from '@/app/actions/authActions'; 
 
 const geistSans = Geist({
@@ -34,13 +33,13 @@ export default async function RootLayout({
   return (
     <html lang="en">
       <body className={`${geistSans.variable} ${geistMono.variable} antialiased`}>
-        <SidebarProvider defaultOpen={true}>
+        <SidebarProvider> {/* Removed defaultOpen={true} to rely on cookie/default state */}
           <Sidebar variant="inset" collapsible="icon">
              <SidebarMenu className="flex-grow p-2">
                 {/* Always show generic dashboard link, it will redirect based on role */}
                 <SidebarMenuItem>
-                    <Link href="/dashboard" asChild>
-                        <SidebarMenuButton tooltip="My Dashboard">
+                    <Link href="/dashboard" passHref legacyBehavior>
+                        <SidebarMenuButton tooltip="My Dashboard" type="button"> {/* Explicitly type="button" for non-submit links */}
                          <Home />
                          <span>My Dashboard</span>
                         </SidebarMenuButton>
@@ -49,8 +48,8 @@ export default async function RootLayout({
 
                 {session?.role === 'patient' && (
                   <SidebarMenuItem>
-                      <Link href="/dashboard/patient" asChild>
-                          <SidebarMenuButton tooltip="Patient View">
+                      <Link href="/dashboard/patient" passHref legacyBehavior>
+                          <SidebarMenuButton tooltip="Patient View" type="button">
                            <User />
                            <span>Patient View</span>
                           </SidebarMenuButton>
@@ -59,8 +58,8 @@ export default async function RootLayout({
                 )}
                 {session?.role === 'doctor' && (
                   <SidebarMenuItem>
-                      <Link href="/dashboard/doctor" asChild>
-                          <SidebarMenuButton tooltip="Doctor View">
+                      <Link href="/dashboard/doctor" passHref legacyBehavior>
+                          <SidebarMenuButton tooltip="Doctor View" type="button">
                            <Stethoscope />
                            <span>Doctor View</span>
                           </SidebarMenuButton>
@@ -70,24 +69,24 @@ export default async function RootLayout({
                  {session?.role === 'admin' && (
                   <>
                     <SidebarMenuItem>
-                        <Link href="/dashboard/admin" asChild>
-                            <SidebarMenuButton tooltip="Admin View">
+                        <Link href="/dashboard/admin" passHref legacyBehavior>
+                            <SidebarMenuButton tooltip="Admin View" type="button">
                              <ShieldCheck />
                              <span>Admin View</span>
                             </SidebarMenuButton>
                         </Link>
                     </SidebarMenuItem>
                     <SidebarMenuItem>
-                        <Link href="/dashboard/patient" asChild>
-                            <SidebarMenuButton tooltip="View as Patient (Admin)">
+                        <Link href="/dashboard/patient" passHref legacyBehavior>
+                            <SidebarMenuButton tooltip="View as Patient (Admin)" type="button">
                              <User />
                              <span>Patient View (Admin)</span>
                             </SidebarMenuButton>
                         </Link>
                     </SidebarMenuItem>
                     <SidebarMenuItem>
-                        <Link href="/dashboard/doctor" asChild>
-                            <SidebarMenuButton tooltip="View as Doctor (Admin)">
+                        <Link href="/dashboard/doctor" passHref legacyBehavior>
+                            <SidebarMenuButton tooltip="View as Doctor (Admin)" type="button">
                              <Stethoscope />
                              <span>Doctor View (Admin)</span>
                             </SidebarMenuButton>
@@ -97,8 +96,8 @@ export default async function RootLayout({
                 )}
 
                 <SidebarMenuItem>
-                    <Link href="/seed-database" asChild>
-                        <SidebarMenuButton tooltip="Seed Database">
+                    <Link href="/seed-database" passHref legacyBehavior>
+                        <SidebarMenuButton tooltip="Seed Database" type="button">
                          <Database /> 
                          <span>Seed Data</span>
                         </SidebarMenuButton>

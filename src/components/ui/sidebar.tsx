@@ -1,3 +1,4 @@
+
 "use client"
 
 import * as React from "react"
@@ -72,7 +73,19 @@ const SidebarProvider = React.forwardRef<
 
     // This is the internal state of the sidebar.
     // We use openProp and setOpenProp for control from outside the component.
-    const [_open, _setOpen] = React.useState(defaultOpen)
+    const [_open, _setOpen] = React.useState(() => {
+        if (typeof document !== 'undefined') {
+            const cookieValue = document.cookie
+                .split("; ")
+                .find((row) => row.startsWith(`${SIDEBAR_COOKIE_NAME}=`))
+                ?.split("=")[1];
+            if (cookieValue) {
+                return cookieValue === "true";
+            }
+        }
+        return defaultOpen;
+    });
+
     const open = openProp ?? _open
     const setOpen = React.useCallback(
       (value: boolean | ((value: boolean) => boolean)) => {
@@ -83,17 +96,26 @@ const SidebarProvider = React.forwardRef<
           _setOpen(openState)
         }
 
-        // This sets the cookie to keep the sidebar state.
-        document.cookie = `${SIDEBAR_COOKIE_NAME}=${openState}; path=/; max-age=${SIDEBAR_COOKIE_MAX_AGE}`
+        if (typeof document !== 'undefined') {
+            document.cookie = `${SIDEBAR_COOKIE_NAME}=${openState}; path=/; max-age=${SIDEBAR_COOKIE_MAX_AGE}`
+        }
       },
       [setOpenProp, open]
     )
+    
+    React.useEffect(() => {
+        // Sync cookie on initial client mount if controlled externally
+        if (typeof document !== 'undefined' && openProp !== undefined) {
+             document.cookie = `${SIDEBAR_COOKIE_NAME}=${openProp}; path=/; max-age=${SIDEBAR_COOKIE_MAX_AGE}`
+        }
+    }, [openProp]);
+
 
     // Helper to toggle the sidebar.
     const toggleSidebar = React.useCallback(() => {
       return isMobile
-        ? setOpenMobile((open) => !open)
-        : setOpen((open) => !open)
+        ? setOpenMobile((currentOpen) => !currentOpen)
+        : setOpen((currentOpen) => !currentOpen)
     }, [isMobile, setOpen, setOpenMobile])
 
     // Adds a keyboard shortcut to toggle the sidebar.
@@ -114,11 +136,16 @@ const SidebarProvider = React.forwardRef<
 
     // We add a state so that we can do data-state="expanded" or "collapsed".
     // This makes it easier to style the sidebar with Tailwind classes.
-    const state = open ? "expanded" : "collapsed"
+    const [effectiveState, setEffectiveState] = React.useState<'expanded' | 'collapsed'>(open ? 'expanded' : 'collapsed');
+
+    React.useEffect(() => {
+        setEffectiveState(open ? 'expanded' : 'collapsed');
+    }, [open]);
+
 
     const contextValue = React.useMemo<SidebarContext>(
       () => ({
-        state,
+        state: effectiveState,
         open,
         setOpen,
         isMobile,
@@ -126,7 +153,7 @@ const SidebarProvider = React.forwardRef<
         setOpenMobile,
         toggleSidebar,
       }),
-      [state, open, setOpen, isMobile, openMobile, setOpenMobile, toggleSidebar]
+      [effectiveState, open, setOpen, isMobile, openMobile, setOpenMobile, toggleSidebar]
     )
 
     return (
@@ -533,22 +560,19 @@ const sidebarMenuButtonVariants = cva(
   }
 )
 
-// Define a type that can extend both Button and Anchor attributes
-type PolymorphicProps = React.AnchorHTMLAttributes<HTMLAnchorElement> & React.ButtonHTMLAttributes<HTMLButtonElement>;
-
-
 interface SidebarMenuButtonProps
-  extends Omit<PolymorphicProps, 'type'>, // Omit type to handle it based on Comp
+  extends Omit<React.AnchorHTMLAttributes<HTMLAnchorElement> & React.ButtonHTMLAttributes<HTMLButtonElement>, 'type'>,
     VariantProps<typeof sidebarMenuButtonVariants> {
   asChild?: boolean;
   isActive?: boolean;
   tooltip?: string | React.ComponentProps<typeof TooltipContent>;
-  type?: 'submit' | 'reset' | 'button'; // Explicitly type for button case
+  type?: 'submit' | 'reset' | 'button'; 
+  children?: React.ReactNode; 
 }
 
 
 const SidebarMenuButton = React.forwardRef<
-  HTMLButtonElement | HTMLAnchorElement, 
+  HTMLButtonElement | HTMLAnchorElement,
   SidebarMenuButtonProps
 >(
   (
@@ -559,29 +583,21 @@ const SidebarMenuButton = React.forwardRef<
       size = "default",
       tooltip,
       className,
-      children,
-      type: buttonType, // Capture explicit type prop
+      children, // Destructure children
+      type: explicitButtonType, 
       ...restProps
     },
     ref
   ) => {
     const { isMobile, state } = useSidebar();
-
     const hasHref = (restProps as any).href !== undefined;
-    
-    // Determine the component type
-    // If propAsChild is true, it's always Slot.
-    // Else, if href is present, it's 'a'.
-    // Else, it's 'button'.
+
     const Comp = propAsChild ? Slot : (hasHref ? 'a' : 'button');
 
-    // Remove asChild from restProps if it exists, to prevent it from being passed to DOM element
-    // This specifically targets asChild potentially coming from a parent component via restProps.
     const { asChild: _asChildFromRest, ...finalRestProps } = restProps as any;
-    
-    // Prepare props for the Comp
+
     let compProps: any = {
-      ...finalRestProps, // Contains href, onClick, etc. from parent Link or other props
+      ...finalRestProps,
       ref: ref,
       "data-sidebar": "menu-button",
       "data-size": size,
@@ -589,23 +605,22 @@ const SidebarMenuButton = React.forwardRef<
       className: cn(sidebarMenuButtonVariants({ variant, size, className })),
     };
 
-    if (Comp === 'button' && !propAsChild) {
-      compProps.type = buttonType || 'button'; // Default to 'button' if Comp is 'button' and no type is specified
-    } else if (Comp === 'a' && compProps.type) {
-      delete compProps.type; // 'type' is not a valid attribute for 'a'
+    if (Comp === 'button') {
+      compProps.type = (explicitButtonType === 'submit' || explicitButtonType === 'reset') ? explicitButtonType : 'button';
+    } else if (Comp === 'a') {
+      delete compProps.type;
     }
-
-
+    
     const buttonElement = (
       <Comp {...compProps}>
         {children}
       </Comp>
     );
-    
+
     if (!tooltip) {
       return buttonElement;
     }
-    
+
     const tooltipContentProps = typeof tooltip === 'string' ? { children: tooltip } : tooltip;
 
     return (
