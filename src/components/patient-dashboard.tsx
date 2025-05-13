@@ -566,4 +566,3 @@ export default function PatientDashboard({ userId, userRole }: PatientDashboardP
     </div>
   );
 }
-```

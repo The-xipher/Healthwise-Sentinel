@@ -110,7 +110,7 @@ const SidebarProvider = React.forwardRef<
     const setOpen = React.useCallback(
       (value: boolean | ((currentOpen: boolean) => boolean)) => {
         // Determine the new state based on whether a value or a function is passed
-        const newOpenState = typeof value === "function" ? value(open) : value;
+        const newOpenState = typeof value === "function" ? value(open) : value(open);
     
         if (setOpenProp) {
           setOpenProp(newOpenState); // Controlled
@@ -593,8 +593,8 @@ const SidebarMenuButton = React.forwardRef<
       variant = "default",
       size = "default",
       tooltip,
-      className, 
-      children,
+      className,
+      children: buttonChildren, // Renamed to avoid conflict if any, and ensure it's explicitly used
       type: explicitButtonType,
       ...restProps
     },
@@ -603,9 +603,13 @@ const SidebarMenuButton = React.forwardRef<
     const { isMobile, state } = useSidebar();
     const hasHref = (restProps as any).href !== undefined;
 
+    // If propAsChild is true (e.g. when Link asChild wraps this), Comp becomes Slot.
+    // Otherwise, if href is present (passed by Link asChild), Comp becomes 'a'.
+    // Otherwise, Comp becomes 'button'.
     const Comp = propAsChild ? Slot : (hasHref ? 'a' : 'button');
-
-    const { asChild: _asChildFromRest, ...finalRestProps } = restProps as any;
+    
+    // Remove asChild from restProps if it exists, to prevent passing it to DOM element if Comp is not Slot
+    const { asChild: _internalAsChild, ...finalRestProps } = restProps as any;
 
     let compProps: any = {
       ...finalRestProps,
@@ -617,17 +621,17 @@ const SidebarMenuButton = React.forwardRef<
     };
 
     if (Comp === 'button') {
-      // For buttons, set type explicitly. Default to "button" if not "submit" or "reset".
       compProps.type = (explicitButtonType === 'submit' || explicitButtonType === 'reset') ? explicitButtonType : 'button';
     } else if (Comp === 'a') {
-      // For anchor tags, remove the type attribute if it was accidentally passed or defaulted.
-      // The 'type' prop on SidebarMenuButtonProps is for button semantics, not <a> tag's type attribute.
-      delete compProps.type; 
+      // Anchor tags don't have a 'type' attribute in the same way buttons do.
+      // If `type` was passed for button semantics, remove it for anchors.
+      delete compProps.type;
     }
+    // If Comp is Slot, type might be passed down if it's a valid prop for the child of Slot.
     
     const buttonElement = (
       <Comp {...compProps}>
-        {children}
+        {buttonChildren}
       </Comp>
     );
 
