@@ -1,4 +1,3 @@
-
 'use server';
 
 import { connectToDatabase, toObjectId, ObjectId } from '@/lib/mongodb';
@@ -142,23 +141,28 @@ export async function fetchDoctorPatientDetailsAction(patientIdStr: string, doct
 
   try {
     const { db } = await connectToDatabase();
-
     const usersCollection = db.collection<RawDoctorPatient>('users');
-    const rawPatient = await usersCollection.findOne({ _id: patientObjectId, assignedDoctorId: doctorId }); // Ensure patient is assigned to this doctor
+
+    // First, try to find the patient specifically assigned to this doctor.
+    const rawPatient = await usersCollection.findOne({ _id: patientObjectId, assignedDoctorId: doctorId, role: 'patient' });
     
     if (!rawPatient) {
-      // Check if patient exists but not assigned to this doctor, or if patient doesn't exist
-      const anyPatient = await usersCollection.findOne({ _id: patientObjectId });
-      if (!anyPatient) return { error: "Patient not found." };
-      if (anyPatient.assignedDoctorId !== doctorId) return { error: "Patient not assigned to this doctor." };
+      // If not found directly, check if the patient exists at all.
+      const anyPatientWithId = await usersCollection.findOne({ _id: patientObjectId, role: 'patient' });
+      if (!anyPatientWithId) {
+        return { error: "Patient not found." }; // Patient ID does not exist or is not a patient.
+      }
+      // Patient exists but is not assigned to this doctor.
+      return { error: "Patient not assigned to this doctor." }; 
     }
 
-    const patient: DoctorPatient | undefined = rawPatient ? {
+    // If rawPatient is found, then proceed.
+    const patient: DoctorPatient = {
         ...rawPatient,
          _id: rawPatient._id.toString(),
          id: rawPatient._id.toString(),
          lastActivity: rawPatient.lastActivity?.toISOString()
-        } : undefined;
+    };
 
     const healthCollection = db.collection<RawDoctorPatientHealthData>('healthData');
     const rawHealthData = await healthCollection.find({ patientId: patientObjectId })
@@ -270,8 +274,15 @@ export async function updateSuggestionStatusAction(
     if (updateResult.matchedCount === 0) {
       return { error: "Suggestion not found or does not belong to the patient." };
     }
-    if (updateResult.modifiedCount === 0) {
-      return { error: "Suggestion status was already set to " + status + "." };
+    if (updateResult.modifiedCount === 0 && updateResult.upsertedCount === 0) { // check modified or upserted
+      // This case might mean the status was already set to the new value.
+      // Consider if this should be an error or a silent success.
+      // For now, let's assume it's not an error, but the frontend might want to know.
+      const existingSuggestion = await suggestionsCollection.findOne({ _id: suggestionObjectId });
+      if (existingSuggestion && existingSuggestion.status === status) {
+         return { updatedSuggestion: { id: suggestionIdStr, status: status } }; // Status was already as requested
+      }
+      return { error: "Suggestion status was not changed. It might already be " + status + "." };
     }
     
     return { updatedSuggestion: { id: suggestionIdStr, status: status } };

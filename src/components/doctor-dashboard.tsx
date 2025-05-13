@@ -1,4 +1,3 @@
-
 'use client';
 
 import * as React from 'react';
@@ -70,13 +69,16 @@ export default function DoctorDashboard({ doctorId, doctorName, userRole }: Doct
         const result = await fetchDoctorPatientsAction(doctorId);
         if (result.error) {
           setError(result.error);
-          if (result.error.toLowerCase().includes("database connection") || result.error.toLowerCase().includes("timeout")) {
+          if (result.error.toLowerCase().includes("database connection") || 
+              result.error.toLowerCase().includes("timeout") ||
+              result.error.toLowerCase().includes("failed to connect") ||
+              result.error.toLowerCase().includes("could not load patient list")) { // Broader check for connection issues
             setDbAvailable(false);
           }
           setPatients([]);
         } else {
           setPatients(result.patients || []);
-          setDbAvailable(true);
+          setDbAvailable(true); // Explicitly set true on success
         }
       } catch (e: any) {
         setError(e.message || 'An unexpected error occurred while fetching patients.');
@@ -113,7 +115,10 @@ export default function DoctorDashboard({ doctorId, doctorName, userRole }: Doct
         const result = await fetchDoctorPatientDetailsAction(selectedPatientId, doctorId);
         if (result.error) {
           setError(result.error);
-           if (result.error.toLowerCase().includes("database connection") || result.error.toLowerCase().includes("invalid patient id")) {
+           if (result.error.toLowerCase().includes("database connection") || 
+               result.error.toLowerCase().includes("timeout") ||
+               result.error.toLowerCase().includes("failed to connect") ||
+               result.error.toLowerCase().includes("could not load patient data")) { // Broader check
             setDbAvailable(false); 
           }
           setSelectedPatientData(null);
@@ -127,7 +132,7 @@ export default function DoctorDashboard({ doctorId, doctorName, userRole }: Doct
           setPatientMedications(result.medications || []);
           setAiSuggestions(result.aiSuggestions || []);
           setChatMessages(result.chatMessages || []);
-          setDbAvailable(true);
+          setDbAvailable(true); // Explicitly set true on success
 
           if (result.patient) {
             setLoadingSummary(true);
