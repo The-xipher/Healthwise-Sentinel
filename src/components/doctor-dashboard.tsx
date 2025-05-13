@@ -31,7 +31,8 @@ import {
   DoctorAISuggestion
 } from '@/app/actions/doctorActions'; // Import server actions
 
-const PLACEHOLDER_DOCTOR_ID = 'test-doctor-id';
+// Updated to a valid 24-character hex string for MongoDB ObjectId compatibility
+const PLACEHOLDER_DOCTOR_ID = '507f1f77bcf86cd799439012'; 
 const PLACEHOLDER_DOCTOR_NAME = 'Dr. Placeholder';
 
 export default function DoctorDashboard() {
@@ -59,10 +60,16 @@ export default function DoctorDashboard() {
       setLoadingPatients(true);
       setError(null);
       try {
+        // Assuming PLACEHOLDER_DOCTOR_ID is a string that might represent an ObjectId
+        // or another unique identifier stored as string in `assignedDoctorId`.
+        // If `assignedDoctorId` in DB is ObjectId, PLACEHOLDER_DOCTOR_ID needs to be a valid hex string for conversion.
+        // If `assignedDoctorId` is string, this direct use is fine.
         const result = await fetchDoctorPatientsAction(PLACEHOLDER_DOCTOR_ID);
         if (result.error) {
           setError(result.error);
-          setDbAvailable(false);
+          if (result.error.includes("Database connection") || result.error.includes("Invalid ID format")) {
+            setDbAvailable(false);
+          }
           setPatients([]);
         } else {
           setPatients(result.patients || []);
@@ -89,21 +96,24 @@ export default function DoctorDashboard() {
       setChatMessages([]);
       setHistorySummary(null);
       setCarePlan(null);
-      setLoadingPatientDetails(false);
+      setLoadingPatientDetails(false); // Ensure this resets
       return;
     }
 
     async function fetchPatientAllData() {
       setLoadingPatientDetails(true);
       setError(null); // Clear previous patient-specific errors
-      setHistorySummary(null);
+      setHistorySummary(null); // Reset AI summaries
       setCarePlan(null);
 
       try {
+        // selectedPatientId is expected to be a valid ObjectId string here
         const result = await fetchDoctorPatientDetailsAction(selectedPatientId, PLACEHOLDER_DOCTOR_ID);
         if (result.error) {
           setError(result.error);
-          setDbAvailable(false); // Could be a specific patient data fetch error or db connection
+           if (result.error.includes("Database connection") || result.error.includes("Invalid patient ID format")) {
+            setDbAvailable(false); 
+          }
           // Clear out data for safety
             setSelectedPatientData(null);
             setPatientHealthData([]);
@@ -122,7 +132,7 @@ export default function DoctorDashboard() {
             setLoadingSummary(true);
             try {
               const summaryResult = await summarizePatientHistory({
-                patientId: selectedPatientId,
+                patientId: selectedPatientId, // Already a string ID from patient object
                 medicalHistory: result.patient.medicalHistory || "No detailed history available."
               });
               setHistorySummary(summaryResult.summary);
@@ -132,9 +142,10 @@ export default function DoctorDashboard() {
             setLoadingCarePlan(true);
             try {
                 const currentMedsString = (result.medications || []).map(m => `${m.name} (${m.dosage})`).join(', ') || "None listed";
-                const predictedRisks = result.patient?.readmissionRisk ? `Readmission Risk: ${result.patient?.readmissionRisk}` : "No specific risks predicted.";
+                // Use a more descriptive risk string if available
+                const predictedRisks = result.patient?.readmissionRisk ? `Readmission Risk: ${result.patient.readmissionRisk}` : "No specific risks predicted.";
                 const carePlanResult = await generateCarePlan({
-                  patientId: selectedPatientId,
+                  patientId: selectedPatientId, // Already a string ID
                   predictedRisks: predictedRisks,
                   medicalHistory: result.patient.medicalHistory || "No detailed history available.",
                   currentMedications: currentMedsString
@@ -163,6 +174,7 @@ export default function DoctorDashboard() {
     }
     setSendingMessage(true);
     try {
+      // PLACEHOLDER_DOCTOR_ID and selectedPatientId are strings
       const result = await sendChatMessageAction(PLACEHOLDER_DOCTOR_ID, PLACEHOLDER_DOCTOR_NAME, selectedPatientId, newMessage);
       if (result.error) {
         toast({ title: "Message Failed", description: result.error, variant: "destructive" });
@@ -178,28 +190,28 @@ export default function DoctorDashboard() {
     }
   };
 
-  const handleSuggestionAction = async (suggestionIdStr: string, action: 'approve' | 'reject') => {
+  const handleSuggestionAction = async (suggestionIdStr: string, action: 'approved' | 'rejected') => {
     if (!selectedPatientId) {
       toast({ title: "Action Failed", description: "No patient selected.", variant: "destructive" });
       return;
     }
     try {
+      // suggestionIdStr and selectedPatientId are expected to be valid ObjectId strings
       const result = await updateSuggestionStatusAction(suggestionIdStr, selectedPatientId, action);
       if (result.error) {
         toast({ title: "Update Failed", description: result.error, variant: "destructive" });
       } else if (result.updatedSuggestion) {
-        setAiSuggestions(prev => prev.map(s => s.id === suggestionIdStr ? { ...s, status: action === 'approve' ? 'approved' : 'rejected' } : s));
+        setAiSuggestions(prev => prev.map(s => s.id === suggestionIdStr ? { ...s, status: action } : s));
         toast({
-          title: `Suggestion ${action === 'approve' ? 'Approved' : 'Rejected'}`,
+          title: `Suggestion ${action === 'approved' ? 'Approved' : 'Rejected'}`,
           description: `The AI suggestion status has been updated.`,
         });
       }
     } catch (err) {
       console.error(`Error ${action}ing suggestion:`, err);
       toast({ title: "Update Failed", description: `Could not ${action} the suggestion.`, variant: "destructive" });
-    } finally {
-      setSendingMessage(false);
     }
+    // Removed finally setSendingMessage(false) as it's not related to message sending
   };
 
   const formatTimestamp = (timestamp: Date | string | undefined): string => {
@@ -207,11 +219,11 @@ export default function DoctorDashboard() {
     return new Date(timestamp).toLocaleString();
   };
 
-  const selectedPatient = useMemo(() => {
+  const selectedPatientFullData = useMemo(() => { // Renamed to avoid conflict with the state variable 'selectedPatientData'
     return patients.find(p => p.id === selectedPatientId);
   }, [patients, selectedPatientId]);
   
-  const coreDataLoading = loadingPatientDetails;
+  const coreDataLoading = loadingPatientDetails; // This flag can determine if the main section skeleton is shown
 
   return (
     <div className="space-y-6">
@@ -227,12 +239,12 @@ export default function DoctorDashboard() {
         </Alert>
       )}
 
-      {!dbAvailable && !loadingPatients && !loadingPatientDetails && (
-        <Alert variant="default" className="bg-yellow-50 border-yellow-200 text-yellow-800">
-          <AlertTriangle className="h-4 w-4 text-yellow-600" />
+      {!dbAvailable && !loadingPatients && !loadingPatientDetails && ( // Only show if not loading and DB is confirmed unavailable
+        <Alert variant="default" className="bg-yellow-50 border-yellow-200 text-yellow-800 dark:bg-yellow-900 dark:border-yellow-700 dark:text-yellow-200">
+          <AlertTriangle className="h-4 w-4 text-yellow-600 dark:text-yellow-400" />
           <AlertTitle>Database Disconnected</AlertTitle>
           <AlertDescription>
-            Database features are currently offline. Patient data cannot be loaded or updated.
+            Database features are currently offline. Patient data cannot be loaded or updated. Check .env and MongoDB connection.
           </AlertDescription>
         </Alert>
       )}
@@ -254,7 +266,7 @@ export default function DoctorDashboard() {
               disabled={!dbAvailable || patients.length === 0}
             >
               <SelectTrigger className="w-full md:w-[300px]">
-                <SelectValue placeholder={dbAvailable ? "Select a patient..." : "Patient list unavailable"} />
+                <SelectValue placeholder={!dbAvailable ? "Patient list unavailable" : (patients.length === 0 ? "No patients assigned" : "Select a patient...")} />
               </SelectTrigger>
               <SelectContent>
                 {patients.length > 0 ? (
@@ -262,8 +274,8 @@ export default function DoctorDashboard() {
                     <SelectItem key={patient.id!} value={patient.id!}>
                       <div className="flex items-center gap-2">
                         <Avatar className="h-6 w-6">
-                          <AvatarImage src={patient.photoURL} alt={patient.name} />
-                          <AvatarFallback>{patient.name?.charAt(0) ?? 'P'}</AvatarFallback>
+                          <AvatarImage src={patient.photoURL} alt={patient.name} data-ai-hint="profile person" />
+                          <AvatarFallback>{patient.name?.charAt(0)?.toUpperCase() ?? 'P'}</AvatarFallback>
                         </Avatar>
                         <span>{patient.name}</span>
                         {patient.readmissionRisk && (
@@ -285,30 +297,31 @@ export default function DoctorDashboard() {
         </CardContent>
       </Card>
 
-      {selectedPatientId && dbAvailable && (
-        coreDataLoading ? (
+      {selectedPatientId && dbAvailable && ( // Check dbAvailable here
+        coreDataLoading ? ( // Main skeleton for patient details section
           <DashboardSkeleton />
-        ) : selectedPatientData ? (
+        ) : selectedPatientData ? ( // Render patient details if data is loaded
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            {/* Patient Info Column */}
             <div className="lg:col-span-1 space-y-6">
               <Card>
                 <CardHeader className="flex flex-row items-center gap-4">
                   <Avatar className="h-16 w-16">
-                    <AvatarImage src={selectedPatient?.photoURL} alt={selectedPatient?.name} />
-                    <AvatarFallback>{selectedPatient?.name?.charAt(0) ?? 'P'}</AvatarFallback>
+                    <AvatarImage src={selectedPatientFullData?.photoURL} alt={selectedPatientFullData?.name} data-ai-hint="profile person" />
+                    <AvatarFallback>{selectedPatientFullData?.name?.charAt(0)?.toUpperCase() ?? 'P'}</AvatarFallback>
                   </Avatar>
                   <div>
-                    <CardTitle>{selectedPatient?.name}</CardTitle>
-                    <CardDescription>{selectedPatient?.email}</CardDescription>
-                    {selectedPatient?.readmissionRisk && (
-                      <Badge variant={selectedPatient.readmissionRisk === 'high' ? 'destructive' : selectedPatient.readmissionRisk === 'medium' ? 'secondary' : 'default'} className="mt-1 text-xs">
-                        {selectedPatient.readmissionRisk} readmission risk
+                    <CardTitle>{selectedPatientFullData?.name}</CardTitle>
+                    <CardDescription>{selectedPatientFullData?.email}</CardDescription>
+                    {selectedPatientFullData?.readmissionRisk && (
+                      <Badge variant={selectedPatientFullData.readmissionRisk === 'high' ? 'destructive' : selectedPatientFullData.readmissionRisk === 'medium' ? 'secondary' : 'default'} className="mt-1 text-xs">
+                        {selectedPatientFullData.readmissionRisk} readmission risk
                       </Badge>
                     )}
                   </div>
                 </CardHeader>
                 <CardContent>
-                  <p className="text-xs text-muted-foreground">Patient ID: {selectedPatient?.id}</p>
+                  <p className="text-xs text-muted-foreground">Patient ID: {selectedPatientFullData?.id}</p>
                 </CardContent>
               </Card>
 
@@ -354,6 +367,7 @@ export default function DoctorDashboard() {
               </Card>
             </div>
 
+            {/* Health Data & Meds Column */}
             <div className="lg:col-span-1 space-y-6">
               <Card>
                 <CardHeader>
@@ -406,13 +420,14 @@ export default function DoctorDashboard() {
                 </CardFooter>
               </Card>
 
-              <Card>
+               <Card>
                 <CardHeader>
                   <CardTitle className="flex items-center gap-2"><Info className="h-5 w-5" /> AI Suggested Interventions</CardTitle>
                   <CardDescription>Review and act on AI-driven suggestions.</CardDescription>
                 </CardHeader>
                 <CardContent>
-                  {loadingPatientDetails && !aiSuggestions.length ? ( 
+                  {/* Show loader if patient details loading and no suggestions yet, or explicitly loading suggestions */}
+                  {(loadingPatientDetails && !aiSuggestions.length) ? ( 
                     <div className="flex items-center justify-center p-4">
                       <Loader2 className="h-6 w-6 animate-spin" />
                     </div>
@@ -420,16 +435,16 @@ export default function DoctorDashboard() {
                     <ScrollArea className="h-[200px] pr-4">
                       <ul className="space-y-3">
                         {aiSuggestions.map(suggestion => (
-                          <li key={suggestion.id!} className="p-3 border rounded-md bg-muted/50 space-y-2">
+                          <li key={suggestion.id!} className="p-3 border rounded-md bg-muted/50 dark:bg-muted/20 space-y-2">
                             <p className="text-sm">{suggestion.suggestionText}</p>
                             <div className="flex justify-between items-center">
                               <span className="text-xs text-muted-foreground">{formatTimestamp(suggestion.timestamp)}</span>
                               {suggestion.status === 'pending' ? (
                                 <div className="flex gap-2">
-                                  <Button size="sm" variant="outline" className="h-7 px-2 py-1 text-xs border-green-500 text-green-600 hover:bg-green-50" onClick={() => handleSuggestionAction(suggestion.id!, 'approve')} disabled={!dbAvailable}>
+                                  <Button size="sm" variant="outline" className="h-7 px-2 py-1 text-xs border-green-500 text-green-600 hover:bg-green-50 dark:border-green-700 dark:text-green-400 dark:hover:bg-green-800" onClick={() => handleSuggestionAction(suggestion.id!, 'approved')} disabled={!dbAvailable}>
                                     <Check className="h-3 w-3 mr-1" /> Approve
                                   </Button>
-                                  <Button size="sm" variant="outline" className="h-7 px-2 py-1 text-xs border-red-500 text-red-600 hover:bg-red-50" onClick={() => handleSuggestionAction(suggestion.id!, 'reject')} disabled={!dbAvailable}>
+                                  <Button size="sm" variant="outline" className="h-7 px-2 py-1 text-xs border-red-500 text-red-600 hover:bg-red-50 dark:border-red-700 dark:text-red-400 dark:hover:bg-red-800" onClick={() => handleSuggestionAction(suggestion.id!, 'rejected')} disabled={!dbAvailable}>
                                     <X className="h-3 w-3 mr-1" /> Reject
                                   </Button>
                                 </div>
@@ -450,6 +465,7 @@ export default function DoctorDashboard() {
               </Card>
             </div>
 
+            {/* Chat Column */}
             <div className="lg:col-span-1 flex flex-col">
               <Card className="flex-grow flex flex-col">
                 <CardHeader>
@@ -457,13 +473,14 @@ export default function DoctorDashboard() {
                 </CardHeader>
                 <CardContent className="flex-grow overflow-hidden flex flex-col p-0">
                   <ScrollArea className="flex-grow p-4">
-                    {loadingPatientDetails && !chatMessages.length ? (
+                     {/* Show loader if patient details loading and no messages yet */}
+                    {(loadingPatientDetails && !chatMessages.length) ? (
                        <div className="flex items-center justify-center h-full"><Loader2 className="h-6 w-6 animate-spin"/></div>
                     ) : chatMessages.length > 0 ? (
                       <div className="space-y-4">
                         {chatMessages.map(msg => (
                           <div key={msg.id!} className={`flex ${msg.senderId === PLACEHOLDER_DOCTOR_ID ? 'justify-end' : 'justify-start'}`}>
-                            <div className={`p-2 rounded-lg max-w-[75%] ${msg.senderId === PLACEHOLDER_DOCTOR_ID ? 'bg-primary text-primary-foreground' : 'bg-muted'}`}>
+                            <div className={`p-2 rounded-lg max-w-[75%] ${msg.senderId === PLACEHOLDER_DOCTOR_ID ? 'bg-primary text-primary-foreground' : 'bg-muted dark:bg-muted/40'}`}>
                               <p className="text-sm">{msg.text}</p>
                               <p className={`text-xs mt-1 ${msg.senderId === PLACEHOLDER_DOCTOR_ID ? 'text-primary-foreground/80' : 'text-muted-foreground'}`}>
                                 {msg.senderName} - {formatTimestamp(msg.timestamp)}
@@ -509,14 +526,15 @@ export default function DoctorDashboard() {
         ) : null 
       )}
 
-      {!selectedPatientId && dbAvailable && ( // Shown if no patient selected, but DB connection is fine
+      {!selectedPatientId && dbAvailable && ( // Shown if no patient selected, and DB connection is fine (and not loading patients)
+        !loadingPatients && 
         <Card>
           <CardContent className="pt-6">
             <p className="text-center text-muted-foreground">Select a patient to view details.</p>
           </CardContent>
         </Card>
       )}
-       {!selectedPatientId && !dbAvailable && !loadingPatients && ( // Shown if no patient selected and DB is unavailable
+       {!selectedPatientId && !dbAvailable && !loadingPatients && ( // Shown if no patient selected and DB is unavailable (and not loading patients)
         <Card>
           <CardContent className="pt-6">
             <p className="text-center text-muted-foreground">Patient selection unavailable. Database connection issue.</p>
@@ -595,3 +613,5 @@ function DashboardSkeleton() {
     </div>
   );
 }
+
+    
