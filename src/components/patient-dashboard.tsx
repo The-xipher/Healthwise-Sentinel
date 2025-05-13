@@ -42,8 +42,8 @@ const symptomFormSchema = z.object({
 
 type SymptomFormValues = z.infer<typeof symptomFormSchema>;
 
-// Updated to a valid 24-character hex string for MongoDB ObjectId compatibility
-const PLACEHOLDER_PATIENT_ID = '507f1f77bcf86cd799439011'; 
+// This ID should match a patient seeded by `src/lib/seed-db.ts`
+const PLACEHOLDER_PATIENT_ID = '607f1f77bcf86cd799439011'; 
 
 export default function PatientDashboard() {
   const [healthData, setHealthData] = useState<PatientHealthData[]>([]);
@@ -148,7 +148,7 @@ export default function PatientDashboard() {
         toast({
           title: "Symptom Reported",
           description: "Your healthcare provider has been notified.",
-          variant: "default", // "default" is usually white/gray, make it visually distinct as success
+          variant: "default", 
           className: "bg-green-100 border-green-300 text-green-700 dark:bg-green-900 dark:border-green-700 dark:text-green-200",
           duration: 5000,
           action: <CheckCircle className="text-green-600 dark:text-green-400" />,

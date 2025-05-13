@@ -31,9 +31,9 @@ import {
   DoctorAISuggestion
 } from '@/app/actions/doctorActions'; // Import server actions
 
-// Updated to a valid 24-character hex string for MongoDB ObjectId compatibility
-const PLACEHOLDER_DOCTOR_ID = '507f1f77bcf86cd799439012'; 
-const PLACEHOLDER_DOCTOR_NAME = 'Dr. Placeholder';
+// This ID should match a doctor seeded by `src/lib/seed-db.ts`
+const PLACEHOLDER_DOCTOR_ID = '607f1f77bcf86cd799439012'; 
+const PLACEHOLDER_DOCTOR_NAME = 'Dr. John Smith'; // Should match display name of above doctor in seed
 
 export default function DoctorDashboard() {
   const [patients, setPatients] = useState<DoctorPatient[]>([]);
@@ -60,10 +60,6 @@ export default function DoctorDashboard() {
       setLoadingPatients(true);
       setError(null);
       try {
-        // Assuming PLACEHOLDER_DOCTOR_ID is a string that might represent an ObjectId
-        // or another unique identifier stored as string in `assignedDoctorId`.
-        // If `assignedDoctorId` in DB is ObjectId, PLACEHOLDER_DOCTOR_ID needs to be a valid hex string for conversion.
-        // If `assignedDoctorId` is string, this direct use is fine.
         const result = await fetchDoctorPatientsAction(PLACEHOLDER_DOCTOR_ID);
         if (result.error) {
           setError(result.error);
@@ -96,25 +92,23 @@ export default function DoctorDashboard() {
       setChatMessages([]);
       setHistorySummary(null);
       setCarePlan(null);
-      setLoadingPatientDetails(false); // Ensure this resets
+      setLoadingPatientDetails(false); 
       return;
     }
 
     async function fetchPatientAllData() {
       setLoadingPatientDetails(true);
-      setError(null); // Clear previous patient-specific errors
-      setHistorySummary(null); // Reset AI summaries
+      setError(null); 
+      setHistorySummary(null); 
       setCarePlan(null);
 
       try {
-        // selectedPatientId is expected to be a valid ObjectId string here
         const result = await fetchDoctorPatientDetailsAction(selectedPatientId, PLACEHOLDER_DOCTOR_ID);
         if (result.error) {
           setError(result.error);
            if (result.error.includes("Database connection") || result.error.includes("Invalid patient ID format")) {
             setDbAvailable(false); 
           }
-          // Clear out data for safety
             setSelectedPatientData(null);
             setPatientHealthData([]);
             setPatientMedications([]);
@@ -132,7 +126,7 @@ export default function DoctorDashboard() {
             setLoadingSummary(true);
             try {
               const summaryResult = await summarizePatientHistory({
-                patientId: selectedPatientId, // Already a string ID from patient object
+                patientId: selectedPatientId, 
                 medicalHistory: result.patient.medicalHistory || "No detailed history available."
               });
               setHistorySummary(summaryResult.summary);
@@ -142,10 +136,9 @@ export default function DoctorDashboard() {
             setLoadingCarePlan(true);
             try {
                 const currentMedsString = (result.medications || []).map(m => `${m.name} (${m.dosage})`).join(', ') || "None listed";
-                // Use a more descriptive risk string if available
                 const predictedRisks = result.patient?.readmissionRisk ? `Readmission Risk: ${result.patient.readmissionRisk}` : "No specific risks predicted.";
                 const carePlanResult = await generateCarePlan({
-                  patientId: selectedPatientId, // Already a string ID
+                  patientId: selectedPatientId, 
                   predictedRisks: predictedRisks,
                   medicalHistory: result.patient.medicalHistory || "No detailed history available.",
                   currentMedications: currentMedsString
@@ -174,7 +167,6 @@ export default function DoctorDashboard() {
     }
     setSendingMessage(true);
     try {
-      // PLACEHOLDER_DOCTOR_ID and selectedPatientId are strings
       const result = await sendChatMessageAction(PLACEHOLDER_DOCTOR_ID, PLACEHOLDER_DOCTOR_NAME, selectedPatientId, newMessage);
       if (result.error) {
         toast({ title: "Message Failed", description: result.error, variant: "destructive" });
@@ -196,7 +188,6 @@ export default function DoctorDashboard() {
       return;
     }
     try {
-      // suggestionIdStr and selectedPatientId are expected to be valid ObjectId strings
       const result = await updateSuggestionStatusAction(suggestionIdStr, selectedPatientId, action);
       if (result.error) {
         toast({ title: "Update Failed", description: result.error, variant: "destructive" });
@@ -211,7 +202,6 @@ export default function DoctorDashboard() {
       console.error(`Error ${action}ing suggestion:`, err);
       toast({ title: "Update Failed", description: `Could not ${action} the suggestion.`, variant: "destructive" });
     }
-    // Removed finally setSendingMessage(false) as it's not related to message sending
   };
 
   const formatTimestamp = (timestamp: Date | string | undefined): string => {
@@ -219,11 +209,11 @@ export default function DoctorDashboard() {
     return new Date(timestamp).toLocaleString();
   };
 
-  const selectedPatientFullData = useMemo(() => { // Renamed to avoid conflict with the state variable 'selectedPatientData'
+  const selectedPatientFullData = useMemo(() => { 
     return patients.find(p => p.id === selectedPatientId);
   }, [patients, selectedPatientId]);
   
-  const coreDataLoading = loadingPatientDetails; // This flag can determine if the main section skeleton is shown
+  const coreDataLoading = loadingPatientDetails;
 
   return (
     <div className="space-y-6">
@@ -239,7 +229,7 @@ export default function DoctorDashboard() {
         </Alert>
       )}
 
-      {!dbAvailable && !loadingPatients && !loadingPatientDetails && ( // Only show if not loading and DB is confirmed unavailable
+      {!dbAvailable && !loadingPatients && !loadingPatientDetails && ( 
         <Alert variant="default" className="bg-yellow-50 border-yellow-200 text-yellow-800 dark:bg-yellow-900 dark:border-yellow-700 dark:text-yellow-200">
           <AlertTriangle className="h-4 w-4 text-yellow-600 dark:text-yellow-400" />
           <AlertTitle>Database Disconnected</AlertTitle>
@@ -297,31 +287,32 @@ export default function DoctorDashboard() {
         </CardContent>
       </Card>
 
-      {selectedPatientId && dbAvailable && ( // Check dbAvailable here
-        coreDataLoading ? ( // Main skeleton for patient details section
+      {selectedPatientId && dbAvailable && ( 
+        coreDataLoading ? ( 
           <DashboardSkeleton />
-        ) : selectedPatientData ? ( // Render patient details if data is loaded
+        ) : selectedPatientData ? ( 
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
             {/* Patient Info Column */}
             <div className="lg:col-span-1 space-y-6">
               <Card>
                 <CardHeader className="flex flex-row items-center gap-4">
                   <Avatar className="h-16 w-16">
-                    <AvatarImage src={selectedPatientFullData?.photoURL} alt={selectedPatientFullData?.name} data-ai-hint="profile person" />
-                    <AvatarFallback>{selectedPatientFullData?.name?.charAt(0)?.toUpperCase() ?? 'P'}</AvatarFallback>
+                    <AvatarImage src={selectedPatientData?.photoURL} alt={selectedPatientData?.name} data-ai-hint="profile person" />
+                    <AvatarFallback>{selectedPatientData?.name?.charAt(0)?.toUpperCase() ?? 'P'}</AvatarFallback>
                   </Avatar>
                   <div>
-                    <CardTitle>{selectedPatientFullData?.name}</CardTitle>
-                    <CardDescription>{selectedPatientFullData?.email}</CardDescription>
-                    {selectedPatientFullData?.readmissionRisk && (
-                      <Badge variant={selectedPatientFullData.readmissionRisk === 'high' ? 'destructive' : selectedPatientFullData.readmissionRisk === 'medium' ? 'secondary' : 'default'} className="mt-1 text-xs">
-                        {selectedPatientFullData.readmissionRisk} readmission risk
+                    <CardTitle>{selectedPatientData?.name}</CardTitle>
+                    <CardDescription>{selectedPatientData?.email}</CardDescription>
+                    {selectedPatientData?.readmissionRisk && (
+                      <Badge variant={selectedPatientData.readmissionRisk === 'high' ? 'destructive' : selectedPatientData.readmissionRisk === 'medium' ? 'secondary' : 'default'} className="mt-1 text-xs">
+                        {selectedPatientData.readmissionRisk} readmission risk
                       </Badge>
                     )}
                   </div>
                 </CardHeader>
                 <CardContent>
-                  <p className="text-xs text-muted-foreground">Patient ID: {selectedPatientFullData?.id}</p>
+                  <p className="text-xs text-muted-foreground">Patient ID: {selectedPatientData?.id}</p>
+                  {selectedPatientData?.lastActivity && <p className="text-xs text-muted-foreground">Last Activity: {formatTimestamp(selectedPatientData.lastActivity)}</p>}
                 </CardContent>
               </Card>
 
@@ -426,7 +417,6 @@ export default function DoctorDashboard() {
                   <CardDescription>Review and act on AI-driven suggestions.</CardDescription>
                 </CardHeader>
                 <CardContent>
-                  {/* Show loader if patient details loading and no suggestions yet, or explicitly loading suggestions */}
                   {(loadingPatientDetails && !aiSuggestions.length) ? ( 
                     <div className="flex items-center justify-center p-4">
                       <Loader2 className="h-6 w-6 animate-spin" />
@@ -473,7 +463,6 @@ export default function DoctorDashboard() {
                 </CardHeader>
                 <CardContent className="flex-grow overflow-hidden flex flex-col p-0">
                   <ScrollArea className="flex-grow p-4">
-                     {/* Show loader if patient details loading and no messages yet */}
                     {(loadingPatientDetails && !chatMessages.length) ? (
                        <div className="flex items-center justify-center h-full"><Loader2 className="h-6 w-6 animate-spin"/></div>
                     ) : chatMessages.length > 0 ? (
@@ -517,7 +506,7 @@ export default function DoctorDashboard() {
               </Card>
             </div>
           </div>
-        ) : selectedPatientId && !coreDataLoading && dbAvailable ? ( // Show if patient selected, not loading, but data is missing (implies an error during fetch)
+        ) : selectedPatientId && !coreDataLoading && dbAvailable ? ( 
           <Alert variant="destructive">
             <AlertTriangle className="h-4 w-4" />
             <AlertTitle>Error Loading Patient Data</AlertTitle>
@@ -526,7 +515,7 @@ export default function DoctorDashboard() {
         ) : null 
       )}
 
-      {!selectedPatientId && dbAvailable && ( // Shown if no patient selected, and DB connection is fine (and not loading patients)
+      {!selectedPatientId && dbAvailable && ( 
         !loadingPatients && 
         <Card>
           <CardContent className="pt-6">
@@ -534,7 +523,7 @@ export default function DoctorDashboard() {
           </CardContent>
         </Card>
       )}
-       {!selectedPatientId && !dbAvailable && !loadingPatients && ( // Shown if no patient selected and DB is unavailable (and not loading patients)
+       {!selectedPatientId && !dbAvailable && !loadingPatients && ( 
         <Card>
           <CardContent className="pt-6">
             <p className="text-center text-muted-foreground">Patient selection unavailable. Database connection issue.</p>

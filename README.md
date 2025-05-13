@@ -1,3 +1,4 @@
+
 # HealthWise Hub
 
 This is a Next.js application designed for post-discharge patient care management using AI-driven insights.
@@ -20,6 +21,7 @@ This is a Next.js application designed for post-discharge patient care managemen
         ```dotenv
         # MongoDB Connection URI
         # Replace 'your_mongodb_password' with your actual MongoDB Atlas password for the 'amithxipher' user.
+        # Example: MONGODB_URI=mongodb+srv://amithxipher:Password@55555@health.bqy9gqs.mongodb.net/?w=majority&appName=Health
         MONGODB_URI=mongodb+srv://amithxipher:your_mongodb_password@health.bqy9gqs.mongodb.net/?w=majority&appName=Health
         
         # Optional: Specify a database name, or it defaults to 'healthwisehub'
@@ -40,7 +42,18 @@ This is a Next.js application designed for post-discharge patient care managemen
     *   **Important:** The application relies on `MONGODB_URI` for database connectivity. Make sure to replace `your_mongodb_password` with your actual password.
     *   For Firebase services (like Auth, if re-enabled), ensure the respective `NEXT_PUBLIC_FIREBASE_` variables are set.
 
-3.  **Run the Development Server:**
+3.  **Seed the Database (Optional, for initial mock data):**
+    If you want to populate your database with mock data for testing:
+    ```bash
+    npm run db:seed
+    # or
+    yarn db:seed
+    # or
+    pnpm db:seed
+    ```
+    This script will clear existing data in the specified collections and insert new mock data.
+
+4.  **Run the Development Server:**
     ```bash
     npm run dev
     # or
@@ -50,7 +63,7 @@ This is a Next.js application designed for post-discharge patient care managemen
     ```
     The application will be available at `http://localhost:9002` (or the specified port).
 
-4.  **Run Genkit Dev Server (Optional - for AI features):**
+5.  **Run Genkit Dev Server (Optional - for AI features):**
     If you are working with the GenAI features, run the Genkit development server in a separate terminal:
     ```bash
     npm run genkit:dev
@@ -75,7 +88,7 @@ This is a Next.js application designed for post-discharge patient care managemen
 
 *   `src/app/`: Next.js App Router pages and layouts.
 *   `src/components/`: React components, including UI elements (`ui/`) and feature-specific components (dashboards).
-*   `src/lib/`: Utility functions, including Firebase setup (`firebase.ts`) and MongoDB setup (`mongodb.ts`).
+*   `src/lib/`: Utility functions, including Firebase setup (`firebase.ts`), MongoDB setup (`mongodb.ts`), and database seeding (`seed-db.ts`).
 *   `src/hooks/`: Custom React hooks (`useToast`, `useMobile`).
 *   `src/ai/`: Genkit AI flows and configuration.
 *   `public/`: Static assets.
@@ -92,5 +105,6 @@ This is a Next.js application designed for post-discharge patient care managemen
 *   Genkit (for AI features)
 *   Recharts (for charts)
 *   Zod (for schema validation)
-*   Faker.js (for mock data generation within components)
+*   Faker.js (for mock data generation)
+*   tsx (for running TS scripts like seeding)
 
