@@ -1,9 +1,15 @@
-
 import LoginForm from '@/components/login-form';
 import { Suspense } from 'react';
 import { Skeleton } from '@/components/ui/skeleton';
+import { getSession } from '@/app/actions/authActions';
+import { redirect } from 'next/navigation';
 
-export default function LoginPage() {
+export default async function LoginPage() {
+  const session = await getSession();
+  if (session) {
+    redirect('/dashboard');
+  }
+
   return (
     <Suspense fallback={<LoginPageSkeleton />}>
       <div className="flex items-center justify-center min-h-screen bg-secondary p-4">
