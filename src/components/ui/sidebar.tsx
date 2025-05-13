@@ -1,3 +1,4 @@
+
 "use client"
 
 import * as React from "react"
@@ -533,63 +534,68 @@ const sidebarMenuButtonVariants = cva(
   }
 )
 
-const SidebarMenuButton = React.forwardRef<
-  HTMLButtonElement,
-  React.ComponentProps<"button"> & {
-    asChild?: boolean
-    isActive?: boolean
-    tooltip?: string | React.ComponentProps<typeof TooltipContent>
-  } & VariantProps<typeof sidebarMenuButtonVariants>
->(
+interface SidebarMenuButtonProps
+  extends React.ButtonHTMLAttributes<HTMLButtonElement>,
+    VariantProps<typeof sidebarMenuButtonVariants> {
+  asChild?: boolean;
+  isActive?: boolean;
+  tooltip?: string | React.ComponentProps<typeof TooltipContent>;
+}
+
+const SidebarMenuButton = React.forwardRef<HTMLButtonElement, SidebarMenuButtonProps>(
   (
     {
-      asChild = false,
+      asChild: ownAsChild, // This is the asChild prop specific to SidebarMenuButton's behavior
       isActive = false,
       variant = "default",
       size = "default",
       tooltip,
       className,
-      ...props
+      children, // Explicitly accept children
+      ...restProps // All other props passed to SidebarMenuButton
     },
     ref
   ) => {
-    const Comp = asChild ? Slot : "button"
-    const { isMobile, state } = useSidebar()
+    const Comp = ownAsChild ? Slot : "button";
+    const { isMobile, state } = useSidebar();
 
-    const button = (
+    // If an 'asChild' prop is passed in ...restProps (e.g., from a parent <Link asChild>),
+    // we need to ensure it's not spread onto a native DOM element if Comp is 'button'.
+    // The 'ownAsChild' prop has already determined if Comp is Slot or button.
+    const { asChild: _leakedAsChild, ...safePropsToSpread } = restProps;
+
+    const buttonElement = (
       <Comp
         ref={ref}
         data-sidebar="menu-button"
         data-size={size}
         data-active={isActive}
-        className={cn(sidebarMenuButtonVariants({ variant, size }), className)}
-        {...props}
-      />
-    )
+        className={cn(sidebarMenuButtonVariants({ variant, size, className }))}
+        {...safePropsToSpread} // Spread the cleaned props
+      >
+        {children} {/* Render children inside Comp */}
+      </Comp>
+    );
 
     if (!tooltip) {
-      return button
+      return buttonElement;
     }
-
-    if (typeof tooltip === "string") {
-      tooltip = {
-        children: tooltip,
-      }
-    }
+    
+    const tooltipContentProps = typeof tooltip === 'string' ? { children: tooltip } : tooltip;
 
     return (
       <Tooltip>
-        <TooltipTrigger asChild>{button}</TooltipTrigger>
+        <TooltipTrigger asChild>{buttonElement}</TooltipTrigger>
         <TooltipContent
           side="right"
           align="center"
           hidden={state !== "collapsed" || isMobile}
-          {...tooltip}
+          {...tooltipContentProps}
         />
       </Tooltip>
-    )
+    );
   }
-)
+);
 SidebarMenuButton.displayName = "SidebarMenuButton"
 
 const SidebarMenuAction = React.forwardRef<
