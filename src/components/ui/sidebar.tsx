@@ -1,4 +1,3 @@
-
 "use client"
 
 import * as React from "react"
@@ -30,7 +29,7 @@ const SIDEBAR_KEYBOARD_SHORTCUT = "b"
 type SidebarContext = {
   state: "expanded" | "collapsed"
   open: boolean
-  setOpen: (open: boolean) => void
+  setOpen: (open: boolean | ((currentOpen: boolean) => boolean)) => void
   openMobile: boolean
   setOpenMobile: (open: boolean) => void
   isMobile: boolean
@@ -58,7 +57,7 @@ const SidebarProvider = React.forwardRef<
 >(
   (
     {
-      defaultOpen = true,
+      defaultOpen = true, // Default for the prop itself
       open: openProp,
       onOpenChange: setOpenProp,
       className,
@@ -71,52 +70,68 @@ const SidebarProvider = React.forwardRef<
     const isMobile = useIsMobile()
     const [openMobile, setOpenMobile] = React.useState(false)
 
-    // This is the internal state of the sidebar.
-    // We use openProp and setOpenProp for control from outside the component.
-    const [_open, _setOpen] = React.useState(() => {
-        if (typeof document !== 'undefined') {
-            const cookieValue = document.cookie
-                .split("; ")
-                .find((row) => row.startsWith(`${SIDEBAR_COOKIE_NAME}=`))
-                ?.split("=")[1];
-            if (cookieValue) {
-                return cookieValue === "true";
-            }
-        }
-        return defaultOpen;
-    });
+    // Internal state for uncontrolled component. Initialize with defaultOpen for SSR and initial client render.
+    const [_open, _setOpen] = React.useState(defaultOpen);
 
-    const open = openProp ?? _open
-    const setOpen = React.useCallback(
-      (value: boolean | ((value: boolean) => boolean)) => {
-        const openState = typeof value === "function" ? value(open) : value
-        if (setOpenProp) {
-          setOpenProp(openState)
-        } else {
-          _setOpen(openState)
-        }
-
-        if (typeof document !== 'undefined') {
-            document.cookie = `${SIDEBAR_COOKIE_NAME}=${openState}; path=/; max-age=${SIDEBAR_COOKIE_MAX_AGE}`
-        }
-      },
-      [setOpenProp, open]
-    )
-    
+    // Effect to read cookie and update _open state on client mount if uncontrolled
     React.useEffect(() => {
-        // Sync cookie on initial client mount if controlled externally
+      if (openProp === undefined) { // Only for uncontrolled mode
+        const cookieValue = document.cookie
+          .split("; ")
+          .find((row) => row.startsWith(`${SIDEBAR_COOKIE_NAME}=`))
+          ?.split("=")[1];
+        if (cookieValue) {
+          const valueFromCookie = cookieValue === "true";
+          // _open is 'defaultOpen' on first client render before this effect.
+          // Only set if cookie value is different from this initial state.
+          if (valueFromCookie !== _open) { 
+            _setOpen(valueFromCookie);
+          }
+        }
+      }
+    // Only depend on openProp to re-evaluate if component switches between controlled/uncontrolled.
+    // defaultOpen is used for initialization, so not strictly needed in deps for this effect's logic.
+    // _open dependency removed to prevent loop if _setOpen itself was a dep.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [openProp]); 
+
+    // Sync cookie when openProp changes (for controlled component)
+     React.useEffect(() => {
         if (typeof document !== 'undefined' && openProp !== undefined) {
              document.cookie = `${SIDEBAR_COOKIE_NAME}=${openProp}; path=/; max-age=${SIDEBAR_COOKIE_MAX_AGE}`
         }
     }, [openProp]);
 
 
-    // Helper to toggle the sidebar.
+    // Determine the effective 'open' state for rendering
+    const open = openProp ?? _open;
+
+    // Callback to set 'open' state
+    const setOpen = React.useCallback(
+      (value: boolean | ((currentOpen: boolean) => boolean)) => {
+        // Determine the new state based on whether a value or a function is passed
+        const newOpenState = typeof value === "function" ? value(open) : value;
+    
+        if (setOpenProp) {
+          setOpenProp(newOpenState); // Controlled
+        } else {
+          _setOpen(newOpenState); // Uncontrolled
+        }
+        // Always update cookie
+        if (typeof document !== 'undefined') {
+          document.cookie = `${SIDEBAR_COOKIE_NAME}=${newOpenState}; path=/; max-age=${SIDEBAR_COOKIE_MAX_AGE}`;
+        }
+      },
+      [open, setOpenProp] // _setOpen is stable from useState
+    );
+    
     const toggleSidebar = React.useCallback(() => {
-      return isMobile
-        ? setOpenMobile((currentOpen) => !currentOpen)
-        : setOpen((currentOpen) => !currentOpen)
-    }, [isMobile, setOpen, setOpenMobile])
+      if (isMobile) {
+        setOpenMobile((currentOpenMobile) => !currentOpenMobile);
+      } else {
+        setOpen((currentOpenState) => !currentOpenState); // Use functional update
+      }
+    }, [isMobile, setOpen, setOpenMobile]);
 
     // Adds a keyboard shortcut to toggle the sidebar.
     React.useEffect(() => {
@@ -134,14 +149,10 @@ const SidebarProvider = React.forwardRef<
       return () => window.removeEventListener("keydown", handleKeyDown)
     }, [toggleSidebar])
 
-    // We add a state so that we can do data-state="expanded" or "collapsed".
-    // This makes it easier to style the sidebar with Tailwind classes.
     const [effectiveState, setEffectiveState] = React.useState<'expanded' | 'collapsed'>(open ? 'expanded' : 'collapsed');
-
     React.useEffect(() => {
         setEffectiveState(open ? 'expanded' : 'collapsed');
     }, [open]);
-
 
     const contextValue = React.useMemo<SidebarContext>(
       () => ({
@@ -154,7 +165,7 @@ const SidebarProvider = React.forwardRef<
         toggleSidebar,
       }),
       [effectiveState, open, setOpen, isMobile, openMobile, setOpenMobile, toggleSidebar]
-    )
+    );
 
     return (
       <SidebarContext.Provider value={contextValue}>
@@ -582,9 +593,9 @@ const SidebarMenuButton = React.forwardRef<
       variant = "default",
       size = "default",
       tooltip,
-      className,
-      children, // Destructure children
-      type: explicitButtonType, 
+      className, 
+      children,
+      type: explicitButtonType,
       ...restProps
     },
     ref
@@ -606,9 +617,12 @@ const SidebarMenuButton = React.forwardRef<
     };
 
     if (Comp === 'button') {
+      // For buttons, set type explicitly. Default to "button" if not "submit" or "reset".
       compProps.type = (explicitButtonType === 'submit' || explicitButtonType === 'reset') ? explicitButtonType : 'button';
     } else if (Comp === 'a') {
-      delete compProps.type;
+      // For anchor tags, remove the type attribute if it was accidentally passed or defaulted.
+      // The 'type' prop on SidebarMenuButtonProps is for button semantics, not <a> tag's type attribute.
+      delete compProps.type; 
     }
     
     const buttonElement = (
