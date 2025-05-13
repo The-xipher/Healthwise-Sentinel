@@ -2,8 +2,6 @@
 'use client';
 
 import * as React from 'react';
-// useRouter is not strictly needed if we use window.location.assign, but keep for now if other navigations exist.
-// import { useRouter } from 'next/navigation'; 
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
@@ -24,7 +22,6 @@ const loginSchema = z.object({
 type LoginFormValues = z.infer<typeof loginSchema>;
 
 export default function LoginForm() {
-  // const router = useRouter(); // Not strictly needed for window.location.assign
   const [isLoading, setIsLoading] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
   const [showPassword, setShowPassword] = React.useState(false);
@@ -47,16 +44,11 @@ export default function LoginForm() {
     formData.append('password', data.password);
 
     try {
+      // loginAction will now handle the redirect internally on success.
+      // If it returns, it means an error occurred before redirecting.
       const result = await loginAction(formData);
 
-      if (result.success) {
-        toast({
-          title: "Login Successful",
-          description: result.message || "Redirecting to your dashboard...",
-        });
-        // Replace router.push with window.location.assign for a full page navigation
-        window.location.assign('/dashboard'); 
-      } else {
+      if (!result.success) { // This block will only be hit if loginAction returns (i.e. on error)
         setError(result.message);
         toast({
           title: "Login Failed",
@@ -64,7 +56,17 @@ export default function LoginForm() {
           variant: "destructive",
         });
       }
+      // On success, loginAction calls redirect() and this part of the code is not reached.
+      // Next.js handles the page transition.
     } catch (caughtError: any) {
+      // Server actions that redirect throw a special error that Next.js handles.
+      // We should not treat NEXT_REDIRECT as a typical error.
+      if (caughtError.digest?.startsWith('NEXT_REDIRECT')) {
+        // This is expected on successful redirect, do nothing or rethrow if needed.
+        // Typically, Next.js handles this before it even reaches here in the client component.
+        // If it does reach here, rethrowing ensures Next.js continues its process.
+        throw caughtError;
+      }
       console.error('LoginForm onSubmit error:', caughtError);
       const errorMessage = caughtError.message || 'An unexpected error occurred.';
       setError(errorMessage);
@@ -157,4 +159,3 @@ export default function LoginForm() {
     </Card>
   );
 }
-

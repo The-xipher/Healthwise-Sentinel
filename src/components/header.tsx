@@ -3,7 +3,7 @@
 
 import * as React from 'react';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
+import { useRouter } from 'next/navigation'; // Keep for potential non-form navigations
 import { SidebarTrigger } from './ui/sidebar';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
@@ -16,7 +16,6 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { LogOut, UserCircle, Settings } from 'lucide-react';
-// Removed direct import of logoutAction, will use API route for logout form submission
 
 interface UserSession {
   userId: string;
@@ -36,11 +35,8 @@ export default function Header({ session }: HeaderProps) {
     if (!name) return '?';
     const names = name.split(' ');
     if (names.length === 1) return names[0][0].toUpperCase();
-    return (names[0][0] + names[names.length - 1][0]).toUpperCase();
+    return (names[0][0] + (names.length > 1 ? names[names.length - 1][0] : '')).toUpperCase();
   };
-
-  // Logout will be handled by a form submitting to an API route
-  // defined in src/app/api/auth/logout/route.ts
 
   return (
     <header className="sticky top-0 z-40 w-full border-b bg-card shadow-sm">
@@ -60,8 +56,8 @@ export default function Header({ session }: HeaderProps) {
               <DropdownMenuTrigger asChild>
                 <Button variant="ghost" className="relative h-10 w-10 rounded-full p-0">
                   <Avatar className="h-9 w-9 border-2 border-primary">
-                    {/* Add a placeholder image source if available, otherwise initials */}
-                    {/* <AvatarImage src={session.photoURL || undefined} alt={session.displayName} /> */}
+                    {/* Use photoURL if available for a richer avatar, otherwise initials */}
+                    <AvatarImage src={(session as any).photoURL || undefined} alt={session.displayName} data-ai-hint="profile avatar"/>
                     <AvatarFallback className="text-sm bg-primary text-primary-foreground">
                       {getInitials(session.displayName)}
                     </AvatarFallback>
@@ -78,11 +74,13 @@ export default function Header({ session }: HeaderProps) {
                   </div>
                 </DropdownMenuLabel>
                 <DropdownMenuSeparator />
-                <DropdownMenuItem>
-                  <UserCircle className="mr-2 h-4 w-4" />
-                  <span>Profile</span>
+                <DropdownMenuItem asChild>
+                  <Link href="/dashboard/profile" className="flex items-center w-full cursor-pointer">
+                    <UserCircle className="mr-2 h-4 w-4" />
+                    <span>Profile</span>
+                  </Link>
                 </DropdownMenuItem>
-                <DropdownMenuItem>
+                <DropdownMenuItem className="cursor-pointer">
                   <Settings className="mr-2 h-4 w-4" />
                   <span>Settings</span>
                 </DropdownMenuItem>
