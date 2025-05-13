@@ -1,4 +1,4 @@
-# Firebase Studio - HealthWise Hub
+# HealthWise Hub
 
 This is a Next.js application designed for post-discharge patient care management using AI-driven insights.
 
@@ -13,36 +13,30 @@ This is a Next.js application designed for post-discharge patient care managemen
     pnpm install
     ```
 
-2.  **Configure Firebase:**
-    *   Create a Firebase project at [https://console.firebase.google.com/](https://console.firebase.google.com/).
-    *   Enable Firestore Database in your Firebase project.
-    *   Go to Project settings > General > Your apps.
-    *   If you don't have a Web app, create one.
-    *   Find the "SDK setup and configuration" section and copy the `firebaseConfig` values.
+2.  **Configure Environment Variables:**
     *   Create a file named `.env.local` in the root of your project.
-    *   Add the following environment variables to your `.env.local` file, replacing the placeholder values with your actual Firebase project credentials:
+    *   Add the following environment variables:
 
         ```dotenv
-        NEXT_PUBLIC_FIREBASE_API_KEY=YOUR_API_KEY
-        NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN=YOUR_AUTH_DOMAIN
-        NEXT_PUBLIC_FIREBASE_PROJECT_ID=YOUR_PROJECT_ID
-        NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET=YOUR_STORAGE_BUCKET
-        NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID=YOUR_MESSAGING_SENDER_ID
-        NEXT_PUBLIC_FIREBASE_APP_ID=YOUR_APP_ID
+        # MongoDB Connection URI
+        MONGODB_URI=your_mongodb_connection_string_here # e.g., mongodb://localhost:27017/healthwisehub or from MongoDB Atlas
+
+        # Firebase (Optional - if using Firebase Auth or other Firebase services)
+        # NEXT_PUBLIC_FIREBASE_API_KEY=YOUR_API_KEY
+        # NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN=YOUR_AUTH_DOMAIN
+        # NEXT_PUBLIC_FIREBASE_PROJECT_ID=YOUR_PROJECT_ID
+        # NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET=YOUR_STORAGE_BUCKET # If using Firebase Storage
+        # NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID=YOUR_MESSAGING_SENDER_ID # If using Firebase Messaging
+        # NEXT_PUBLIC_FIREBASE_APP_ID=YOUR_APP_ID
         # NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID=YOUR_MEASUREMENT_ID # Optional
 
         # If using GenAI features with Google AI
         GOOGLE_GENAI_API_KEY=YOUR_GOOGLE_AI_API_KEY
         ```
-    *   **Important:** The application relies on these Firebase credentials. Without valid configuration in `.env.local`, Firebase features (including database access and seeding) will be disabled. Firebase offers a generous free tier ("Spark Plan") suitable for development and small applications.
+    *   **Important:** The application relies on `MONGODB_URI` for database connectivity. For Firebase services (like Auth, if re-enabled), ensure the respective `NEXT_PUBLIC_FIREBASE_` variables are set.
+    *   For MongoDB, you can use a local instance or a cloud-hosted service like MongoDB Atlas (which offers a generous free tier).
 
-3.  **Seed Database (Optional but Recommended for Development):**
-    *   Ensure your Firebase configuration in `.env.local` is correct.
-    *   Run the application (`npm run dev`).
-    *   Navigate to the `/seed` page in your browser (e.g., `http://localhost:9002/seed`).
-    *   Click the "Seed Database" button. This will populate your Firestore with mock data for patients, doctors, health data, etc., using placeholder IDs (`test-patient-id`, `test-doctor-id`).
-
-4.  **Run the Development Server:**
+3.  **Run the Development Server:**
     ```bash
     npm run dev
     # or
@@ -52,7 +46,7 @@ This is a Next.js application designed for post-discharge patient care managemen
     ```
     The application will be available at `http://localhost:9002` (or the specified port).
 
-5.  **Run Genkit Dev Server (Optional - for AI features):**
+4.  **Run Genkit Dev Server (Optional - for AI features):**
     If you are working with the GenAI features, run the Genkit development server in a separate terminal:
     ```bash
     npm run genkit:dev
@@ -70,13 +64,14 @@ This is a Next.js application designed for post-discharge patient care managemen
     *   Summarize patient history.
     *   Generate suggested interventions based on patient data.
     *   Generate initial care plans.
-*   **Firebase Firestore:** Data persistence for users, health data, medications, etc.
+*   **MongoDB:** Data persistence for users, health data, medications, etc.
+*   **Firebase (Potentially for Auth):** User authentication (currently disabled, can be re-enabled).
 
 ## Project Structure
 
 *   `src/app/`: Next.js App Router pages and layouts.
 *   `src/components/`: React components, including UI elements (`ui/`) and feature-specific components (dashboards).
-*   `src/lib/`: Utility functions, including Firebase setup (`firebase.ts`).
+*   `src/lib/`: Utility functions, including Firebase setup (`firebase.ts`) and MongoDB setup (`mongodb.ts`).
 *   `src/hooks/`: Custom React hooks (`useToast`, `useMobile`).
 *   `src/ai/`: Genkit AI flows and configuration.
 *   `public/`: Static assets.
@@ -88,8 +83,10 @@ This is a Next.js application designed for post-discharge patient care managemen
 *   TypeScript
 *   Tailwind CSS
 *   Shadcn/ui
-*   Firebase (Firestore, Auth - currently disabled)
+*   MongoDB (via `mongodb` driver)
+*   Firebase (Auth - currently disabled)
 *   Genkit (for AI features)
 *   Recharts (for charts)
 *   Zod (for schema validation)
-*   Faker.js (for data seeding)
+*   Faker.js (for mock data generation within components)
+
