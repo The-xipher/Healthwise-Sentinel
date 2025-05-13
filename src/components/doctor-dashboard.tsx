@@ -2,7 +2,7 @@
 'use client';
 
 import * as React from 'react';
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
@@ -28,37 +28,44 @@ import {
   DoctorAISuggestion
 } from '@/app/actions/doctorActions'; 
 
-// This ID should match a doctor seeded by `src/lib/seed-db.ts`
-// The first doctor seeded is '607f1f77bcf86cd799439012' (Dr. John Smith)
-const PLACEHOLDER_DOCTOR_ID = '607f1f77bcf86cd799439012'; 
-const PLACEHOLDER_DOCTOR_NAME = 'Dr. John Smith'; 
+interface DoctorDashboardProps {
+  doctorId: string;
+  doctorName: string;
+  userRole: 'doctor' | 'admin';
+}
 
-export default function DoctorDashboard() {
-  const [patients, setPatients] = useState<DoctorPatient[]>([]);
-  const [selectedPatientId, setSelectedPatientId] = useState<string | null>(null);
-  const [selectedPatientData, setSelectedPatientData] = useState<DoctorPatient | null>(null);
-  const [patientHealthData, setPatientHealthData] = useState<DoctorPatientHealthData[]>([]);
-  const [patientMedications, setPatientMedications] = useState<DoctorPatientMedication[]>([]);
-  const [aiSuggestions, setAiSuggestions] = useState<DoctorAISuggestion[]>([]);
-  const [loadingPatients, setLoadingPatients] = useState(true);
-  const [loadingPatientDetails, setLoadingPatientDetails] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [chatMessages, setChatMessages] = useState<DoctorChatMessage[]>([]);
-  const [newMessage, setNewMessage] = useState('');
-  const [sendingMessage, setSendingMessage] = useState(false);
-  const [historySummary, setHistorySummary] = useState<string | null>(null);
-  const [loadingSummary, setLoadingSummary] = useState(false);
-  const [carePlan, setCarePlan] = useState<string | null>(null);
-  const [loadingCarePlan, setLoadingCarePlan] = useState(false);
+export default function DoctorDashboard({ doctorId, doctorName, userRole }: DoctorDashboardProps) {
+  const [patients, setPatients = useState([]);
+  const [selectedPatientId, setSelectedPatientId = useState(null);
+  const [selectedPatientData, setSelectedPatientData = useState(null);
+  const [patientHealthData, setPatientHealthData = useState([]);
+  const [patientMedications, setPatientMedications = useState([]);
+  const [aiSuggestions, setAiSuggestions = useState([]);
+  const [loadingPatients, setLoadingPatients = useState(true);
+  const [loadingPatientDetails, setLoadingPatientDetails = useState(false);
+  const [error, setError = useState(null);
+  const [chatMessages, setChatMessages = useState([]);
+  const [newMessage, setNewMessage = useState('');
+  const [sendingMessage, setSendingMessage = useState(false);
+  const [historySummary, setHistorySummary = useState(null);
+  const [loadingSummary, setLoadingSummary = useState(false);
+  const [carePlan, setCarePlan = useState(null);
+  const [loadingCarePlan, setLoadingCarePlan = useState(false);
   const { toast } = useToast();
-  const [dbAvailable, setDbAvailable] = useState(true); // Assume DB is available
+  const [dbAvailable, setDbAvailable = useState(true);
 
   useEffect(() => {
+    if (!doctorId) {
+      setError("Doctor ID is missing. Cannot load dashboard.");
+      setLoadingPatients(false);
+      setDbAvailable(false);
+      return;
+    }
     async function loadInitialData() {
       setLoadingPatients(true);
       setError(null);
       try {
-        const result = await fetchDoctorPatientsAction(PLACEHOLDER_DOCTOR_ID);
+        const result = await fetchDoctorPatientsAction(doctorId);
         if (result.error) {
           setError(result.error);
           if (result.error.toLowerCase().includes("database connection") || result.error.toLowerCase().includes("timeout")) {
@@ -68,10 +75,10 @@ export default function DoctorDashboard() {
         } else {
           setPatients(result.patients || []);
           setDbAvailable(true);
-          if (result.patients && result.patients.length > 0) {
-            // Optionally auto-select the first patient
-            // setSelectedPatientId(result.patients[0].id);
-          }
+          // Optionally auto-select the first patient if in doctor role
+          // if (userRole === 'doctor' && result.patients && result.patients.length > 0) {
+          //   setSelectedPatientId(result.patients[0].id);
+          // }
         }
       } catch (e: any) {
         setError(e.message || 'An unexpected error occurred while fetching patients.');
@@ -83,11 +90,10 @@ export default function DoctorDashboard() {
       }
     }
     loadInitialData();
-  }, []);
+  }, [doctorId]);
 
   useEffect(() => {
-    if (!selectedPatientId) {
-      // Reset all patient-specific data
+    if (!selectedPatientId || !doctorId) {
       setSelectedPatientData(null);
       setPatientHealthData([]);
       setPatientMedications([]);
@@ -106,7 +112,7 @@ export default function DoctorDashboard() {
       setCarePlan(null);
 
       try {
-        const result = await fetchDoctorPatientDetailsAction(selectedPatientId, PLACEHOLDER_DOCTOR_ID);
+        const result = await fetchDoctorPatientDetailsAction(selectedPatientId, doctorId);
         if (result.error) {
           setError(result.error);
            if (result.error.toLowerCase().includes("database connection") || result.error.toLowerCase().includes("invalid patient id")) {
@@ -126,7 +132,6 @@ export default function DoctorDashboard() {
           setDbAvailable(true);
 
           if (result.patient) {
-            // Fetch AI Summary
             setLoadingSummary(true);
             try {
               const summaryResult = await summarizePatientHistory({
@@ -141,7 +146,6 @@ export default function DoctorDashboard() {
               setLoadingSummary(false); 
             }
 
-            // Fetch AI Care Plan
             setLoadingCarePlan(true);
             try {
                 const currentMedsString = (result.medications || []).map(m => `${m.name} (${m.dosage})`).join(', ') || "None listed";
@@ -171,11 +175,11 @@ export default function DoctorDashboard() {
     }
 
     fetchPatientAllData();
-  }, [selectedPatientId]); 
+  }, [selectedPatientId, doctorId]); 
 
   const handleSendMessage = async () => {
-    if (!newMessage.trim() || !selectedPatientId) {
-      toast({ title: "Cannot Send", description: "Message is empty or no patient selected.", variant: "destructive" });
+    if (!newMessage.trim() || !selectedPatientId || !doctorId) {
+      toast({ title: "Cannot Send", description: "Message is empty or no patient/doctor selected.", variant: "destructive" });
       return;
     }
     if (!dbAvailable) {
@@ -184,7 +188,7 @@ export default function DoctorDashboard() {
     }
     setSendingMessage(true);
     try {
-      const result = await sendChatMessageAction(PLACEHOLDER_DOCTOR_ID, PLACEHOLDER_DOCTOR_NAME, selectedPatientId, newMessage);
+      const result = await sendChatMessageAction(doctorId, doctorName, selectedPatientId, newMessage);
       if (result.error) {
         toast({ title: "Message Failed", description: result.error, variant: "destructive" });
       } else if (result.message) {
@@ -245,9 +249,10 @@ export default function DoctorDashboard() {
   const coreDataLoading = loadingPatientDetails && selectedPatientId; 
 
   return (
-    <div className="space-y-6 p-4 md:p-6 lg:p-8">
+    <div className="space-y-6">
       <h1 className="text-3xl font-bold text-foreground flex items-center gap-2">
-        <Stethoscope className="h-8 w-8" /> Doctor Dashboard
+        <Stethoscope className="h-8 w-8" /> 
+        {userRole === 'admin' ? `Doctor View (Admin: ${doctorName})` : `${doctorName}'s Dashboard`}
       </h1>
 
       {error && (
@@ -263,7 +268,7 @@ export default function DoctorDashboard() {
           <AlertTriangle className="h-4 w-4 text-yellow-600 dark:text-yellow-400" />
           <AlertTitle>Database Disconnected</AlertTitle>
           <AlertDescription>
-            Critical database features are currently offline. Patient data cannot be loaded or updated. Please check your .env configuration and MongoDB Atlas connection status.
+            Critical database features are currently offline. Patient data cannot be loaded or updated.
           </AlertDescription>
         </Alert>
       )}
@@ -500,10 +505,10 @@ export default function DoctorDashboard() {
                     ) : chatMessages.length > 0 ? (
                       <div className="space-y-4">
                         {chatMessages.map(msg => (
-                          <div key={msg.id} className={`flex ${msg.senderId === PLACEHOLDER_DOCTOR_ID ? 'justify-end' : 'justify-start'}`}>
-                            <div className={`p-3 rounded-xl max-w-[80%] shadow-sm ${msg.senderId === PLACEHOLDER_DOCTOR_ID ? 'bg-primary text-primary-foreground' : 'bg-card text-card-foreground border'}`}>
+                          <div key={msg.id} className={`flex ${msg.senderId === doctorId ? 'justify-end' : 'justify-start'}`}>
+                            <div className={`p-3 rounded-xl max-w-[80%] shadow-sm ${msg.senderId === doctorId ? 'bg-primary text-primary-foreground' : 'bg-card text-card-foreground border'}`}>
                               <p className="text-sm">{msg.text}</p>
-                              <p className={`text-xs mt-1 ${msg.senderId === PLACEHOLDER_DOCTOR_ID ? 'text-primary-foreground/70 text-right' : 'text-muted-foreground text-left'}`}>
+                              <p className={`text-xs mt-1 ${msg.senderId === doctorId ? 'text-primary-foreground/70 text-right' : 'text-muted-foreground text-left'}`}>
                                 {msg.senderName} - {formatTimestamp(msg.timestamp)}
                               </p>
                             </div>
@@ -569,7 +574,7 @@ export default function DoctorDashboard() {
   );
 }
 
-function DashboardSkeleton() {
+function DashboardSkeleton() { // Remains the same, used when coreDataLoading is true
   return (
     <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
       <div className="lg:col-span-1 space-y-6">
@@ -625,5 +630,3 @@ function DashboardSkeleton() {
     </div>
   );
 }
-
-    

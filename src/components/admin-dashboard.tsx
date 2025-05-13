@@ -3,7 +3,6 @@
 
 import * as React from 'react';
 import { useState, useEffect } from 'react';
-import type { ObjectId } from 'mongodb'; // Keep for type definition if AppUser uses it.
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
@@ -12,7 +11,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import { Users, Activity, ShieldCheck, AlertTriangle } from 'lucide-react';
-import { fetchAdminDashboardData, AdminUser } from '@/app/actions/adminActions'; // Import server action and type
+import { fetchAdminDashboardData, AdminUser } from '@/app/actions/adminActions';
 
 interface AuditLog {
   id: string;
@@ -23,16 +22,17 @@ interface AuditLog {
   details?: string;
 }
 
-const PLACEHOLDER_ADMIN_ID = 'test-admin-id';
-const PLACEHOLDER_ADMIN_EMAIL = 'admin@example.com';
+interface AdminDashboardProps {
+  adminUserId: string; // Logged-in admin's ID
+}
 
-export default function AdminDashboard() {
-  const [users, setUsers] = useState<AdminUser[]>([]);
-  const [loadingUsers, setLoadingUsers] = useState(true);
-  const [auditLogs, setAuditLogs] = useState<AuditLog[]>([]);
-  const [loadingLogs, setLoadingLogs] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [dbAvailable, setDbAvailable] = useState(true); // Assume DB is available, action will tell otherwise
+export default function AdminDashboard({ adminUserId }: AdminDashboardProps) {
+  const [users, setUsers = useState([]);
+  const [loadingUsers, setLoadingUsers = useState(true);
+  const [auditLogs, setAuditLogs = useState([]);
+  const [loadingLogs, setLoadingLogs = useState(true);
+  const [error, setError = useState(null);
+  const [dbAvailable, setDbAvailable = useState(true);
 
   useEffect(() => {
     async function loadData() {
@@ -42,7 +42,7 @@ export default function AdminDashboard() {
         const result = await fetchAdminDashboardData();
         if (result.error) {
           setError(result.error);
-          setDbAvailable(false); // Or handle error more granularly
+          setDbAvailable(false);
           setUsers([]);
         } else {
           setUsers(result.users || []);
@@ -60,22 +60,22 @@ export default function AdminDashboard() {
 
     loadData();
 
-    // Simulate fetching audit logs (remains unchanged)
     setLoadingLogs(true);
     const fetchLogs = async () => {
-      await new Promise(resolve => setTimeout(resolve, 1500)); // Simulate delay
+      await new Promise(resolve => setTimeout(resolve, 1500)); 
+      // Simulate fetching audit logs, using the logged-in admin's ID if needed for context
       const simulatedLogs: AuditLog[] = [
-        { id: 'log1', timestamp: new Date(), userId: 'doctor_abc', userEmail: 'dr.smith@hospital.org', action: 'view_patient_data', details: 'Patient ID: patient_xyz' },
-        { id: 'log2', timestamp: new Date(Date.now() - 60000 * 5), userId: 'patient_xyz', userEmail: 'patient@mail.com', action: 'symptom_report', details: 'Severity: moderate' },
-        { id: 'log3', timestamp: new Date(Date.now() - 60000 * 10), userId: PLACEHOLDER_ADMIN_ID, userEmail: PLACEHOLDER_ADMIN_EMAIL, action: 'login', details: 'Admin logged in (Simulated)' },
-        { id: 'log4', timestamp: new Date(Date.now() - 60000 * 15), userId: 'doctor_abc', userEmail: 'dr.smith@hospital.org', action: 'approve_suggestion', details: 'Suggestion ID: sug_123' },
+        { id: 'log1', timestamp: new Date(), userId: 'doctor_example_id', userEmail: 'dr.smith@example.com', action: 'view_patient_data', details: 'Patient ID: patient_example_id' },
+        { id: 'log2', timestamp: new Date(Date.now() - 60000 * 5), userId: 'patient_example_id', userEmail: 'patient@example.com', action: 'symptom_report', details: 'Severity: moderate' },
+        { id: 'log3', timestamp: new Date(Date.now() - 60000 * 10), userId: adminUserId, userEmail: 'admin@healthwise.com', action: 'login', details: `Admin (${adminUserId}) logged in (Simulated)` },
+        { id: 'log4', timestamp: new Date(Date.now() - 60000 * 15), userId: 'doctor_example_id', userEmail: 'dr.smith@example.com', action: 'approve_suggestion', details: 'Suggestion ID: sug_123' },
       ];
       setAuditLogs(simulatedLogs);
       setLoadingLogs(false);
     };
     fetchLogs();
 
-  }, []);
+  }, [adminUserId]); // Re-fetch audit logs if adminUserId changes (though not typical for this component)
 
   const getInitials = (name: string | null | undefined): string => {
     if (!name) return '?';
@@ -94,12 +94,9 @@ export default function AdminDashboard() {
   };
 
   const formatDateTime = (date: Date | undefined): string => {
-    if (!date) return 'N/A';
-    return date.toLocaleString();
+    if (!date) return date.toLocaleString();
   };
   
-  const showSkeleton = loadingUsers || loadingLogs;
-
   return (
     <div className="space-y-6">
       <h1 className="text-3xl font-bold text-foreground flex items-center gap-2">
@@ -114,9 +111,9 @@ export default function AdminDashboard() {
         </Alert>
       )}
 
-      {!dbAvailable && !loadingUsers && !error && ( // Show if not loading, no other error, and db determined unavailable
-        <Alert variant="default" className="bg-yellow-50 border-yellow-200 text-yellow-800">
-          <AlertTriangle className="h-4 w-4 text-yellow-600" />
+      {!dbAvailable && !loadingUsers && !error && (
+        <Alert variant="default" className="bg-yellow-50 border-yellow-200 text-yellow-800 dark:bg-yellow-900 dark:border-yellow-700 dark:text-yellow-200">
+          <AlertTriangle className="h-4 w-4 text-yellow-600 dark:text-yellow-400" />
           <AlertTitle>Database Disconnected</AlertTitle>
           <AlertDescription>
             Database features are currently offline. User and log data cannot be loaded or managed.
@@ -157,7 +154,7 @@ export default function AdminDashboard() {
                     <TableCell>
                       <div className="flex items-center gap-2">
                         <Avatar className="h-8 w-8">
-                          <AvatarImage src={u.photoURL || undefined} alt={u.displayName || 'User'} />
+                          <AvatarImage src={u.photoURL || undefined} alt={u.displayName || 'User'} data-ai-hint="profile person"/>
                           <AvatarFallback>{getInitials(u.displayName)}</AvatarFallback>
                         </Avatar>
                         <span className="font-medium">{u.displayName || 'N/A'}</span>

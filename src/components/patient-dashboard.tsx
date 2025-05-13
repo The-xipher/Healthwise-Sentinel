@@ -2,9 +2,7 @@
 'use client';
 
 import * as React from 'react';
-import { useState, useEffect, useMemo } from 'react';
-// Removed direct mongodb imports: connectToDatabase, toObjectId
-import type { ObjectId } from 'mongodb'; // Keep for type definitions if necessary
+import { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
@@ -27,7 +25,7 @@ import {
   PatientHealthData,
   PatientMedication,
   PatientSymptomReport
-} from '@/app/actions/patientActions'; // Import server actions
+} from '@/app/actions/patientActions';
 
 const symptomFormSchema = z.object({
   severity: z.enum(['mild', 'moderate', 'severe'], {
@@ -42,10 +40,12 @@ const symptomFormSchema = z.object({
 
 type SymptomFormValues = z.infer<typeof symptomFormSchema>;
 
-// This ID should match a patient seeded by `src/lib/seed-db.ts`
-const PLACEHOLDER_PATIENT_ID = '607f1f77bcf86cd799439011'; 
+interface PatientDashboardProps {
+  userId: string; // Logged-in user's ID (patient's ID or admin viewing a patient)
+  userRole: 'patient' | 'admin'; // Role of the logged-in user
+}
 
-export default function PatientDashboard() {
+export default function PatientDashboard({ userId, userRole }: PatientDashboardProps) {
   const [healthData, setHealthData] = useState<PatientHealthData[]>([]);
   const [medications, setMedications] = useState<PatientMedication[]>([]);
   const [symptomReports, setSymptomReports] = useState<PatientSymptomReport[]>([]);
@@ -56,6 +56,8 @@ export default function PatientDashboard() {
   const [loadingInterventions, setLoadingInterventions] = useState(false);
   const { toast } = useToast();
   const [dbAvailable, setDbAvailable] = useState(true);
+  const [patientDisplayName, setPatientDisplayName] = useState<string>("Patient");
+
 
   const form = useForm<SymptomFormValues>({
     resolver: zodResolver(symptomFormSchema),
@@ -66,11 +68,22 @@ export default function PatientDashboard() {
   });
   
   useEffect(() => {
+    if (!userId) {
+        setError("Patient ID is missing. Cannot load dashboard.");
+        setLoadingData(false);
+        setDbAvailable(false);
+        return;
+    }
     async function loadData() {
       setLoadingData(true);
       setError(null);
       try {
-        const result = await fetchPatientDashboardDataAction(PLACEHOLDER_PATIENT_ID);
+        // TODO: If admin, fetch user details for patientId 'userId' to get name for title
+        // For now, admin view uses generic title or passed patientId.
+        // If actual patient is viewing, their name could be fetched if not available in session.
+        // For simplicity, we'll use a generic title or user's own name if passed.
+        
+        const result = await fetchPatientDashboardDataAction(userId); // Use passed userId
         if (result.error) {
           setError(result.error);
           if (result.error.startsWith("Invalid patient ID format") || result.error.includes("Database connection")) {
@@ -80,11 +93,12 @@ export default function PatientDashboard() {
           setMedications([]);
           setSymptomReports([]);
         } else {
+          // Could fetch patient's name here if needed for the title, e.g., from users collection
+          // For now, we assume the parent page handles the overall page title
           setHealthData(result.healthData || []);
           setMedications(result.medications || []);
           setSymptomReports(result.symptomReports || []);
           setDbAvailable(true);
-          // Trigger AI suggestions fetch after all data is loaded
           fetchInterventionsIfNeeded(result.healthData || [], result.medications || [], result.symptomReports || []);
         }
       } catch (e: any) {
@@ -96,7 +110,7 @@ export default function PatientDashboard() {
       }
     }
     loadData();
-  }, []);
+  }, [userId]); // Reload data if userId changes (e.g., admin switching patient views)
 
   const fetchInterventionsIfNeeded = async (
     currentHealthData: PatientHealthData[],
@@ -114,7 +128,6 @@ export default function PatientDashboard() {
 
       const input = {
         patientHealthData: `${healthSummary} Medication Adherence: ${adherenceSummary}. Recent Symptoms: ${symptomsSummaryText}`,
-        // Example risk, can be enhanced with actual data if available from patient profile
         riskPredictions: `Readmission Risk: ${Math.random() > 0.7 ? 'High' : 'Low'}. Potential Complications: Dehydration, Medication side-effects.`, 
       };
 
@@ -123,7 +136,6 @@ export default function PatientDashboard() {
     } catch (err) {
       console.error('Error generating suggested interventions:', err);
       toast({ title: "AI Suggestion Error", description: "Could not generate AI suggestions.", variant: "destructive" });
-      // Do not set dbAvailable to false here as AI failure is different from DB failure
     } finally {
       setLoadingInterventions(false);
     }
@@ -136,7 +148,8 @@ export default function PatientDashboard() {
     }
     setReportingSymptom(true);
     try {
-      const result = await submitSymptomReportAction(PLACEHOLDER_PATIENT_ID, values.severity, values.description);
+      // userId here is the patientId for whom the report is being submitted
+      const result = await submitSymptomReportAction(userId, values.severity, values.description);
       if (result.error) {
         toast({
           title: "Error Reporting Symptom",
@@ -149,13 +162,13 @@ export default function PatientDashboard() {
           title: "Symptom Reported",
           description: "Your healthcare provider has been notified.",
           variant: "default", 
-          className: "bg-green-100 border-green-300 text-green-700 dark:bg-green-900 dark:border-green-700 dark:text-green-200",
+          className: "bg-green-50 border-green-200 text-green-700 dark:bg-green-900 dark:border-green-700 dark:text-green-200",
           duration: 5000,
           action: <CheckCircle className="text-green-600 dark:text-green-400" />,
         });
         form.reset();
       }
-    } catch (err) {
+    } catch (err: any) {
       console.error("Error reporting symptom:", err);
       toast({
         title: "Error Reporting Symptom",
@@ -169,7 +182,6 @@ export default function PatientDashboard() {
 
   const formatTimestampForChart = (timestamp: Date | string | undefined): string => {
     if (!timestamp) return 'N/A';
-    // More concise time format for charts
     return new Date(timestamp).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
   };
 
@@ -187,21 +199,13 @@ export default function PatientDashboard() {
     }
   };
 
-  const getAdherenceColor = (adherence: number | undefined): string => {
-    // These will use Tailwind's theme colors for primary/secondary/destructive via Progress component variants logic if available
-    // Or direct bg classes if Progress doesn't support variant colors well.
-    // For Progress, usually the fill color itself is changed, not the component class.
-    if (adherence === undefined) return 'bg-muted'; // gray-300 equivalent
-    if (adherence >= 90) return 'bg-primary'; // green-500 equivalent (or primary theme color)
-    if (adherence >= 70) return 'bg-yellow-500'; // yellow-500 equivalent
-    return 'bg-destructive'; // red-500 equivalent (or destructive theme color)
-  };
-
-  const showSkeleton = loadingData && !error; // Show skeleton only during initial load without error
+  const showSkeleton = loadingData && !error;
 
   return (
     <div className="space-y-6">
-      <h1 className="text-3xl font-bold text-foreground">Patient Dashboard</h1>
+      <h1 className="text-3xl font-bold text-foreground">
+        {userRole === 'admin' ? `Patient Dashboard (Viewing ID: ${userId})` : 'My Health Dashboard'}
+      </h1>
 
       {error && (
         <Alert variant="destructive">
@@ -211,17 +215,17 @@ export default function PatientDashboard() {
         </Alert>
       )}
       
-      {!dbAvailable && !loadingData && !error && ( // Shown if DB is determined unavailable after load attempt & no other error
+      {!dbAvailable && !loadingData && !error && (
          <Alert variant="default" className="bg-yellow-50 border-yellow-200 text-yellow-800 dark:bg-yellow-900 dark:border-yellow-700 dark:text-yellow-200">
             <AlertTriangle className="h-4 w-4 text-yellow-600 dark:text-yellow-400" />
             <AlertTitle>Database Disconnected</AlertTitle>
             <AlertDescription>
-                Database features are currently offline. Data cannot be loaded or saved. Check .env and MongoDB connection.
+                Database features are currently offline. Data cannot be loaded or saved.
             </AlertDescription>
          </Alert>
        )}
 
-      {(loadingInterventions || suggestedInterventions !== null) && ( // Show AI card if loading or has suggestions
+      {(loadingInterventions || suggestedInterventions !== null) && (
         <Card className="bg-blue-50 border-blue-200 shadow-md hover:shadow-lg transition-shadow dark:bg-blue-900 dark:border-blue-700">
           <CardHeader>
             <CardTitle className="flex items-center gap-2 text-blue-800 dark:text-blue-200">
@@ -241,7 +245,6 @@ export default function PatientDashboard() {
             ) : suggestedInterventions ? (
               <p className="text-sm text-blue-700 dark:text-blue-200 whitespace-pre-line">{suggestedInterventions}</p>
             ) : (
-              // Only show "no suggestions" if not loading and db was available for attempt
               dbAvailable && <p className="text-sm text-blue-600 dark:text-blue-300">No specific suggestions available at this time.</p>
             )}
           </CardContent>
@@ -258,7 +261,7 @@ export default function PatientDashboard() {
           <Skeleton className="h-72 rounded-lg lg:col-span-1" />
         </div>
       ) : (
-        !error && dbAvailable && // Only render data cards if no error and db is available
+        !error && dbAvailable && 
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           <Card>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
@@ -316,7 +319,7 @@ export default function PatientDashboard() {
                 </ResponsiveContainer>
               ) : (
                 <div className="flex items-center justify-center h-full text-muted-foreground">
-                  No health data available yet.
+                  No health data available yet for this patient.
                 </div>
               )}
             </CardContent>
@@ -357,16 +360,16 @@ export default function PatientDashboard() {
               <CardDescription>Let your doctor know how you're feeling.</CardDescription>
             </CardHeader>
             <CardContent>
-              {!dbAvailable && !loadingData && ( 
+              {(!dbAvailable && !loadingData) || (userRole === 'admin' && !loadingData) ? ( 
                 <Alert variant="default" className="mb-4 bg-yellow-50 border-yellow-200 text-yellow-800 dark:bg-yellow-900 dark:border-yellow-700 dark:text-yellow-200">
                   <AlertTriangle className="h-4 w-4 text-yellow-600 dark:text-yellow-400" />
-                  <AlertTitle>Symptom Reporting Unavailable</AlertTitle>
+                  <AlertTitle>Symptom Reporting {userRole === 'admin' ? 'Disabled (Admin View)' : 'Unavailable'}</AlertTitle>
                   <AlertDescription>
-                    Database connection is required to report symptoms.
+                    {userRole === 'admin' ? 'Symptom reporting is disabled in admin view.' : 'Database connection is required to report symptoms.'}
                   </AlertDescription>
                 </Alert>
-              )}
-              {dbAvailable || loadingData ? ( 
+              ): null}
+              {(dbAvailable && userRole === 'patient') || loadingData ? ( 
                 <Form {...form}>
                   <form onSubmit={form.handleSubmit(onSubmitSymptom)} className="space-y-4">
                     <FormField
@@ -384,7 +387,7 @@ export default function PatientDashboard() {
                                   variant={field.value === severity ? 'default' : 'outline'}
                                   onClick={() => field.onChange(severity)}
                                   className={`flex-1 capitalize ${field.value === severity ? 'ring-2 ring-primary ring-offset-background dark:ring-offset-card' : ''}`}
-                                  disabled={!dbAvailable || reportingSymptom} 
+                                  disabled={!dbAvailable || reportingSymptom || userRole === 'admin'} 
                                 >
                                   {getSeverityIcon(severity)}
                                   <span className="ml-2">{severity}</span>
@@ -406,20 +409,20 @@ export default function PatientDashboard() {
                             <Textarea
                               placeholder="e.g., Feeling dizzy, short of breath..."
                               {...field}
-                              disabled={!dbAvailable || reportingSymptom}
+                              disabled={!dbAvailable || reportingSymptom || userRole === 'admin'}
                             />
                           </FormControl>
                           <FormMessage />
                         </FormItem>
                       )}
                     />
-                    <Button type="submit" disabled={reportingSymptom || !dbAvailable} className="w-full">
+                    <Button type="submit" disabled={reportingSymptom || !dbAvailable || userRole === 'admin'} className="w-full">
                       {reportingSymptom ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
                       Report Symptom
                     </Button>
                   </form>
                 </Form>
-              ) : ( 
+              ) : ( userRole !== 'patient' && // if not patient (i.e. admin and form is disabled)
                  <div className="space-y-4 opacity-50 cursor-not-allowed">
                   <div className="space-y-3">
                     <Label>How severe are your symptoms?</Label>
@@ -461,5 +464,3 @@ export default function PatientDashboard() {
     </div>
   );
 }
-
-    

@@ -3,11 +3,11 @@ import { MongoClient, ObjectId } from 'mongodb';
 import { faker } from '@faker-js/faker';
 import { connectToDatabase } from './mongodb'; // Use existing connection helper
 
-// Define interfaces for mock data (can be expanded)
+// Define interfaces for mock data
 interface User {
   _id: ObjectId;
-  id: string;
-  email: string;
+  // id: string; // id will be _id.toString()
+  email: string; // Keep email for display/contact, but login uses credentials.email
   displayName: string;
   photoURL: string;
   role: 'patient' | 'doctor' | 'admin';
@@ -18,6 +18,15 @@ interface User {
   lastActivity?: Date;
   creationTime: Date;
   lastSignInTime: Date;
+}
+
+interface Credential {
+  _id: ObjectId;
+  userId: ObjectId; // Foreign key to users collection
+  email: string; // Login email (must be unique)
+  passwordSalt?: string; // For future hashing, not used for plain text
+  passwordHash?: string; // For future hashing, not used for plain text
+  passwordPlainText: string; // For simple mock login
 }
 
 interface HealthData {
@@ -42,7 +51,7 @@ interface Medication {
 interface SymptomReport {
   _id: ObjectId;
   patientId: ObjectId;
-  userId: string; // Could be patient's own ID or a caregiver's
+  userId: string; 
   timestamp: Date;
   severity: 'mild' | 'moderate' | 'severe';
   description: string;
@@ -58,7 +67,7 @@ interface AISuggestion {
 
 interface ChatMessage {
     _id: ObjectId;
-    chatId: string; // composite key like doctorId_patientId
+    chatId: string; 
     senderId: string;
     senderName: string;
     text: string;
@@ -66,20 +75,21 @@ interface ChatMessage {
 }
 
 
-const NUM_PATIENTS = 10;
-const NUM_DOCTORS = 3;
+const NUM_PATIENTS = 5; // Reduced for faster seeding if needed
+const NUM_DOCTORS = 2;
 const NUM_ADMINS = 1;
-const HEALTH_DATA_POINTS_PER_PATIENT = 50;
-const MEDICATIONS_PER_PATIENT = 3;
-const SYMPTOMS_PER_PATIENT = 2;
-const AI_SUGGESTIONS_PER_PATIENT = 3;
-const CHAT_MESSAGES_PER_PATIENT_DOCTOR_PAIR = 5;
+const HEALTH_DATA_POINTS_PER_PATIENT = 20;
+const MEDICATIONS_PER_PATIENT = 2;
+const SYMPTOMS_PER_PATIENT = 1;
+const AI_SUGGESTIONS_PER_PATIENT = 2;
+const CHAT_MESSAGES_PER_PATIENT_DOCTOR_PAIR = 3;
 
+const DEFAULT_PASSWORD = "password123";
 
-// Predefined IDs for consistent testing
-const placeholderPatientId = new ObjectId('607f1f77bcf86cd799439011');
-const placeholderDoctorId = new ObjectId('607f1f77bcf86cd799439012');
-const placeholderAdminId = new ObjectId('607f1f77bcf86cd799439013');
+// Predefined ObjectIDs for consistent test users
+const patientUserObjectId = new ObjectId("607f1f77bcf86cd799439011");
+const doctorUserObjectId = new ObjectId("607f1f77bcf86cd799439012");
+const adminUserObjectId = new ObjectId("607f1f77bcf86cd799439013");
 
 
 export async function seedDatabase(): Promise<{ success: boolean; message: string; error?: string }> {
@@ -90,9 +100,9 @@ export async function seedDatabase(): Promise<{ success: boolean; message: strin
 
     console.log('Starting database seed process...');
 
-    // Clear existing collections
     console.log('Clearing existing data...');
     await db.collection('users').deleteMany({});
+    await db.collection('credentials').deleteMany({}); // Clear credentials
     await db.collection('healthData').deleteMany({});
     await db.collection('medications').deleteMany({});
     await db.collection('symptomReports').deleteMany({});
@@ -100,73 +110,88 @@ export async function seedDatabase(): Promise<{ success: boolean; message: strin
     await db.collection('chatMessages').deleteMany({});
     console.log('Existing data cleared.');
 
-    const users: User[] = [];
-    const doctors: User[] = [];
+    const usersToInsert: User[] = [];
+    const credentialsToInsert: Credential[] = [];
+    const doctorsForAssignment: User[] = [];
 
-    // Create Admins
-    for (let i = 0; i < NUM_ADMINS; i++) {
-      const isAdminPlaceholder = i === 0;
-      const adminId = isAdminPlaceholder ? placeholderAdminId : new ObjectId();
-      users.push({
-        _id: adminId,
-        id: adminId.toString(),
-        email: isAdminPlaceholder ? 'admin@example.com' : faker.internet.email(),
-        displayName: isAdminPlaceholder ? 'Admin User' : faker.person.fullName(),
-        photoURL: faker.image.avatar(),
-        role: 'admin',
-        creationTime: faker.date.past(),
-        lastSignInTime: faker.date.recent(),
-        lastActivity: faker.date.recent(),
-      });
-    }
 
-    // Create Doctors
+    // Create Admin User and Credential
+    const adminEmail = 'admin@healthwise.com';
+    const adminUser: User = {
+      _id: adminUserObjectId,
+      email: adminEmail,
+      displayName: 'Admin User',
+      photoURL: faker.image.avatar(),
+      role: 'admin',
+      creationTime: faker.date.past(),
+      lastSignInTime: faker.date.recent(),
+      lastActivity: faker.date.recent(),
+    };
+    usersToInsert.push(adminUser);
+    credentialsToInsert.push({
+      _id: new ObjectId(),
+      userId: adminUser._id,
+      email: adminEmail,
+      passwordPlainText: DEFAULT_PASSWORD,
+    });
+
+    // Create Doctor Users and Credentials
     for (let i = 0; i < NUM_DOCTORS; i++) {
-      const isDoctorPlaceholder = i === 0;
-      const doctorId = isDoctorPlaceholder ? placeholderDoctorId : new ObjectId();
+      const doctorEmail = i === 0 ? 'doctor@healthwise.com' : `doctor${i+1}@healthwise.com`;
+      const doctorId = i === 0 ? doctorUserObjectId : new ObjectId();
       const doctor: User = {
         _id: doctorId,
-        id: doctorId.toString(),
-        email: isDoctorPlaceholder ? 'dr.smith@example.com' : faker.internet.email(),
-        displayName: isDoctorPlaceholder ? 'Dr. John Smith' : `Dr. ${faker.person.lastName()}`,
+        email: doctorEmail,
+        displayName: i === 0 ? 'Dr. Ada Lovelace' : `Dr. ${faker.person.lastName()}`,
         photoURL: faker.image.avatar(),
         role: 'doctor',
-        specialty: faker.person.jobTitle(), // Simplified, actual specialties might be from a list
+        specialty: faker.person.jobArea(),
         creationTime: faker.date.past(),
         lastSignInTime: faker.date.recent(),
         lastActivity: faker.date.recent(),
       };
-      users.push(doctor);
-      doctors.push(doctor);
+      usersToInsert.push(doctor);
+      doctorsForAssignment.push(doctor);
+      credentialsToInsert.push({
+        _id: new ObjectId(),
+        userId: doctor._id,
+        email: doctorEmail,
+        passwordPlainText: DEFAULT_PASSWORD,
+      });
     }
     
-    // Create Patients and their related data
     const healthDataEntries: HealthData[] = [];
     const medicationEntries: Medication[] = [];
     const symptomReportEntries: SymptomReport[] = [];
     const aiSuggestionEntries: AISuggestion[] = [];
     const chatMessageEntries: ChatMessage[] = [];
 
+    // Create Patient Users and Credentials
     for (let i = 0; i < NUM_PATIENTS; i++) {
-      const assignedDoctor = doctors[i % doctors.length]; // Assign patients to doctors cyclically
-      const isPatientPlaceholder = i === 0;
-      const patientId = isPatientPlaceholder ? placeholderPatientId : new ObjectId();
+      const assignedDoctor = doctorsForAssignment[i % doctorsForAssignment.length];
+      const patientEmail = i === 0 ? 'patient@healthwise.com' : `patient${i+1}@healthwise.com`;
+      const patientId = i === 0 ? patientUserObjectId : new ObjectId();
       
       const patient: User = {
         _id: patientId,
-        id: patientId.toString(),
-        email: isPatientPlaceholder ? 'patient.doe@example.com' : faker.internet.email(),
-        displayName: isPatientPlaceholder ? 'Jane Doe' : faker.person.fullName(),
+        email: patientEmail,
+        displayName: i === 0 ? 'Patient Zero' : faker.person.fullName(),
         photoURL: faker.image.avatar(),
         role: 'patient',
         assignedDoctorId: assignedDoctor._id.toString(),
         readmissionRisk: faker.helpers.arrayElement(['low', 'medium', 'high']),
-        medicalHistory: `Diagnosed with ${faker.lorem.words(3)}. Previous surgery on ${faker.date.past().toLocaleDateString()}. Allergic to ${faker.lorem.word()}.`,
+        medicalHistory: `Diagnosed with ${faker.lorem.words(2)}. Previous procedure: ${faker.lorem.words(3)} on ${faker.date.past().toLocaleDateString()}. Known allergies: ${faker.lorem.word()}.`,
         creationTime: faker.date.past(),
         lastSignInTime: faker.date.recent(),
         lastActivity: faker.date.recent(),
       };
-      users.push(patient);
+      usersToInsert.push(patient);
+      credentialsToInsert.push({
+        _id: new ObjectId(),
+        userId: patient._id,
+        email: patientEmail,
+        passwordPlainText: DEFAULT_PASSWORD,
+      });
 
       // Generate Health Data for each patient
       for (let j = 0; j < HEALTH_DATA_POINTS_PER_PATIENT; j++) {
@@ -185,9 +210,9 @@ export async function seedDatabase(): Promise<{ success: boolean; message: strin
         medicationEntries.push({
           _id: new ObjectId(),
           patientId: patient._id,
-          name: faker.commerce.productName(), // Using product name as placeholder for drug name
-          dosage: `${faker.number.int({ min: 1, max: 2 })} pills`,
-          frequency: `${faker.number.int({ min: 1, max: 3 })} times a day`,
+          name: faker.commerce.productName(),
+          dosage: `${faker.number.int({ min: 1, max: 2 })} tab(s)`,
+          frequency: `${faker.number.int({ min: 1, max: 3 })} times daily`,
           lastTaken: faker.date.recent({ days: 1 }),
           adherence: faker.number.int({ min: 60, max: 100 }),
         });
@@ -210,7 +235,7 @@ export async function seedDatabase(): Promise<{ success: boolean; message: strin
           aiSuggestionEntries.push({
               _id: new ObjectId(),
               patientId: patient._id,
-              suggestionText: `Consider ${faker.lorem.sentence(5)} based on recent activity.`,
+              suggestionText: `Consider ${faker.lorem.words(4)} due to recent ${faker.lorem.word()}.`,
               timestamp: faker.date.recent({days: 3}),
               status: faker.helpers.arrayElement(['pending', 'approved', 'rejected'])
           });
@@ -232,7 +257,8 @@ export async function seedDatabase(): Promise<{ success: boolean; message: strin
     }
 
     console.log('Inserting mock data...');
-    if (users.length > 0) await db.collection('users').insertMany(users);
+    if (usersToInsert.length > 0) await db.collection('users').insertMany(usersToInsert);
+    if (credentialsToInsert.length > 0) await db.collection('credentials').insertMany(credentialsToInsert);
     if (healthDataEntries.length > 0) await db.collection('healthData').insertMany(healthDataEntries);
     if (medicationEntries.length > 0) await db.collection('medications').insertMany(medicationEntries);
     if (symptomReportEntries.length > 0) await db.collection('symptomReports').insertMany(symptomReportEntries);
@@ -240,33 +266,19 @@ export async function seedDatabase(): Promise<{ success: boolean; message: strin
     if (chatMessageEntries.length > 0) await db.collection('chatMessages').insertMany(chatMessageEntries);
 
     console.log('Mock data insertion complete.');
-    console.log(`Seeded ${users.length} users.`);
-    console.log(`Seeded ${healthDataEntries.length} health data records.`);
-    console.log(`Seeded ${medicationEntries.length} medication records.`);
-    console.log(`Seeded ${symptomReportEntries.length} symptom reports.`);
-    console.log(`Seeded ${aiSuggestionEntries.length} AI suggestions.`);
-    console.log(`Seeded ${chatMessageEntries.length} chat messages.`);
+    console.log(`Seeded ${usersToInsert.length} users.`);
+    console.log(`Seeded ${credentialsToInsert.length} credentials.`);
+    // ... other logs ...
     
-    return { success: true, message: 'Database seeded successfully!' };
+    return { success: true, message: 'Database seeded successfully with users and credentials!' };
 
   } catch (error: any) {
     const errorMessage = `Error during database seeding: ${error.message}`;
     console.error(errorMessage, error);
     return { success: false, message: 'Database seeding failed.', error: error.message };
-  } finally {
-    // The connectToDatabase helper manages the connection lifecycle
-    // so we don't necessarily need to close it here if it's meant to be cached.
-    // If this seed script is run standalone and connectToDatabase doesn't cache/reuse,
-    // then client.close() would be appropriate.
-    // For now, assume connectToDatabase handles caching and lifecycle.
-    // if (client) {
-    //   await client.close();
-    //   console.log('MongoDB connection closed.');
-    // }
   }
 }
 
-// If this script is run directly (e.g. `tsx src/lib/seed-db.ts`)
 if (require.main === module) {
   (async () => {
     const result = await seedDatabase();

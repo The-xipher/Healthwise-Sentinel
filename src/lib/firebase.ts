@@ -1,60 +1,56 @@
-import { initializeApp, getApps, type FirebaseApp } from 'firebase/app';
-import { getAuth, type Auth } from 'firebase/auth';
-// Firestore, Functions, Storage, Messaging imports are removed as primary focus shifts or they are not used.
 
-// Firebase configuration (primarily for Auth if used)
+import { initializeApp, getApps, type FirebaseApp } from 'firebase/app';
+// Auth import is removed: import { getAuth, type Auth } from 'firebase/auth';
+// Firestore, Functions, Storage, Messaging imports are removed or commented if not immediately needed.
+
+// Firebase configuration (retained in case other Firebase services are used later, like Storage)
 const firebaseConfig = {
   apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY,
   authDomain: process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN,
   projectId: process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID,
-  storageBucket: process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET, // Optional: if using Firebase Storage
-  messagingSenderId: process.env.NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID, // Optional: if using Firebase Messaging
+  storageBucket: process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET, 
+  messagingSenderId: process.env.NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID,
   appId: process.env.NEXT_PUBLIC_FIREBASE_APP_ID,
-  // measurementId: process.env.NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID, // Optional
+  // measurementId: process.env.NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID,
 };
 
-// Check if the Firebase Auth configuration is valid (API key and Auth Domain are minimal requirements for Auth)
-const isFirebaseAuthEnabled =
+// Check if Firebase is generally configured (e.g., for services other than Auth)
+const isFirebaseConfigured =
   firebaseConfig.apiKey && firebaseConfig.apiKey !== "YOUR_API_KEY" &&
-  firebaseConfig.authDomain && firebaseConfig.authDomain !== "YOUR_AUTH_DOMAIN" &&
-  firebaseConfig.projectId; // Project ID is generally good to have for a functional app.
+  firebaseConfig.projectId && firebaseConfig.projectId !== "YOUR_PROJECT_ID";
 
 let app: FirebaseApp | null = null;
-let auth: Auth | null = null;
-// db (Firestore), functions, storage, messaging variables are removed.
+// auth variable is removed: let auth: Auth | null = null;
 let firebaseConfigErrorMessage: string | null = null;
 
-if (isFirebaseAuthEnabled) {
+if (isFirebaseConfigured) {
   if (!getApps().length) {
     try {
       app = initializeApp(firebaseConfig);
-      auth = getAuth(app);
-      console.log("Firebase App (for Auth, if configured) initialized successfully.");
-      // Initialize other Firebase services like Storage or Messaging here if needed and configured
+      // Do NOT initialize auth here: auth = getAuth(app);
+      console.log("Firebase App initialized successfully (core services, Auth is handled separately).");
     } catch (error) {
       console.error("Firebase App initialization error:", error);
-      firebaseConfigErrorMessage = `Firebase App (for Auth) initialization failed: ${error instanceof Error ? error.message : String(error)}`;
+      firebaseConfigErrorMessage = `Firebase App initialization failed: ${error instanceof Error ? error.message : String(error)}`;
       app = null;
-      auth = null;
     }
   } else {
     app = getApps()[0];
-    auth = getAuth(app);
+    // Do NOT initialize auth here: auth = getAuth(app);
   }
 } else {
-  firebaseConfigErrorMessage = "Firebase Auth is not configured or configuration is invalid. Placeholder values found for: apiKey, authDomain, or projectId. Update .env file if Firebase Auth is needed.";
+  firebaseConfigErrorMessage = "Firebase core configuration is missing or invalid (apiKey, projectId). Update .env file if Firebase services (like Storage) are needed. Authentication is now handled by a custom system.";
   console.warn(firebaseConfigErrorMessage);
 }
 
-// Export the services (they might be null if config is invalid or not provided)
-export { app, auth }; // Only exporting app and auth
+// Export only the app instance, auth is no longer managed here.
+export { app };
 
-// Helper function to check if Firebase Auth was intended to be initialized and succeeded
-export function isFirebaseAuthInitialized(): boolean {
-  return isFirebaseAuthEnabled && !!app && !!auth;
+// Helper function to check if Firebase core was initialized
+export function isFirebaseCoreInitialized(): boolean {
+  return isFirebaseConfigured && !!app;
 }
 
-// Export the error message for components to use if needed
 export function getFirebaseConfigError(): string | null {
   return firebaseConfigErrorMessage;
 }

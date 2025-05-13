@@ -1,28 +1,36 @@
-import Dashboard from '@/components/dashboard';
-import { Suspense } from 'react';
-import { Skeleton } from '@/components/ui/skeleton';
 
-export default function DashboardPage() {
-  return (
-    <Suspense fallback={<DashboardSkeleton />}>
-      <Dashboard />
-    </Suspense>
-  );
-}
+// src/app/dashboard/page.tsx
+import { redirect } from 'next/navigation';
+import { getSession } from '@/app/actions/authActions';
+import { Loader2 } from 'lucide-react';
 
-function DashboardSkeleton() {
+export default async function DashboardRedirectPage() {
+  const session = await getSession();
+
+  if (!session) {
+    // This should ideally be caught by middleware, but as a fallback:
+    redirect('/login');
+  }
+
+  // Redirect based on role
+  switch (session.role) {
+    case 'patient':
+      redirect('/dashboard/patient');
+    case 'doctor':
+      redirect('/dashboard/doctor');
+    case 'admin':
+      redirect('/dashboard/admin');
+    default:
+      // Fallback if role is unknown or not set, redirect to login or a generic error page
+      console.warn(`Unknown or missing role for user ${session.userId}: ${session.role}. Redirecting to login.`);
+      redirect('/login'); 
+  }
+
+  // This part should not be reached if redirection works
   return (
-    <div className="flex flex-col items-center justify-center min-h-screen p-4 bg-secondary">
-      <div className="w-full max-w-6xl p-8 space-y-8 bg-card rounded-lg shadow-md">
-        <Skeleton className="h-10 w-1/3" />
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          <Skeleton className="h-40 rounded-lg" />
-          <Skeleton className="h-40 rounded-lg" />
-          <Skeleton className="h-40 rounded-lg" />
-          <Skeleton className="h-60 rounded-lg md:col-span-2" />
-          <Skeleton className="h-60 rounded-lg" />
-        </div>
-      </div>
+     <div className="flex flex-col items-center justify-center min-h-screen p-4 bg-secondary">
+        <Loader2 className="h-12 w-12 animate-spin text-primary mb-4" />
+        <p className="text-lg text-foreground">Redirecting to your dashboard...</p>
     </div>
   );
 }

@@ -1,0 +1,124 @@
+
+'use client';
+
+import * as React from 'react';
+import { useRouter } from 'next/navigation';
+import { useForm } from 'react-hook-form';
+import { zodResolver } from '@hookform/resolvers/zod';
+import { z } from 'zod';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from '@/components/ui/card';
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
+import { loginAction } from '@/app/actions/authActions';
+import { Loader2, LogIn, AlertTriangle } from 'lucide-react';
+
+const loginSchema = z.object({
+  email: z.string().email({ message: 'Invalid email address.' }),
+  password: z.string().min(1, { message: 'Password is required.' }),
+});
+
+type LoginFormValues = z.infer<typeof loginSchema>;
+
+export default function LoginForm() {
+  const router = useRouter();
+  const [isLoading, setIsLoading] = React.useState(false);
+  const [error, setError] = React.useState<string | null>(null);
+
+  const form = useForm<LoginFormValues>({
+    resolver: zodResolver(loginSchema),
+    defaultValues: {
+      email: '',
+      password: '',
+    },
+  });
+
+  const onSubmit = async (data: LoginFormValues) => {
+    setIsLoading(true);
+    setError(null);
+
+    const formData = new FormData();
+    formData.append('email', data.email);
+    formData.append('password', data.password);
+
+    try {
+      const result = await loginAction(formData);
+      if (result.success) {
+        // Redirect to the main dashboard, which will then redirect based on role
+        router.push('/dashboard'); 
+        router.refresh(); // Ensure layout re-renders with new session
+      } else {
+        setError(result.message);
+      }
+    } catch (err: any) {
+      setError(err.message || 'An unexpected error occurred.');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  return (
+    <Card className="w-full max-w-md shadow-2xl rounded-xl">
+      <CardHeader className="text-center">
+        <CardTitle className="text-3xl font-bold flex items-center justify-center gap-2">
+           <LogIn className="h-7 w-7 text-primary" />
+          HealthWise Hub Login
+        </CardTitle>
+        <CardDescription>Access your personalized health dashboard.</CardDescription>
+      </CardHeader>
+      <CardContent>
+        <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
+          {error && (
+            <Alert variant="destructive">
+              <AlertTriangle className="h-4 w-4" />
+              <AlertTitle>Login Failed</AlertTitle>
+              <AlertDescription>{error}</AlertDescription>
+            </Alert>
+          )}
+          <div className="space-y-2">
+            <Label htmlFor="email">Email Address</Label>
+            <Input
+              id="email"
+              type="email"
+              placeholder="you@example.com"
+              {...form.register('email')}
+              disabled={isLoading}
+              className="text-base py-3"
+            />
+            {form.formState.errors.email && (
+              <p className="text-xs text-destructive">{form.formState.errors.email.message}</p>
+            )}
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="password">Password</Label>
+            <Input
+              id="password"
+              type="password"
+              placeholder="••••••••"
+              {...form.register('password')}
+              disabled={isLoading}
+              className="text-base py-3"
+            />
+            {form.formState.errors.password && (
+              <p className="text-xs text-destructive">{form.formState.errors.password.message}</p>
+            )}
+          </div>
+          <Button type="submit" className="w-full text-lg py-6" disabled={isLoading} size="lg">
+            {isLoading ? (
+              <>
+                <Loader2 className="mr-2 h-5 w-5 animate-spin" />
+                Signing In...
+              </>
+            ) : (
+              'Sign In'
+            )}
+          </Button>
+        </form>
+      </CardContent>
+       <CardFooter className="text-center text-xs text-muted-foreground">
+        <p>Use seeded credentials: e.g., patient@healthwise.com / password123</p>
+      </CardFooter>
+    </Card>
+  );
+}
