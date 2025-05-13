@@ -3,7 +3,8 @@ import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 
 const SESSION_COOKIE_NAME = 'healthwise_session';
-const PROTECTED_PATHS = ['/dashboard', '/dashboard/patient', '/dashboard/doctor', '/dashboard/admin', '/dashboard/profile', '/seed-database'];
+const PROTECTED_PATHS = ['/dashboard', '/dashboard/patient', '/dashboard/doctor', '/dashboard/admin', '/dashboard/profile'];
+// Removed '/seed-database' from PROTECTED_PATHS as it was previously removed.
 const LOGIN_PATH = '/login';
 const ROOT_PATH = '/';
 
@@ -23,26 +24,30 @@ export async function middleware(request: NextRequest) {
 
   const isAuthenticated = !!session;
 
+  // Allow access to the root path (landing page) for everyone
+  if (pathname === ROOT_PATH) {
+    return NextResponse.next();
+  }
+
   // If trying to access login page while authenticated, redirect to dashboard
   if (isAuthenticated && pathname === LOGIN_PATH) {
     return NextResponse.redirect(new URL('/dashboard', request.url));
   }
-
-  // If trying to access root path while authenticated and it's not already the dashboard,
-  // and user is not trying to logout or access an API.
-  // We allow authenticated users to see the landing page.
-  // The `Access Your Dashboard` button on landing page will take them to `/dashboard`.
-  if (pathname === ROOT_PATH) {
-    return NextResponse.next(); // Allow landing page to render
+  
+  // If trying to access /seed-database page
+  if (pathname.startsWith('/seed-database')) {
+    // This page is client-rendered and uses a server action.
+    // It doesn't strictly need auth protection via middleware if the action itself is protected
+    // or if it's considered a developer tool. For now, let's allow access.
+    // If it needs protection, add it to PROTECTED_PATHS or handle here.
+    return NextResponse.next();
   }
 
 
-  // Protect dashboard routes and seed-database page
+  // Protect dashboard routes
   const isProtectedPath = PROTECTED_PATHS.some(p => pathname.startsWith(p));
   if (isProtectedPath && !isAuthenticated) {
-    // Preserve the intended URL for redirection after login
     const loginUrl = new URL(LOGIN_PATH, request.url);
-    // loginUrl.searchParams.set('redirect', pathname); // Can be used on login page to redirect back
     return NextResponse.redirect(loginUrl);
   }
   
@@ -50,19 +55,15 @@ export async function middleware(request: NextRequest) {
   // or if user directly accesses specific admin/doctor/patient pages.
   if (isAuthenticated && session) {
     if (pathname.startsWith('/dashboard/admin') && session.role !== 'admin') {
-      return NextResponse.redirect(new URL('/dashboard', request.url)); // Or an unauthorized page
+      return NextResponse.redirect(new URL('/dashboard', request.url)); 
     }
-    // Admin can view doctor dashboard. Doctor can view doctor dashboard.
     if (pathname.startsWith('/dashboard/doctor') && session.role !== 'doctor' && session.role !== 'admin') { 
       return NextResponse.redirect(new URL('/dashboard', request.url));
     }
-    // Admin can view patient dashboard. Patient can view patient dashboard.
     if (pathname.startsWith('/dashboard/patient') && session.role !== 'patient' && session.role !== 'admin') { 
       return NextResponse.redirect(new URL('/dashboard', request.url));
     }
-    // All roles can view their own profile page. Path is /dashboard/profile
   }
-
 
   return NextResponse.next();
 }

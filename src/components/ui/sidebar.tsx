@@ -1,4 +1,3 @@
-
 "use client"
 
 import * as React from "react"
@@ -535,34 +534,42 @@ const sidebarMenuButtonVariants = cva(
 )
 
 interface SidebarMenuButtonProps
-  extends React.ButtonHTMLAttributes<HTMLButtonElement>,
+  extends React.ButtonHTMLAttributes<HTMLButtonElement>, // Use ButtonHTMLAttributes for default case
     VariantProps<typeof sidebarMenuButtonVariants> {
   asChild?: boolean;
   isActive?: boolean;
   tooltip?: string | React.ComponentProps<typeof TooltipContent>;
 }
 
-const SidebarMenuButton = React.forwardRef<HTMLButtonElement, SidebarMenuButtonProps>(
+
+const SidebarMenuButton = React.forwardRef<
+  HTMLButtonElement, // Keep as HTMLButtonElement for simplicity, Slot will forward ref
+  SidebarMenuButtonProps
+>(
   (
     {
-      asChild: ownAsChild, // This is the asChild prop specific to SidebarMenuButton's behavior
+      asChild: propAsChild,
       isActive = false,
       variant = "default",
       size = "default",
       tooltip,
       className,
-      children, // Explicitly accept children
-      ...restProps // All other props passed to SidebarMenuButton
+      children,
+      ...restProps
     },
     ref
   ) => {
-    const Comp = ownAsChild ? Slot : "button";
     const { isMobile, state } = useSidebar();
 
-    // If an 'asChild' prop is passed in ...restProps (e.g., from a parent <Link asChild>),
-    // we need to ensure it's not spread onto a native DOM element if Comp is 'button'.
-    // The 'ownAsChild' prop has already determined if Comp is Slot or button.
-    const { asChild: _leakedAsChild, ...safePropsToSpread } = restProps;
+    // Determine if Comp should be Slot:
+    // 1. If propAsChild is explicitly true.
+    // 2. If restProps contains asChild=true (e.g., from a parent <Link asChild>).
+    const renderAsSlot = propAsChild || (restProps as any).asChild;
+    const Comp = renderAsSlot ? Slot : "button";
+
+    // Remove asChild from restProps to prevent it from being passed to a native DOM element
+    // or to Slot if Slot is the Comp. Slot handles its own asChild logic for its direct children.
+    const { asChild: _removedAsChildFromRest, ...finalRestProps } = restProps as any;
 
     const buttonElement = (
       <Comp
@@ -571,12 +578,12 @@ const SidebarMenuButton = React.forwardRef<HTMLButtonElement, SidebarMenuButtonP
         data-size={size}
         data-active={isActive}
         className={cn(sidebarMenuButtonVariants({ variant, size, className }))}
-        {...safePropsToSpread} // Spread the cleaned props
+        {...finalRestProps} // Spread potentially href, type="submit", etc.
       >
-        {children} {/* Render children inside Comp */}
+        {children}
       </Comp>
     );
-
+    
     if (!tooltip) {
       return buttonElement;
     }

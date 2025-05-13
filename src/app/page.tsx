@@ -2,8 +2,11 @@
 import { Button } from '@/components/ui/button';
 import Link from 'next/link';
 import { BarChart, Users, ShieldCheck, Activity } from 'lucide-react';
+import { getSession } from '@/app/actions/authActions';
 
-export default function LandingPage() {
+export default async function LandingPage() {
+  const session = await getSession();
+
   return (
     <main className="flex flex-col items-center justify-center min-h-screen bg-gradient-to-br from-background to-secondary/30 text-foreground p-4 overflow-hidden">
       <div className="text-center space-y-8 max-w-3xl">
@@ -17,7 +20,7 @@ export default function LandingPage() {
         </div>
 
         <div className="animate-in fade-in slide-in-from-bottom-16 duration-1000 delay-300">
-          <Link href="/dashboard">
+          <Link href={session ? "/dashboard" : "/login"}>
             <Button size="lg" className="text-lg py-7 px-10 shadow-lg hover:shadow-primary/30 transition-shadow duration-300">
               Access Your Dashboard
             </Button>
