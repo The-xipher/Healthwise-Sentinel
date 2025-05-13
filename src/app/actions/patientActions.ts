@@ -185,7 +185,10 @@ export async function fetchPatientDashboardDataAction(patientIdStr: string): Pro
     };
   } catch (err: any) {
     console.error("Error fetching patient dashboard data:", err);
-    return { error: "Could not load patient data. " + err.message };
+    if (err.message.includes('queryTxt ETIMEOUT') || err.message.includes('querySrv ENOTFOUND')) {
+        return { error: "Database connection timeout. Please check your network and MongoDB Atlas settings." };
+    }
+    return { error: "Could not load patient data. " + (err.message || '') };
   }
 }
 
@@ -223,7 +226,10 @@ export async function submitSymptomReportAction(
     return { report: insertedReport };
   } catch (err: any) {
     console.error("Error submitting symptom report:", err);
-    return { error: "Could not save your report. " + err.message };
+    if (err.message.includes('queryTxt ETIMEOUT') || err.message.includes('querySrv ENOTFOUND')) {
+        return { error: "Database connection timeout. Please check your network and MongoDB Atlas settings." };
+    }
+    return { error: "Could not save your report. " + (err.message || '') };
   }
 }
 
@@ -261,7 +267,9 @@ export async function sendPatientChatMessageAction(
     return { message: insertedMessage };
   } catch (err: any) {
     console.error("Error sending patient message:", err);
-    return { error: "Could not send message. " + err.message };
+    if (err.message.includes('queryTxt ETIMEOUT') || err.message.includes('querySrv ENOTFOUND')) {
+        return { error: "Database connection timeout. Please check your network and MongoDB Atlas settings." };
+    }
+    return { error: "Could not send message. " + (err.message || '') };
   }
 }
-```
