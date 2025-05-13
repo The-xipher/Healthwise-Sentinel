@@ -1,38 +1,37 @@
 
 'use server';
 
-import { connectToDatabase, toObjectId } from '@/lib/mongodb';
-import type { ObjectId } from 'mongodb';
+import { connectToDatabase, toObjectId, ObjectId } from '@/lib/mongodb';
 
 // Type definitions for data structures (can be shared or defined per component/action)
 export interface DoctorPatient {
-  _id: string; //ObjectId converted to string
+  _id: string; 
   id: string;
   name: string;
   email?: string;
   photoURL?: string;
-  lastActivity?: Date | string; // Ensure date is stringified if needed for client
+  lastActivity?: Date | string; 
   assignedDoctorId?: string;
   readmissionRisk?: 'low' | 'medium' | 'high';
   medicalHistory?: string;
 }
-interface RawDoctorPatient { // DB representation
+interface RawDoctorPatient { 
   _id: ObjectId;
   name: string;
   email?: string;
   photoURL?: string;
   lastActivity?: Date;
   assignedDoctorId?: string;
-  role: 'patient'; // for query
+  role: 'patient'; 
   readmissionRisk?: 'low' | 'medium' | 'high';
   medicalHistory?: string;
 }
 
 
 export interface DoctorPatientHealthData {
-  _id: string; // ObjectId converted to string
+  _id: string; 
   id: string;
-  patientId: string; // ObjectId converted to string
+  patientId: string; 
   timestamp: Date | string;
   steps?: number;
   heartRate?: number;
@@ -46,9 +45,9 @@ interface RawDoctorPatientHealthData {
 }
 
 export interface DoctorPatientMedication {
-  _id: string; // ObjectId converted to string
+  _id: string; 
   id: string;
-  patientId: string; // ObjectId converted to string
+  patientId: string; 
   name: string;
   dosage: string;
   frequency: string;
@@ -65,27 +64,31 @@ interface RawDoctorPatientMedication {
 
 
 export interface DoctorChatMessage {
-  _id: string; // ObjectId converted to string
+  _id: string; 
   id: string;
   chatId: string;
   senderId: string;
   senderName: string;
+  receiverId: string; // Added
   text: string;
   timestamp: Date | string;
+  isRead?: boolean; // Added
 }
 interface RawDoctorChatMessage {
   _id: ObjectId;
   chatId: string;
   senderId: string;
   senderName: string;
+  receiverId: string; // Added
   text: string;
   timestamp: Date;
+  isRead?: boolean; // Added
 }
 
 export interface DoctorAISuggestion {
-  _id: string; // ObjectId converted to string
+  _id: string; 
   id: string;
-  patientId: string; // ObjectId converted to string
+  patientId: string; 
   suggestionText: string;
   timestamp: Date | string;
   status: 'pending' | 'approved' | 'rejected';
@@ -98,8 +101,8 @@ interface RawDoctorAISuggestion {
   status: 'pending' | 'approved' | 'rejected';
 }
 
-const getChatId = (doctorId: string, patientId: string): string => {
-  return [doctorId, patientId].sort().join('_');
+const getChatId = (id1: string, id2: string): string => {
+  return [id1, id2].sort().join('_');
 };
 
 export async function fetchDoctorPatientsAction(doctorId: string): Promise<{ patients?: DoctorPatient[], error?: string }> {
@@ -115,7 +118,7 @@ export async function fetchDoctorPatientsAction(doctorId: string): Promise<{ pat
       ...p,
       _id: p._id.toString(),
       id: p._id.toString(),
-      lastActivity: p.lastActivity?.toISOString(), // Ensure date is serializable
+      lastActivity: p.lastActivity?.toISOString(), 
     }));
     return { patients };
   } catch (err: any) {
@@ -141,7 +144,15 @@ export async function fetchDoctorPatientDetailsAction(patientIdStr: string, doct
     const { db } = await connectToDatabase();
 
     const usersCollection = db.collection<RawDoctorPatient>('users');
-    const rawPatient = await usersCollection.findOne({ _id: patientObjectId });
+    const rawPatient = await usersCollection.findOne({ _id: patientObjectId, assignedDoctorId: doctorId }); // Ensure patient is assigned to this doctor
+    
+    if (!rawPatient) {
+      // Check if patient exists but not assigned to this doctor, or if patient doesn't exist
+      const anyPatient = await usersCollection.findOne({ _id: patientObjectId });
+      if (!anyPatient) return { error: "Patient not found." };
+      if (anyPatient.assignedDoctorId !== doctorId) return { error: "Patient not assigned to this doctor." };
+    }
+
     const patient: DoctorPatient | undefined = rawPatient ? {
         ...rawPatient,
          _id: rawPatient._id.toString(),
@@ -167,7 +178,7 @@ export async function fetchDoctorPatientDetailsAction(patientIdStr: string, doct
       _id: med._id.toString(),
       id: med._id.toString(),
       patientId: med.patientId.toString(),
-      adherence: med.adherence ?? Math.floor(Math.random() * 31) + 70 // Keep simulation if original logic
+      adherence: med.adherence ?? Math.floor(Math.random() * 31) + 70 
     }));
     
     const suggestionsCollection = db.collection<RawDoctorAISuggestion>('aiSuggestions');
@@ -208,18 +219,20 @@ export async function sendChatMessageAction(
   if (!text.trim()) return { error: "Message cannot be empty." };
 
   const chatId = getChatId(doctorId, patientIdStr);
-  const messageData: Omit<RawDoctorChatMessage, '_id'> = { // Use Omit for data to be inserted
+  const messageData: Omit<RawDoctorChatMessage, '_id'> = { 
     chatId,
     senderId: doctorId,
     senderName: doctorName,
+    receiverId: patientIdStr, // Patient is the receiver
     text,
     timestamp: new Date(),
+    isRead: false, // Default to unread
   };
 
   try {
     const { db } = await connectToDatabase();
     const chatCollection = db.collection<RawDoctorChatMessage>('chatMessages');
-    const result = await chatCollection.insertOne(messageData as RawDoctorChatMessage); // Cast to include _id if MongoDB driver adds it pre-insert
+    const result = await chatCollection.insertOne(messageData as RawDoctorChatMessage); 
 
     const insertedMessage: DoctorChatMessage = {
         ...messageData,
@@ -236,7 +249,7 @@ export async function sendChatMessageAction(
 
 export async function updateSuggestionStatusAction(
   suggestionIdStr: string,
-  patientIdStr: string, // for verification against suggestion's patientId
+  patientIdStr: string, 
   status: 'approved' | 'rejected'
 ): Promise<{ updatedSuggestion?: Partial<DoctorAISuggestion>, error?: string }> {
   const suggestionObjectId = toObjectId(suggestionIdStr);
@@ -250,7 +263,7 @@ export async function updateSuggestionStatusAction(
     const { db } = await connectToDatabase();
     const suggestionsCollection = db.collection<RawDoctorAISuggestion>('aiSuggestions');
     const updateResult = await suggestionsCollection.updateOne(
-      { _id: suggestionObjectId, patientId: patientObjectId }, // ensure suggestion belongs to this patient
+      { _id: suggestionObjectId, patientId: patientObjectId }, 
       { $set: { status: status } }
     );
 

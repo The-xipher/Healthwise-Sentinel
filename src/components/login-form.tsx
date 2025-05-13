@@ -12,7 +12,7 @@ import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from '@/components/ui/card';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { loginAction } from '@/app/actions/authActions';
-import { Loader2, LogIn, AlertTriangle } from 'lucide-react';
+import { Loader2, LogIn, AlertTriangle, Eye, EyeOff } from 'lucide-react';
 
 const loginSchema = z.object({
   email: z.string().email({ message: 'Invalid email address.' }),
@@ -25,6 +25,7 @@ export default function LoginForm() {
   const router = useRouter();
   const [isLoading, setIsLoading] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
+  const [showPassword, setShowPassword] = React.useState(false);
 
   const form = useForm<LoginFormValues>({
     resolver: zodResolver(loginSchema),
@@ -45,9 +46,8 @@ export default function LoginForm() {
     try {
       const result = await loginAction(formData);
       if (result.success) {
-        // Redirect to the main dashboard, which will then redirect based on role
         router.push('/dashboard'); 
-        router.refresh(); // Ensure layout re-renders with new session
+        router.refresh(); 
       } else {
         setError(result.message);
       }
@@ -57,6 +57,8 @@ export default function LoginForm() {
       setIsLoading(false);
     }
   };
+
+  const togglePasswordVisibility = () => setShowPassword(!showPassword);
 
   return (
     <Card className="w-full max-w-md shadow-2xl rounded-xl">
@@ -92,14 +94,27 @@ export default function LoginForm() {
           </div>
           <div className="space-y-2">
             <Label htmlFor="password">Password</Label>
-            <Input
-              id="password"
-              type="password"
-              placeholder="••••••••"
-              {...form.register('password')}
-              disabled={isLoading}
-              className="text-base py-3"
-            />
+            <div className="relative">
+              <Input
+                id="password"
+                type={showPassword ? 'text' : 'password'}
+                placeholder="••••••••"
+                {...form.register('password')}
+                disabled={isLoading}
+                className="text-base py-3 pr-10" // Add pr-10 for icon spacing
+              />
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                className="absolute inset-y-0 right-0 flex items-center pr-3 text-muted-foreground hover:text-foreground"
+                onClick={togglePasswordVisibility}
+                disabled={isLoading}
+                aria-label={showPassword ? 'Hide password' : 'Show password'}
+              >
+                {showPassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
+              </Button>
+            </div>
             {form.formState.errors.password && (
               <p className="text-xs text-destructive">{form.formState.errors.password.message}</p>
             )}
@@ -117,8 +132,9 @@ export default function LoginForm() {
         </form>
       </CardContent>
        <CardFooter className="text-center text-xs text-muted-foreground">
-        <p>Use seeded credentials: e.g., patient@healthwise.com / password123</p>
+        <p>Use seeded credentials: e.g., patient.zero@healthwise.com / password123</p>
       </CardFooter>
     </Card>
   );
 }
+```

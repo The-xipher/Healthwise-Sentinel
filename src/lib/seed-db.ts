@@ -1,3 +1,4 @@
+
 // src/lib/seed-db.ts
 import { MongoClient, ObjectId } from 'mongodb';
 import { faker } from '@faker-js/faker';
@@ -6,12 +7,12 @@ import { connectToDatabase } from './mongodb'; // Use existing connection helper
 // Define interfaces for mock data
 interface User {
   _id: ObjectId;
-  // id: string; // id will be _id.toString()
-  email: string; // Keep email for display/contact, but login uses credentials.email
+  email: string; 
   displayName: string;
   photoURL: string;
   role: 'patient' | 'doctor' | 'admin';
   assignedDoctorId?: string; // For patients
+  assignedDoctorName?: string; // For patients, to simplify chat display
   specialty?: string; // For doctors
   readmissionRisk?: 'low' | 'medium' | 'high'; // For patients
   medicalHistory?: string; // For patients
@@ -24,9 +25,9 @@ interface Credential {
   _id: ObjectId;
   userId: ObjectId; // Foreign key to users collection
   email: string; // Login email (must be unique)
-  passwordSalt?: string; // For future hashing, not used for plain text
-  passwordHash?: string; // For future hashing, not used for plain text
-  passwordPlainText: string; // For simple mock login
+  passwordSalt?: string; 
+  passwordHash?: string; 
+  passwordPlainText: string; 
 }
 
 interface HealthData {
@@ -70,27 +71,34 @@ interface ChatMessage {
     chatId: string; 
     senderId: string;
     senderName: string;
+    receiverId: string; // Added to know who the message is for, helps with notifications potentially
     text: string;
     timestamp: Date;
+    isRead?: boolean; // Added for potential notification system
 }
 
 
-const NUM_PATIENTS = 5; // Reduced for faster seeding if needed
+const NUM_PATIENTS = 5; 
 const NUM_DOCTORS = 2;
 const NUM_ADMINS = 1;
 const HEALTH_DATA_POINTS_PER_PATIENT = 20;
 const MEDICATIONS_PER_PATIENT = 2;
 const SYMPTOMS_PER_PATIENT = 1;
 const AI_SUGGESTIONS_PER_PATIENT = 2;
-const CHAT_MESSAGES_PER_PATIENT_DOCTOR_PAIR = 3;
+const CHAT_MESSAGES_PER_PATIENT_DOCTOR_PAIR = 5; // Increased for more chat history
 
 const DEFAULT_PASSWORD = "password123";
 
 // Predefined ObjectIDs for consistent test users
-const patientUserObjectId = new ObjectId("607f1f77bcf86cd799439011");
-const doctorUserObjectId = new ObjectId("607f1f77bcf86cd799439012");
-const adminUserObjectId = new ObjectId("607f1f77bcf86cd799439013");
+const patientUserObjectId1 = new ObjectId("607f1f77bcf86cd799439011"); // Patient Zero
+const doctorUserObjectId1 = new ObjectId("607f1f77bcf86cd799439012"); // Dr. Ada Lovelace
+const adminUserObjectId1 = new ObjectId("607f1f77bcf86cd799439013"); // Admin User
+const patientUserObjectId2 = new ObjectId("607f1f77bcf86cd799439014"); // Second patient
+const doctorUserObjectId2 = new ObjectId("607f1f77bcf86cd799439015"); // Second doctor
 
+const getChatId = (id1: string, id2: string): string => {
+  return [id1, id2].sort().join('_');
+};
 
 export async function seedDatabase(): Promise<{ success: boolean; message: string; error?: string }> {
   let client: MongoClient | null = null;
@@ -100,65 +108,18 @@ export async function seedDatabase(): Promise<{ success: boolean; message: strin
 
     console.log('Starting database seed process...');
 
-    console.log('Clearing existing data...');
-    await db.collection('users').deleteMany({});
-    await db.collection('credentials').deleteMany({}); // Clear credentials
-    await db.collection('healthData').deleteMany({});
-    await db.collection('medications').deleteMany({});
-    await db.collection('symptomReports').deleteMany({});
-    await db.collection('aiSuggestions').deleteMany({});
-    await db.collection('chatMessages').deleteMany({});
+    const collectionsToClear = [
+      'users', 'credentials', 'healthData', 'medications', 
+      'symptomReports', 'aiSuggestions', 'chatMessages'
+    ];
+    console.log(`Clearing existing data from collections: ${collectionsToClear.join(', ')}...`);
+    for (const coll of collectionsToClear) {
+      await db.collection(coll).deleteMany({});
+    }
     console.log('Existing data cleared.');
 
     const usersToInsert: User[] = [];
     const credentialsToInsert: Credential[] = [];
-    const doctorsForAssignment: User[] = [];
-
-
-    // Create Admin User and Credential
-    const adminEmail = 'admin@healthwise.com';
-    const adminUser: User = {
-      _id: adminUserObjectId,
-      email: adminEmail,
-      displayName: 'Admin User',
-      photoURL: faker.image.avatar(),
-      role: 'admin',
-      creationTime: faker.date.past(),
-      lastSignInTime: faker.date.recent(),
-      lastActivity: faker.date.recent(),
-    };
-    usersToInsert.push(adminUser);
-    credentialsToInsert.push({
-      _id: new ObjectId(),
-      userId: adminUser._id,
-      email: adminEmail,
-      passwordPlainText: DEFAULT_PASSWORD,
-    });
-
-    // Create Doctor Users and Credentials
-    for (let i = 0; i < NUM_DOCTORS; i++) {
-      const doctorEmail = i === 0 ? 'doctor@healthwise.com' : `doctor${i+1}@healthwise.com`;
-      const doctorId = i === 0 ? doctorUserObjectId : new ObjectId();
-      const doctor: User = {
-        _id: doctorId,
-        email: doctorEmail,
-        displayName: i === 0 ? 'Dr. Ada Lovelace' : `Dr. ${faker.person.lastName()}`,
-        photoURL: faker.image.avatar(),
-        role: 'doctor',
-        specialty: faker.person.jobArea(),
-        creationTime: faker.date.past(),
-        lastSignInTime: faker.date.recent(),
-        lastActivity: faker.date.recent(),
-      };
-      usersToInsert.push(doctor);
-      doctorsForAssignment.push(doctor);
-      credentialsToInsert.push({
-        _id: new ObjectId(),
-        userId: doctor._id,
-        email: doctorEmail,
-        passwordPlainText: DEFAULT_PASSWORD,
-      });
-    }
     
     const healthDataEntries: HealthData[] = [];
     const medicationEntries: Medication[] = [];
@@ -166,46 +127,115 @@ export async function seedDatabase(): Promise<{ success: boolean; message: strin
     const aiSuggestionEntries: AISuggestion[] = [];
     const chatMessageEntries: ChatMessage[] = [];
 
-    // Create Patient Users and Credentials
-    for (let i = 0; i < NUM_PATIENTS; i++) {
-      const assignedDoctor = doctorsForAssignment[i % doctorsForAssignment.length];
-      const patientEmail = i === 0 ? 'patient@healthwise.com' : `patient${i+1}@healthwise.com`;
-      const patientId = i === 0 ? patientUserObjectId : new ObjectId();
+    // --- Admins ---
+    const adminUser: User = {
+      _id: adminUserObjectId1,
+      email: 'admin@healthwise.com', // For display/contact
+      displayName: 'Admin User',
+      photoURL: faker.image.avatarGitHub(),
+      role: 'admin',
+      creationTime: faker.date.past({ years: 1 }),
+      lastSignInTime: faker.date.recent({ days: 5 }),
+      lastActivity: faker.date.recent({ days: 5 }),
+    };
+    usersToInsert.push(adminUser);
+    credentialsToInsert.push({
+      _id: new ObjectId(),
+      userId: adminUser._id,
+      email: 'admin@healthwise.com', // Login email
+      passwordPlainText: DEFAULT_PASSWORD,
+    });
+
+    // --- Doctors ---
+    const doctorsForAssignment: User[] = [];
+    const doctor1: User = {
+      _id: doctorUserObjectId1,
+      email: 'dr.ada.lovelace@healthwise.com',
+      displayName: 'Dr. Ada Lovelace',
+      photoURL: faker.image.avatar(),
+      role: 'doctor',
+      specialty: 'Cardiology',
+      creationTime: faker.date.past({ years: 2 }),
+      lastSignInTime: faker.date.recent({ days: 2 }),
+      lastActivity: faker.date.recent({ days: 2 }),
+    };
+    usersToInsert.push(doctor1);
+    doctorsForAssignment.push(doctor1);
+    credentialsToInsert.push({
+      _id: new ObjectId(),
+      userId: doctor1._id,
+      email: 'dr.ada.lovelace@healthwise.com',
+      passwordPlainText: DEFAULT_PASSWORD,
+    });
+
+    const doctor2: User = {
+        _id: doctorUserObjectId2,
+        email: `dr.john.doe@healthwise.com`,
+        displayName: `Dr. John Doe`,
+        photoURL: faker.image.avatar(),
+        role: 'doctor',
+        specialty: 'General Practice',
+        creationTime: faker.date.past({ years: 1 }),
+        lastSignInTime: faker.date.recent({ days: 3 }),
+        lastActivity: faker.date.recent({ days: 3 }),
+    };
+    usersToInsert.push(doctor2);
+    doctorsForAssignment.push(doctor2);
+    credentialsToInsert.push({
+      _id: new ObjectId(),
+      userId: doctor2._id,
+      email: `dr.john.doe@healthwise.com`,
+      passwordPlainText: DEFAULT_PASSWORD,
+    });
+    
+    // --- Patients ---
+    const patientData = [
+      { _id: patientUserObjectId1, displayName: 'Patient Zero', loginEmail: 'patient.zero@healthwise.com', assignedDoctorIndex: 0 },
+      { _id: patientUserObjectId2, displayName: 'Jane Smith', loginEmail: 'jane.smith@healthwise.com', assignedDoctorIndex: 1 },
+      // Add more distinct patients
+      { _id: new ObjectId(), displayName: faker.person.fullName(), loginEmail: `patient${usersToInsert.length+1}@healthwise.com`, assignedDoctorIndex: 0 },
+      { _id: new ObjectId(), displayName: faker.person.fullName(), loginEmail: `patient${usersToInsert.length+2}@healthwise.com`, assignedDoctorIndex: 1 },
+      { _id: new ObjectId(), displayName: faker.person.fullName(), loginEmail: `patient${usersToInsert.length+3}@healthwise.com`, assignedDoctorIndex: 0 },
+    ];
+
+    for (const pData of patientData) {
+      const assignedDoctor = doctorsForAssignment[pData.assignedDoctorIndex % doctorsForAssignment.length];
       
       const patient: User = {
-        _id: patientId,
-        email: patientEmail,
-        displayName: i === 0 ? 'Patient Zero' : faker.person.fullName(),
+        _id: pData._id,
+        email: pData.loginEmail.replace('@', '.contact@'), // Different from login email for variation
+        displayName: pData.displayName,
         photoURL: faker.image.avatar(),
         role: 'patient',
         assignedDoctorId: assignedDoctor._id.toString(),
+        assignedDoctorName: assignedDoctor.displayName,
         readmissionRisk: faker.helpers.arrayElement(['low', 'medium', 'high']),
         medicalHistory: `Diagnosed with ${faker.lorem.words(2)}. Previous procedure: ${faker.lorem.words(3)} on ${faker.date.past().toLocaleDateString()}. Known allergies: ${faker.lorem.word()}.`,
-        creationTime: faker.date.past(),
-        lastSignInTime: faker.date.recent(),
-        lastActivity: faker.date.recent(),
+        creationTime: faker.date.past({ years: 1 }),
+        lastSignInTime: faker.date.recent({ days: 7 }),
+        lastActivity: faker.date.recent({ days: 1 }),
       };
       usersToInsert.push(patient);
       credentialsToInsert.push({
         _id: new ObjectId(),
         userId: patient._id,
-        email: patientEmail,
+        email: pData.loginEmail, // Unique login email
         passwordPlainText: DEFAULT_PASSWORD,
       });
 
-      // Generate Health Data for each patient
+      // Health Data
       for (let j = 0; j < HEALTH_DATA_POINTS_PER_PATIENT; j++) {
         healthDataEntries.push({
           _id: new ObjectId(),
           patientId: patient._id,
-          timestamp: faker.date.recent({ days: 30 }),
+          timestamp: faker.date.recent({ days: 30 - j }), // Spread out over last 30 days
           steps: faker.number.int({ min: 500, max: 15000 }),
           heartRate: faker.number.int({ min: 50, max: 120 }),
           bloodGlucose: faker.number.int({ min: 70, max: 180 }),
         });
       }
 
-      // Generate Medications for each patient
+      // Medications
       for (let k = 0; k < MEDICATIONS_PER_PATIENT; k++) {
         medicationEntries.push({
           _id: new ObjectId(),
@@ -218,7 +248,7 @@ export async function seedDatabase(): Promise<{ success: boolean; message: strin
         });
       }
 
-      // Generate Symptom Reports for each patient
+      // Symptom Reports
       for (let l = 0; l < SYMPTOMS_PER_PATIENT; l++) {
         symptomReportEntries.push({
           _id: new ObjectId(),
@@ -230,7 +260,7 @@ export async function seedDatabase(): Promise<{ success: boolean; message: strin
         });
       }
       
-      // Generate AI Suggestions for each patient
+      // AI Suggestions
       for (let m = 0; m < AI_SUGGESTIONS_PER_PATIENT; m++) {
           aiSuggestionEntries.push({
               _id: new ObjectId(),
@@ -241,22 +271,31 @@ export async function seedDatabase(): Promise<{ success: boolean; message: strin
           });
       }
 
-      // Generate Chat Messages between patient and assigned doctor
-      const chatId = [assignedDoctor._id.toString(), patient._id.toString()].sort().join('_');
+      // Chat Messages
+      const chatId = getChatId(assignedDoctor._id.toString(), patient._id.toString());
+      const conversationParticipants = [
+          { id: patient._id.toString(), name: patient.displayName },
+          { id: assignedDoctor._id.toString(), name: assignedDoctor.displayName }
+      ];
+
       for (let n = 0; n < CHAT_MESSAGES_PER_PATIENT_DOCTOR_PAIR; n++) {
-          const isDoctorSender = faker.datatype.boolean();
+          const sender = faker.helpers.arrayElement(conversationParticipants);
+          const receiver = conversationParticipants.find(u => u.id !== sender.id)!;
+          
           chatMessageEntries.push({
               _id: new ObjectId(),
               chatId: chatId,
-              senderId: isDoctorSender ? assignedDoctor._id.toString() : patient._id.toString(),
-              senderName: isDoctorSender ? assignedDoctor.displayName : patient.displayName,
-              text: faker.lorem.sentence(),
-              timestamp: faker.date.recent({days: 2})
+              senderId: sender.id,
+              senderName: sender.name,
+              receiverId: receiver.id,
+              text: faker.lorem.sentence({min: 3, max: 15}),
+              timestamp: faker.date.recent({days: CHAT_MESSAGES_PER_PATIENT_DOCTOR_PAIR - n}), // Chronological
+              isRead: faker.datatype.boolean(0.7) // 70% chance of being read
           });
       }
     }
 
-    console.log('Inserting mock data...');
+    console.log('Inserting mock data into collections...');
     if (usersToInsert.length > 0) await db.collection('users').insertMany(usersToInsert);
     if (credentialsToInsert.length > 0) await db.collection('credentials').insertMany(credentialsToInsert);
     if (healthDataEntries.length > 0) await db.collection('healthData').insertMany(healthDataEntries);
@@ -268,9 +307,9 @@ export async function seedDatabase(): Promise<{ success: boolean; message: strin
     console.log('Mock data insertion complete.');
     console.log(`Seeded ${usersToInsert.length} users.`);
     console.log(`Seeded ${credentialsToInsert.length} credentials.`);
-    // ... other logs ...
+    console.log(`Seeded ${chatMessageEntries.length} chat messages.`);
     
-    return { success: true, message: 'Database seeded successfully with users and credentials!' };
+    return { success: true, message: `Database seeded successfully! Users: ${usersToInsert.length}, Credentials: ${credentialsToInsert.length}, Chats: ${chatMessageEntries.length}` };
 
   } catch (error: any) {
     const errorMessage = `Error during database seeding: ${error.message}`;
@@ -279,8 +318,10 @@ export async function seedDatabase(): Promise<{ success: boolean; message: strin
   }
 }
 
+// If run directly via `tsx src/lib/seed-db.ts`
 if (require.main === module) {
   (async () => {
+    console.log("Running seed script directly...");
     const result = await seedDatabase();
     if (result.success) {
       console.log(result.message);

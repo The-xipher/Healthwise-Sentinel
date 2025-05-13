@@ -2,7 +2,7 @@
 'use client';
 
 import * as React from 'react';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
@@ -53,6 +53,8 @@ export default function DoctorDashboard({ doctorId, doctorName, userRole }: Doct
   const [loadingCarePlan, setLoadingCarePlan] = useState<boolean>(false);
   const { toast } = useToast();
   const [dbAvailable, setDbAvailable] = useState<boolean>(true);
+  const chatScrollAreaRef = useRef<HTMLDivElement>(null);
+
 
   useEffect(() => {
     if (!doctorId) {
@@ -75,10 +77,6 @@ export default function DoctorDashboard({ doctorId, doctorName, userRole }: Doct
         } else {
           setPatients(result.patients || []);
           setDbAvailable(true);
-          // Optionally auto-select the first patient if in doctor role
-          // if (userRole === 'doctor' && result.patients && result.patients.length > 0) {
-          //   setSelectedPatientId(result.patients[0].id);
-          // }
         }
       } catch (e: any) {
         setError(e.message || 'An unexpected error occurred while fetching patients.');
@@ -176,6 +174,12 @@ export default function DoctorDashboard({ doctorId, doctorName, userRole }: Doct
 
     fetchPatientAllData();
   }, [selectedPatientId, doctorId]); 
+
+  useEffect(() => {
+    if (chatScrollAreaRef.current) {
+      chatScrollAreaRef.current.scrollTop = chatScrollAreaRef.current.scrollHeight;
+    }
+  }, [chatMessages]);
 
   const handleSendMessage = async () => {
     if (!newMessage.trim() || !selectedPatientId || !doctorId) {
@@ -496,10 +500,12 @@ export default function DoctorDashboard({ doctorId, doctorName, userRole }: Doct
             <div className="lg:col-span-1 flex flex-col">
               <Card className="flex-grow flex flex-col shadow-md">
                 <CardHeader>
-                  <CardTitle className="text-lg flex items-center gap-2"><MessageSquare className="h-5 w-5 text-primary" /> Chat with Patient</CardTitle>
+                  <CardTitle className="text-lg flex items-center gap-2">
+                    <MessageSquare className="h-5 w-5 text-primary" /> Chat with {selectedPatientData?.name || 'Patient'}
+                  </CardTitle>
                 </CardHeader>
                 <CardContent className="flex-grow overflow-hidden flex flex-col p-0">
-                  <ScrollArea className="flex-grow p-4 bg-muted/20 dark:bg-muted/10">
+                  <ScrollArea className="flex-grow p-4 bg-muted/20 dark:bg-muted/10" ref={chatScrollAreaRef}>
                     {(loadingPatientDetails && !chatMessages.length) ? (
                        <div className="flex items-center justify-center h-full"><Loader2 className="h-6 w-6 animate-spin text-primary"/></div>
                     ) : chatMessages.length > 0 ? (
@@ -574,7 +580,7 @@ export default function DoctorDashboard({ doctorId, doctorName, userRole }: Doct
   );
 }
 
-function DashboardSkeleton() { // Remains the same, used when coreDataLoading is true
+function DashboardSkeleton() { 
   return (
     <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
       <div className="lg:col-span-1 space-y-6">
@@ -630,4 +636,3 @@ function DashboardSkeleton() { // Remains the same, used when coreDataLoading is
     </div>
   );
 }
-
