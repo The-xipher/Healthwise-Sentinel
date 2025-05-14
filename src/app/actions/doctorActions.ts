@@ -1,36 +1,37 @@
+
 'use server';
 
 import { connectToDatabase, toObjectId, ObjectId } from '@/lib/mongodb';
 
 // Type definitions for data structures (can be shared or defined per component/action)
 export interface DoctorPatient {
-  _id: string; 
+  _id: string;
   id: string;
-  name: string;
+  name: string; // This is what the component expects
   email?: string;
   photoURL?: string;
-  lastActivity?: Date | string; 
+  lastActivity?: Date | string;
   assignedDoctorId?: string;
   readmissionRisk?: 'low' | 'medium' | 'high';
   medicalHistory?: string;
 }
-interface RawDoctorPatient { 
+interface RawDoctorPatient { // Represents the structure in MongoDB
   _id: ObjectId;
-  name: string;
+  displayName: string; // MongoDB stores names as displayName
   email?: string;
   photoURL?: string;
   lastActivity?: Date;
   assignedDoctorId?: string;
-  role: 'patient'; 
+  role: 'patient';
   readmissionRisk?: 'low' | 'medium' | 'high';
   medicalHistory?: string;
 }
 
 
 export interface DoctorPatientHealthData {
-  _id: string; 
+  _id: string;
   id: string;
-  patientId: string; 
+  patientId: string;
   timestamp: Date | string;
   steps?: number;
   heartRate?: number;
@@ -44,9 +45,9 @@ interface RawDoctorPatientHealthData {
 }
 
 export interface DoctorPatientMedication {
-  _id: string; 
+  _id: string;
   id: string;
-  patientId: string; 
+  patientId: string;
   name: string;
   dosage: string;
   frequency: string;
@@ -63,7 +64,7 @@ interface RawDoctorPatientMedication {
 
 
 export interface DoctorChatMessage {
-  _id: string; 
+  _id: string;
   id: string;
   chatId: string;
   senderId: string;
@@ -85,9 +86,9 @@ interface RawDoctorChatMessage {
 }
 
 export interface DoctorAISuggestion {
-  _id: string; 
+  _id: string;
   id: string;
-  patientId: string; 
+  patientId: string;
   suggestionText: string;
   timestamp: Date | string;
   status: 'pending' | 'approved' | 'rejected';
@@ -107,17 +108,20 @@ const getChatId = (id1: string, id2: string): string => {
 export async function fetchDoctorPatientsAction(doctorId: string): Promise<{ patients?: DoctorPatient[], error?: string }> {
   try {
     const { db } = await connectToDatabase();
+    // Fetch users with role 'patient' and assignedDoctorId, expecting 'displayName'
     const usersCollection = db.collection<RawDoctorPatient>('users');
     const patientList = await usersCollection.find({
       role: 'patient',
-      assignedDoctorId: doctorId 
+      assignedDoctorId: doctorId
     }).toArray();
 
+    // Map RawDoctorPatient (with displayName) to DoctorPatient (with name)
     const patients: DoctorPatient[] = patientList.map(p => ({
       ...p,
       _id: p._id.toString(),
       id: p._id.toString(),
-      lastActivity: p.lastActivity?.toISOString(), 
+      name: p.displayName, // Map displayName to name
+      lastActivity: p.lastActivity?.toISOString(),
     }));
     return { patients };
   } catch (err: any) {
@@ -141,26 +145,24 @@ export async function fetchDoctorPatientDetailsAction(patientIdStr: string, doct
 
   try {
     const { db } = await connectToDatabase();
-    const usersCollection = db.collection<RawDoctorPatient>('users');
+    const usersCollection = db.collection<RawDoctorPatient>('users'); // Expects RawDoctorPatient
 
-    // First, try to find the patient specifically assigned to this doctor.
     const rawPatient = await usersCollection.findOne({ _id: patientObjectId, assignedDoctorId: doctorId, role: 'patient' });
-    
+
     if (!rawPatient) {
-      // If not found directly, check if the patient exists at all.
       const anyPatientWithId = await usersCollection.findOne({ _id: patientObjectId, role: 'patient' });
       if (!anyPatientWithId) {
-        return { error: "Patient not found." }; // Patient ID does not exist or is not a patient.
+        return { error: "Patient not found." };
       }
-      // Patient exists but is not assigned to this doctor.
-      return { error: "Patient not assigned to this doctor." }; 
+      return { error: "Patient not assigned to this doctor." };
     }
 
-    // If rawPatient is found, then proceed.
+    // Map RawDoctorPatient to DoctorPatient
     const patient: DoctorPatient = {
         ...rawPatient,
          _id: rawPatient._id.toString(),
          id: rawPatient._id.toString(),
+         name: rawPatient.displayName, // Map displayName to name
          lastActivity: rawPatient.lastActivity?.toISOString()
     };
 
@@ -182,9 +184,9 @@ export async function fetchDoctorPatientDetailsAction(patientIdStr: string, doct
       _id: med._id.toString(),
       id: med._id.toString(),
       patientId: med.patientId.toString(),
-      adherence: med.adherence ?? Math.floor(Math.random() * 31) + 70 
+      adherence: med.adherence ?? Math.floor(Math.random() * 31) + 70
     }));
-    
+
     const suggestionsCollection = db.collection<RawDoctorAISuggestion>('aiSuggestions');
     const rawSuggestions = await suggestionsCollection.find({ patientId: patientObjectId })
       .sort({ timestamp: -1 }).toArray();
@@ -205,7 +207,7 @@ export async function fetchDoctorPatientDetailsAction(patientIdStr: string, doct
         id: m._id.toString(),
         timestamp: m.timestamp.toISOString()
     }));
-    
+
     return { patient, healthData, medications, aiSuggestions, chatMessages };
 
   } catch (err: any) {
@@ -223,20 +225,20 @@ export async function sendChatMessageAction(
   if (!text.trim()) return { error: "Message cannot be empty." };
 
   const chatId = getChatId(doctorId, patientIdStr);
-  const messageData: Omit<RawDoctorChatMessage, '_id'> = { 
+  const messageData: Omit<RawDoctorChatMessage, '_id'> = {
     chatId,
     senderId: doctorId,
     senderName: doctorName,
-    receiverId: patientIdStr, // Patient is the receiver
+    receiverId: patientIdStr,
     text,
     timestamp: new Date(),
-    isRead: false, // Default to unread
+    isRead: false,
   };
 
   try {
     const { db } = await connectToDatabase();
     const chatCollection = db.collection<RawDoctorChatMessage>('chatMessages');
-    const result = await chatCollection.insertOne(messageData as RawDoctorChatMessage); 
+    const result = await chatCollection.insertOne(messageData as RawDoctorChatMessage);
 
     const insertedMessage: DoctorChatMessage = {
         ...messageData,
@@ -253,7 +255,7 @@ export async function sendChatMessageAction(
 
 export async function updateSuggestionStatusAction(
   suggestionIdStr: string,
-  patientIdStr: string, 
+  patientIdStr: string,
   status: 'approved' | 'rejected'
 ): Promise<{ updatedSuggestion?: Partial<DoctorAISuggestion>, error?: string }> {
   const suggestionObjectId = toObjectId(suggestionIdStr);
@@ -267,24 +269,21 @@ export async function updateSuggestionStatusAction(
     const { db } = await connectToDatabase();
     const suggestionsCollection = db.collection<RawDoctorAISuggestion>('aiSuggestions');
     const updateResult = await suggestionsCollection.updateOne(
-      { _id: suggestionObjectId, patientId: patientObjectId }, 
+      { _id: suggestionObjectId, patientId: patientObjectId },
       { $set: { status: status } }
     );
 
     if (updateResult.matchedCount === 0) {
       return { error: "Suggestion not found or does not belong to the patient." };
     }
-    if (updateResult.modifiedCount === 0 && updateResult.upsertedCount === 0) { // check modified or upserted
-      // This case might mean the status was already set to the new value.
-      // Consider if this should be an error or a silent success.
-      // For now, let's assume it's not an error, but the frontend might want to know.
+    if (updateResult.modifiedCount === 0 && updateResult.upsertedCount === 0) {
       const existingSuggestion = await suggestionsCollection.findOne({ _id: suggestionObjectId });
       if (existingSuggestion && existingSuggestion.status === status) {
-         return { updatedSuggestion: { id: suggestionIdStr, status: status } }; // Status was already as requested
+         return { updatedSuggestion: { id: suggestionIdStr, status: status } };
       }
       return { error: "Suggestion status was not changed. It might already be " + status + "." };
     }
-    
+
     return { updatedSuggestion: { id: suggestionIdStr, status: status } };
   } catch (err: any) {
     console.error(`Error updating suggestion status:`, err);

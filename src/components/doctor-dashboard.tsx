@@ -2,7 +2,8 @@
 'use client';
 
 import * as React from 'react';
-import { useState, useEffect, useRef, useMemo } from 'react';
+import { useState, useEffect, useRef, useMemo, Suspense } from 'react';
+import { useSearchParams } from 'next/navigation'; // Import useSearchParams
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
@@ -40,10 +41,13 @@ const getChatId = (id1: string, id2: string): string => {
   return [id1, id2].sort().join('_');
 };
 
-export default function DoctorDashboard({ doctorId, doctorName, userRole }: DoctorDashboardProps) {
+function DoctorDashboardContent({ doctorId, doctorName, userRole }: DoctorDashboardProps) {
+  const searchParams = useSearchParams();
+  const patientIdFromQuery = searchParams.get('patientId');
+
   const [patients, setPatients] = useState<DoctorPatient[]>([]);
   const [searchQuery, setSearchQuery] = useState<string>('');
-  const [selectedPatientId, setSelectedPatientId] = useState<string | null>(null);
+  const [selectedPatientId, setSelectedPatientId] = useState<string | null>(patientIdFromQuery); // Initialize with query param
   const [selectedPatientData, setSelectedPatientData] = useState<DoctorPatient | null>(null);
   const [patientHealthData, setPatientHealthData] = useState<DoctorPatientHealthData[]>([]);
   const [patientMedications, setPatientMedications] = useState<DoctorPatientMedication[]>([]);
@@ -61,6 +65,14 @@ export default function DoctorDashboard({ doctorId, doctorName, userRole }: Doct
   const { toast } = useToast();
   const [dbAvailable, setDbAvailable] = useState<boolean>(true);
   const chatScrollAreaRef = useRef<HTMLDivElement>(null);
+
+  // Effect to handle patientId from query parameters
+  useEffect(() => {
+    const queryPatientId = searchParams.get('patientId');
+    if (queryPatientId && queryPatientId !== selectedPatientId) {
+      setSelectedPatientId(queryPatientId);
+    }
+  }, [searchParams, selectedPatientId]);
 
 
   useEffect(() => {
@@ -87,6 +99,13 @@ export default function DoctorDashboard({ doctorId, doctorName, userRole }: Doct
         } else {
           setPatients(result.patients || []);
           setDbAvailable(true);
+          // If patientIdFromQuery exists and is valid, it will trigger the next useEffect
+          if (patientIdFromQuery && (result.patients || []).find(p => p.id === patientIdFromQuery)) {
+            // setSelectedPatientId is already initialized with it or will be set by the other effect
+          } else if (result.patients && result.patients.length > 0 && !selectedPatientId) {
+            // Optionally, select the first patient if no query param and no patient selected yet
+            // setSelectedPatientId(result.patients[0].id);
+          }
         }
       } catch (e: any) {
         setError(e.message || 'An unexpected error occurred while fetching patients.');
@@ -98,7 +117,7 @@ export default function DoctorDashboard({ doctorId, doctorName, userRole }: Doct
       }
     }
     loadInitialData();
-  }, [doctorId]);
+  }, [doctorId, patientIdFromQuery]); // patientIdFromQuery added to re-evaluate if it changes
 
   useEffect(() => {
     if (!selectedPatientId || !doctorId) {
@@ -143,10 +162,8 @@ export default function DoctorDashboard({ doctorId, doctorName, userRole }: Doct
           setDbAvailable(true);
 
           if (result.patient) {
-            // Mark messages as read for this chat
             const currentChatId = getChatId(doctorId, selectedPatientId);
             await markMessagesAsReadAction(currentChatId, doctorId);
-            // Potentially re-fetch unread count for header, or manage state locally
 
             setLoadingSummary(true);
             try {
@@ -203,7 +220,7 @@ export default function DoctorDashboard({ doctorId, doctorName, userRole }: Doct
     if (!searchQuery) {
       return patients;
     }
-    return patients.filter(patient => 
+    return patients.filter(patient =>
       patient && typeof patient.name === 'string' && patient.name.toLowerCase().includes(searchQuery.toLowerCase())
     );
   }, [patients, searchQuery]);
@@ -279,8 +296,8 @@ export default function DoctorDashboard({ doctorId, doctorName, userRole }: Doct
 
   const getRiskBadgeVariant = (risk?: 'low' | 'medium' | 'high'): 'default' | 'secondary' | 'destructive' => {
     if (risk === 'high') return 'destructive';
-    if (risk === 'medium') return 'secondary'; // Or 'warning' if you add a yellow/orange variant
-    return 'default'; // For 'low' or undefined
+    if (risk === 'medium') return 'secondary';
+    return 'default';
   };
 
   const coreDataLoading = loadingPatientDetails && selectedPatientId;
@@ -626,6 +643,16 @@ export default function DoctorDashboard({ doctorId, doctorName, userRole }: Doct
   );
 }
 
+export default function DoctorDashboard(props: DoctorDashboardProps) {
+  return (
+    // Suspense boundary for useSearchParams
+    <Suspense fallback={<DashboardSkeleton />}>
+      <DoctorDashboardContent {...props} />
+    </Suspense>
+  );
+}
+
+
 function DashboardSkeleton() {
   return (
     <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -682,4 +709,3 @@ function DashboardSkeleton() {
     </div>
   );
 }
-
