@@ -17,9 +17,10 @@ import {
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Badge } from '@/components/ui/badge';
 import { SidebarTrigger } from '@/components/ui/sidebar';
-import { Bell, LogOut, Settings, UserCircle } from 'lucide-react';
+import { Bell, LogOut, Settings, UserCircle, AlertTriangle as AlertTriangleIcon } from 'lucide-react'; // Renamed to avoid conflict
 import type { UserSession } from '@/app/actions/authActions';
 import type { NotificationItem } from '@/app/actions/userActions';
+import { cn } from '@/lib/utils'; // For conditional classnames
 
 interface HeaderProps {
   session: UserSession | null;
@@ -76,7 +77,7 @@ export default function Header({ session, unreadMessagesCount, notificationItems
                     <span className="sr-only">Notifications</span>
                   </Button>
                 </DropdownMenuTrigger>
-                <DropdownMenuContent align="end" className="w-80 max-w-md">
+                <DropdownMenuContent align="end" className="w-80 md:w-96 max-w-md">
                   <DropdownMenuLabel className="px-3 py-2 text-base">Notifications</DropdownMenuLabel>
                   <DropdownMenuSeparator />
                   {notificationItems.length > 0 ? (
@@ -84,9 +85,18 @@ export default function Header({ session, unreadMessagesCount, notificationItems
                     <ScrollArea className="h-[300px]">
                       {notificationItems.map((item) => (
                         <DropdownMenuItem asChild key={item.id}>
-                          <Link href={item.href} className="flex flex-col items-start p-2 hover:bg-accent rounded-md w-full cursor-pointer">
+                          <Link
+                            href={item.href}
+                            className={cn(
+                              "flex flex-col items-start p-2 hover:bg-accent rounded-md w-full cursor-pointer",
+                              item.isCritical && "bg-red-50 hover:bg-red-100 dark:bg-red-900/30 dark:hover:bg-red-800/50 border-l-2 border-red-500"
+                            )}
+                          >
                             <div className="flex justify-between w-full items-center">
-                                <span className="font-semibold text-sm">{item.title}</span>
+                                <span className={cn("font-semibold text-sm", item.isCritical && "text-red-700 dark:text-red-300 flex items-center gap-1")}>
+                                  {item.isCritical && <AlertTriangleIcon className="h-4 w-4" />}
+                                  {item.title}
+                                </span>
                                 <span className="text-xs text-muted-foreground">{new Date(item.timestamp).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span>
                             </div>
                             <p className="text-xs text-muted-foreground truncate w-full">{item.description}</p>

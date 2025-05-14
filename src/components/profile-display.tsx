@@ -8,7 +8,7 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
-import { AlertTriangle, UserCircle, Briefcase, Activity, Shield, CalendarDays, Clock } from 'lucide-react';
+import { AlertTriangle, UserCircle, Briefcase, Activity, Shield, CalendarDays, Clock, Phone } from 'lucide-react';
 
 interface ProfileDisplayProps {
   userId: string;
@@ -32,6 +32,7 @@ function ProfileDisplayLoadingSkeleton() {
             <div className="space-y-1"><Skeleton className="h-4 w-24" /><Skeleton className="h-4 w-full" /></div>
             <div className="space-y-1"><Skeleton className="h-4 w-24" /><Skeleton className="h-4 w-full" /></div>
             <div className="space-y-1"><Skeleton className="h-4 w-24" /><Skeleton className="h-4 w-full" /></div>
+            <div className="space-y-1"><Skeleton className="h-4 w-24" /><Skeleton className="h-4 w-full" /></div> {/* For Emergency Contact */}
           </CardContent>
         </Card>
         <Card>
@@ -150,6 +151,12 @@ export default function ProfileDisplay({ userId }: ProfileDisplayProps) {
             <p className="font-semibold text-foreground text-base flex items-center gap-1"><Clock className="h-4 w-4"/>Last Sign In:</p>
             <p className="text-muted-foreground">{formatDateTime(profile.lastSignInTime)}</p>
           </div>
+           {profile.role === 'patient' && profile.emergencyContactNumber && (
+            <div>
+                <p className="font-semibold text-foreground text-base flex items-center gap-1"><Phone className="h-4 w-4 text-red-500" />Emergency Contact:</p>
+                <p className="text-muted-foreground">{profile.emergencyContactNumber}</p>
+            </div>
+          )}
         </CardContent>
       </Card>
 

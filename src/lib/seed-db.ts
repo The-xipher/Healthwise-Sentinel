@@ -9,7 +9,7 @@ import type { Appointment as ApptInterface, RawAppointment as RawApptInterface }
 // Define interfaces for mock data
 interface User {
   _id: ObjectId;
-  email: string; 
+  email: string;
   displayName: string;
   photoURL: string;
   role: 'patient' | 'doctor' | 'admin';
@@ -18,6 +18,7 @@ interface User {
   specialty?: string; // For doctors
   readmissionRisk?: 'low' | 'medium' | 'high'; // For patients
   medicalHistory?: string; // For patients
+  emergencyContactNumber?: string; // For patients
   lastActivity?: Date;
   creationTime: Date;
   lastSignInTime: Date;
@@ -27,9 +28,9 @@ interface Credential {
   _id: ObjectId;
   userId: ObjectId; // Foreign key to users collection
   email: string; // Login email (must be unique)
-  passwordSalt?: string; 
-  passwordHash?: string; 
-  passwordPlainText: string; 
+  passwordSalt?: string;
+  passwordHash?: string;
+  passwordPlainText: string;
 }
 
 interface HealthData {
@@ -54,7 +55,7 @@ interface Medication {
 interface SymptomReport {
   _id: ObjectId;
   patientId: ObjectId;
-  userId: string; 
+  userId: string;
   timestamp: Date;
   severity: 'mild' | 'moderate' | 'severe';
   description: string;
@@ -70,13 +71,13 @@ interface AISuggestion {
 
 interface ChatMessage {
     _id: ObjectId;
-    chatId: string; 
+    chatId: string;
     senderId: string;
     senderName: string;
-    receiverId: string; 
+    receiverId: string;
     text: string;
     timestamp: Date;
-    isRead?: boolean; 
+    isRead?: boolean;
 }
 
 // Use the imported types for Appointment
@@ -87,11 +88,11 @@ type RawAppointment = RawApptInterface;
 const DEFAULT_PASSWORD = "password123";
 
 // Predefined ObjectIDs for consistent test users
-const patientUserObjectId1 = new ObjectId("607f1f77bcf86cd799439011"); 
-const doctorUserObjectId1 = new ObjectId("607f1f77bcf86cd799439012"); 
-const adminUserObjectId1 = new ObjectId("607f1f77bcf86cd799439013"); 
-const patientUserObjectId2 = new ObjectId("607f1f77bcf86cd799439014"); 
-const doctorUserObjectId2 = new ObjectId("607f1f77bcf86cd799439015"); 
+const patientUserObjectId1 = new ObjectId("607f1f77bcf86cd799439011");
+const doctorUserObjectId1 = new ObjectId("607f1f77bcf86cd799439012");
+const adminUserObjectId1 = new ObjectId("607f1f77bcf86cd799439013");
+const patientUserObjectId2 = new ObjectId("607f1f77bcf86cd799439014");
+const doctorUserObjectId2 = new ObjectId("607f1f77bcf86cd799439015");
 const patientUserObjectId3 = new ObjectId("607f1f77bcf86cd799439016");
 const patientUserObjectId4 = new ObjectId("607f1f77bcf86cd799439017");
 const patientUserObjectId5 = new ObjectId("607f1f77bcf86cd799439018");
@@ -110,7 +111,7 @@ export async function seedDatabase(): Promise<{ success: boolean; message: strin
     console.log('Starting database seed process...');
 
     const collectionsToClear = [
-      'users', 'credentials', 'healthData', 'medications', 
+      'users', 'credentials', 'healthData', 'medications',
       'symptomReports', 'aiSuggestions', 'chatMessages', 'appointments'
     ];
     console.log(`Clearing existing data from collections: ${collectionsToClear.join(', ')}...`);
@@ -121,7 +122,7 @@ export async function seedDatabase(): Promise<{ success: boolean; message: strin
 
     const usersToInsert: User[] = [];
     const credentialsToInsert: Credential[] = [];
-    
+
     const healthDataEntries: HealthData[] = [];
     const medicationEntries: Medication[] = [];
     const symptomReportEntries: SymptomReport[] = [];
@@ -190,51 +191,56 @@ export async function seedDatabase(): Promise<{ success: boolean; message: strin
       email: `dr.carter@healthwise.com`, // Login email
       passwordPlainText: DEFAULT_PASSWORD,
     });
-    
+
     // --- Patients ---
     const patientSeedDetails = [
-      { 
-        _id: patientUserObjectId1, 
-        displayName: 'Ethan Carter', 
-        loginEmail: 'ethan.carter@healthwise.com', 
+      {
+        _id: patientUserObjectId1,
+        displayName: 'Ethan Carter',
+        loginEmail: 'ethan.carter@healthwise.com',
         assignedDoctorIndex: 0, // Dr. Reed
         medicalHistory: "History of hypertension. Underwent cardiac catheterization 6 months ago. Allergic to penicillin.",
+        emergencyContactNumber: '555-0101',
         photoInitial: "EC",
         readmissionRisk: 'high' as 'low' | 'medium' | 'high',
       },
-      { 
-        _id: patientUserObjectId2, 
-        displayName: 'Olivia Rodriguez', 
-        loginEmail: 'olivia.rodriguez@healthwise.com', 
+      {
+        _id: patientUserObjectId2,
+        displayName: 'Olivia Rodriguez',
+        loginEmail: 'olivia.rodriguez@healthwise.com',
         assignedDoctorIndex: 1, // Dr. Carter
         medicalHistory: "Diagnosed with Asthma, type 2 Diabetes. Previous hospitalization for asthma exacerbation.",
+        emergencyContactNumber: '555-0102',
         photoInitial: "OR",
         readmissionRisk: 'medium' as 'low' | 'medium' | 'high',
       },
-      { 
-        _id: patientUserObjectId3, 
-        displayName: 'Liam Chen', 
-        loginEmail: 'liam.chen@healthwise.com', 
+      {
+        _id: patientUserObjectId3,
+        displayName: 'Liam Chen',
+        loginEmail: 'liam.chen@healthwise.com',
         assignedDoctorIndex: 0, // Dr. Reed
         medicalHistory: "Recovering from a mild heart attack (MI). Prescribed beta-blockers and statins. No known allergies.",
+        emergencyContactNumber: '555-0103',
         photoInitial: "LC",
         readmissionRisk: 'high' as 'low' | 'medium' | 'high',
       },
-      { 
-        _id: patientUserObjectId4, 
-        displayName: 'Sophia Patel', 
-        loginEmail: 'sophia.patel@healthwise.com', 
+      {
+        _id: patientUserObjectId4,
+        displayName: 'Sophia Patel',
+        loginEmail: 'sophia.patel@healthwise.com',
         assignedDoctorIndex: 1, // Dr. Carter
         medicalHistory: "Chronic Obstructive Pulmonary Disease (COPD). Uses an inhaler daily. History of smoking.",
+        emergencyContactNumber: '555-0104',
         photoInitial: "SP",
         readmissionRisk: 'medium' as 'low' | 'medium' | 'high',
       },
-      { 
-        _id: patientUserObjectId5, 
-        displayName: 'Noah Williams', 
-        loginEmail: 'noah.williams@healthwise.com', 
+      {
+        _id: patientUserObjectId5,
+        displayName: 'Noah Williams',
+        loginEmail: 'noah.williams@healthwise.com',
         assignedDoctorIndex: 0, // Dr. Reed
         medicalHistory: "Atrial fibrillation. On anticoagulants. Follow-up appointment scheduled for next month.",
+        // No emergency contact for this one to test display logic
         photoInitial: "NW",
         readmissionRisk: 'low' as 'low' | 'medium' | 'high',
       },
@@ -242,10 +248,10 @@ export async function seedDatabase(): Promise<{ success: boolean; message: strin
 
     for (const pData of patientSeedDetails) {
       const assignedDoctor = doctorsForAssignment[pData.assignedDoctorIndex];
-      
+
       const patient: User = {
         _id: pData._id,
-        email: pData.loginEmail.replace('@', '.contact@'), 
+        email: pData.loginEmail.replace('@', '.contact@'),
         displayName: pData.displayName,
         photoURL: `https://placehold.co/100x100.png?text=${pData.photoInitial}`, dataAIHint: 'profile patient',
         role: 'patient',
@@ -253,6 +259,7 @@ export async function seedDatabase(): Promise<{ success: boolean; message: strin
         assignedDoctorName: assignedDoctor.displayName,
         readmissionRisk: pData.readmissionRisk,
         medicalHistory: pData.medicalHistory,
+        emergencyContactNumber: pData.emergencyContactNumber,
         creationTime: faker.date.past({ years: 1 }),
         lastSignInTime: faker.date.recent({ days: Math.floor(Math.random() * 7) + 1 }),
         lastActivity: faker.date.recent({ days: Math.floor(Math.random() * 3) + 1 }),
@@ -261,7 +268,7 @@ export async function seedDatabase(): Promise<{ success: boolean; message: strin
       credentialsToInsert.push({
         _id: new ObjectId(),
         userId: patient._id,
-        email: pData.loginEmail, 
+        email: pData.loginEmail,
         passwordPlainText: DEFAULT_PASSWORD,
       });
 
@@ -314,18 +321,30 @@ export async function seedDatabase(): Promise<{ success: boolean; message: strin
         { severity: 'severe', description: "Experiencing chest pain and dizziness. Called emergency services." },
         { severity: 'mild', description: "Occasional cough, mostly dry."}
       ]
-      for (let l = 0; l < 1; l++) { // 1 report per patient for brevity
-        const reportTemplate = faker.helpers.arrayElement(symptomTemplates);
+      // Seed one severe report for a high-risk patient for testing alerts
+      if (pData._id.equals(patientUserObjectId1)) { // Ethan Carter is high risk
         symptomReportEntries.push({
-          _id: new ObjectId(),
-          patientId: patient._id,
-          userId: patient._id.toString(),
-          timestamp: faker.date.recent({ days: 7 }),
-          severity: reportTemplate.severity as 'mild' | 'moderate' | 'severe',
-          description: reportTemplate.description,
+            _id: new ObjectId(),
+            patientId: patient._id,
+            userId: patient._id.toString(),
+            timestamp: faker.date.recent({ days: 1 }),
+            severity: 'severe',
+            description: "Experiencing severe chest pain and difficulty breathing. Feels very unwell.",
         });
+      } else {
+        for (let l = 0; l < 1; l++) { // 1 report per patient for brevity
+            const reportTemplate = faker.helpers.arrayElement(symptomTemplates.filter(s => s.severity !== 'severe')); // avoid too many severe
+            symptomReportEntries.push({
+              _id: new ObjectId(),
+              patientId: patient._id,
+              userId: patient._id.toString(),
+              timestamp: faker.date.recent({ days: 7 }),
+              severity: reportTemplate.severity as 'mild' | 'moderate' | 'severe',
+              description: reportTemplate.description,
+            });
+        }
       }
-      
+
       // AI Suggestions (more specific)
       const suggestionTexts = [
           `Monitor blood pressure closely due to recent high readings. Consider adjusting medication if trend continues.`,
@@ -363,7 +382,7 @@ export async function seedDatabase(): Promise<{ success: boolean; message: strin
       for (let n = 0; n < 5; n++) { // 5 messages per pair
           const sender = faker.helpers.arrayElement(conversationParticipants);
           const receiver = conversationParticipants.find(u => u.id !== sender.id)!;
-          
+
           let text = faker.helpers.arrayElement(chatTemplates);
           const medicationForPatient = medicationEntries.find(m => m.patientId.equals(patient._id));
           text = text.replace("{doctorName}", assignedDoctor.displayName)
@@ -371,7 +390,7 @@ export async function seedDatabase(): Promise<{ success: boolean; message: strin
                      .replace("{symptom}", faker.helpers.arrayElement(["dizzy", "tired", "better", "a bit off"]))
                      .replace("{condition}", faker.helpers.arrayElement(["blood pressure", "sugar levels", "breathing"]))
                      .replace("{medication}", (medicationForPatient?.name || "medication"));
-          
+
           chatMessageEntries.push({
               _id: new ObjectId(),
               chatId: chatId,
@@ -379,7 +398,7 @@ export async function seedDatabase(): Promise<{ success: boolean; message: strin
               senderName: sender.name,
               receiverId: receiver.id,
               text: text,
-              timestamp: faker.date.recent({days: 5 - n}), 
+              timestamp: faker.date.recent({days: 5 - n}),
               isRead: n < 3 // Mark first few as read, last few as potentially unread
           });
       }
@@ -428,7 +447,7 @@ export async function seedDatabase(): Promise<{ success: boolean; message: strin
     console.log(`Seeded ${credentialsToInsert.length} credentials.`);
     console.log(`Seeded ${chatMessageEntries.length} chat messages.`);
     console.log(`Seeded ${appointmentEntries.length} appointments.`);
-    
+
     return { success: true, message: `Database seeded successfully! Users: ${usersToInsert.length}, Credentials: ${credentialsToInsert.length}, Health Data: ${healthDataEntries.length}, Medications: ${medicationEntries.length}, Symptoms: ${symptomReportEntries.length}, AI Suggestions: ${aiSuggestionEntries.length}, Chats: ${chatMessageEntries.length}, Appointments: ${appointmentEntries.length}` };
 
   } catch (error: any) {

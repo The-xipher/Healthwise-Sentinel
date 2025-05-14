@@ -8,12 +8,12 @@ export interface PatientHealthData {
   _id: string;
   id: string;
   patientId: string;
-  timestamp: string; 
+  timestamp: string;
   steps?: number;
   heartRate?: number;
   bloodGlucose?: number;
 }
-interface RawPatientHealthData { 
+interface RawPatientHealthData {
   _id: ObjectId;
   patientId: ObjectId;
   timestamp: Date;
@@ -30,10 +30,10 @@ export interface PatientMedication {
   name: string;
   dosage: string;
   frequency: string;
-  lastTaken?: string; 
+  lastTaken?: string;
   adherence?: number;
 }
-interface RawPatientMedication { 
+interface RawPatientMedication {
   _id: ObjectId;
   patientId: ObjectId;
   name: string;
@@ -47,18 +47,18 @@ export interface PatientSymptomReport {
   _id: string;
   id: string;
   patientId: string;
-  timestamp: string; 
+  timestamp: string;
   severity: 'mild' | 'moderate' | 'severe';
   description: string;
-  userId: string; 
+  userId: string;
 }
-interface RawPatientSymptomReport { 
+interface RawPatientSymptomReport {
   _id: ObjectId;
   patientId: ObjectId;
   timestamp: Date;
   severity: 'mild' | 'moderate' | 'severe';
   description: string;
-  userId: string; 
+  userId: string;
 }
 
 export interface PatientChatMessage {
@@ -83,11 +83,12 @@ interface RawPatientChatMessage { // DB representation
   isRead?: boolean;
 }
 
-interface PatientProfile { // For fetching patient details including assigned doctor
+interface PatientUserForAlerts { // For fetching patient details including assigned doctor and emergency contact
     _id: ObjectId;
     displayName: string;
     assignedDoctorId?: string;
-    assignedDoctorName?: string;
+    assignedDoctorName?: string; // For direct use in alert messages
+    emergencyContactNumber?: string;
     // other fields if needed
 }
 
@@ -115,13 +116,13 @@ export async function fetchPatientDashboardDataAction(patientIdStr: string): Pro
     const { db } = await connectToDatabase();
 
     // Fetch patient profile to get assigned doctor info
-    const usersCollection = db.collection<PatientProfile>('users');
+    const usersCollection = db.collection<PatientUserForAlerts>('users'); // Use the more specific type
     const patientProfile = await usersCollection.findOne({ _id: patientObjectId });
 
     if (!patientProfile) {
         return { error: "Patient profile not found." };
     }
-    
+
     const patientDisplayName = patientProfile.displayName;
     const assignedDoctorId = patientProfile.assignedDoctorId;
     const assignedDoctorName = patientProfile.assignedDoctorName;
@@ -146,7 +147,7 @@ export async function fetchPatientDashboardDataAction(patientIdStr: string): Pro
       id: med._id.toString(),
       patientId: med.patientId.toString(),
       lastTaken: med.lastTaken?.toISOString(),
-      adherence: med.adherence ?? Math.floor(Math.random() * 41) + 60 
+      adherence: med.adherence ?? Math.floor(Math.random() * 41) + 60
     }));
 
     const symptomsCollection = db.collection<RawPatientSymptomReport>('symptomReports');
@@ -174,12 +175,12 @@ export async function fetchPatientDashboardDataAction(patientIdStr: string): Pro
     }
 
 
-    return { 
-        healthData, 
-        medications, 
-        symptomReports, 
-        chatMessages, 
-        assignedDoctorId, 
+    return {
+        healthData,
+        medications,
+        symptomReports,
+        chatMessages,
+        assignedDoctorId,
         assignedDoctorName,
         patientDisplayName
     };
@@ -197,7 +198,7 @@ export async function submitSymptomReportAction(
   severity: 'mild' | 'moderate' | 'severe',
   description: string
 ): Promise<{ report?: PatientSymptomReport, error?: string }> {
-  
+
   const patientObjectId = toObjectId(patientIdStr);
   if (!patientObjectId) {
     return { error: "Invalid patient ID format." };
@@ -208,14 +209,14 @@ export async function submitSymptomReportAction(
     timestamp: new Date(),
     severity,
     description,
-    userId: patientIdStr, 
+    userId: patientIdStr,
   };
 
   try {
     const { db } = await connectToDatabase();
     const symptomsCollection = db.collection<RawPatientSymptomReport>('symptomReports');
     const result = await symptomsCollection.insertOne(reportData as RawPatientSymptomReport);
-    
+
     const insertedReport: PatientSymptomReport = {
         ...reportData,
         _id: result.insertedId.toString(),
@@ -223,6 +224,42 @@ export async function submitSymptomReportAction(
         patientId: reportData.patientId.toString(),
         timestamp: reportData.timestamp.toISOString()
     };
+
+    if (severity === 'severe') {
+      // Fetch patient details for alert
+      const usersCollection = db.collection<PatientUserForAlerts>('users');
+      const patient = await usersCollection.findOne({ _id: patientObjectId });
+
+      if (patient) {
+        console.log(`PATIENT ACTION: SEVERE SYMPTOM REPORTED FOR ${patient.displayName} (ID: ${patientIdStr})`);
+        if (patient.emergencyContactNumber) {
+          console.log(`PATIENT ACTION: SIMULATED URGENT SMS to ${patient.emergencyContactNumber}: Patient ${patient.displayName} reported severe symptoms: "${description}". Please check on them.`);
+        } else {
+          console.log(`PATIENT ACTION: Patient ${patient.displayName} does not have an emergency contact number listed.`);
+        }
+        console.error(`PATIENT ACTION: CRITICAL HEALTH ALERT: Patient ${patient.displayName} reported severe symptoms: "${description}". Assess for immediate emergency services. Doctor ${patient.assignedDoctorName || patient.assignedDoctorId} also alerted.`);
+
+        // Send a "System Alert" message to the doctor via chat system
+        if (patient.assignedDoctorId) {
+          const chatCollection = db.collection<RawPatientChatMessage>('chatMessages');
+          const alertChatId = getChatId(patientIdStr, patient.assignedDoctorId);
+          const alertMessage: Omit<RawPatientChatMessage, '_id'> = {
+            chatId: alertChatId,
+            senderId: patientIdStr, // System alerts will "originate" from the patient for routing to doctor
+            senderName: 'System Alert', // Special sender name to identify alerts
+            receiverId: patient.assignedDoctorId,
+            text: `URGENT: Patient ${patient.displayName} reported SEVERE SYMPTOM: "${description}". Please review immediately.`,
+            timestamp: new Date(),
+            isRead: false,
+          };
+          await chatCollection.insertOne(alertMessage as RawPatientChatMessage);
+          console.log(`PATIENT ACTION: System Alert message sent to doctor ${patient.assignedDoctorId} for patient ${patientIdStr}.`);
+        }
+      } else {
+        console.error(`PATIENT ACTION: Could not find patient details for ${patientIdStr} to send severe symptom alerts.`);
+      }
+    }
+
     return { report: insertedReport };
   } catch (err: any) {
     console.error("Error submitting symptom report:", err);

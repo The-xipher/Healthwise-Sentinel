@@ -12,6 +12,7 @@ export interface UserProfileData {
   photoURL?: string | null;
   creationTime?: string | Date; // Keep as string for serializability if Date object from DB
   lastSignInTime?: string | Date; // Keep as string for serializability
+  emergencyContactNumber?: string; // Added for patients
   // Patient specific
   assignedDoctorId?: string;
   assignedDoctorName?: string;
@@ -30,6 +31,7 @@ interface RawUserProfile {
     photoURL?: string | null;
     creationTime?: Date;
     lastSignInTime?: Date;
+    emergencyContactNumber?: string; // Added for patients
     assignedDoctorId?: string;
     assignedDoctorName?: string;
     medicalHistory?: string;
@@ -40,11 +42,12 @@ interface RawUserProfile {
 export interface NotificationItem {
   id: string; // message_id or alert_id
   type: 'chat' | 'alert';
-  title: string; // e.g., "Message from John Doe"
-  description: string; // message snippet
+  title: string; // e.g., "Message from John Doe" or "Severe Symptom Alert"
+  description: string; // message snippet or alert details
   timestamp: string;
   href: string; // navigation link
-  isRead?: boolean; 
+  isRead?: boolean;
+  isCritical?: boolean; // Added to flag critical alerts
 }
 
 interface RawChatMessageForNotification {
@@ -54,6 +57,8 @@ interface RawChatMessageForNotification {
   text: string;
   timestamp: Date;
   chatId: string; // To help determine context if needed
+  // Potentially add a field to mark specific chat messages as alerts
+  // isAlert?: boolean;
 }
 
 
@@ -74,8 +79,9 @@ export async function fetchUserProfile(userId: string): Promise<{ profile?: User
       ...user,
       _id: user._id.toString(),
       id: user._id.toString(),
-      creationTime: user.creationTime?.toISOString(), 
-      lastSignInTime: user.lastSignInTime?.toISOString(), 
+      creationTime: user.creationTime?.toISOString(),
+      lastSignInTime: user.lastSignInTime?.toISOString(),
+      emergencyContactNumber: user.emergencyContactNumber, // Ensure mapping
     };
     return { profile };
   } catch (error: any) {
@@ -91,9 +97,10 @@ export async function fetchNotificationItemsAction(userId: string, userRole: Use
   try {
     const { db } = await connectToDatabase();
     const chatMessagesCollection = db.collection<RawChatMessageForNotification>('chatMessages');
-    
+
+    // Fetch unread regular chat messages and system alerts (flagged by senderName === 'System Alert')
     const unreadMessages = await chatMessagesCollection.find({
-      receiverId: userId, 
+      receiverId: userId,
       isRead: false,
     }).sort({ timestamp: -1 }).limit(10).toArray(); // Get latest 10 unread
 
@@ -104,24 +111,49 @@ export async function fetchNotificationItemsAction(userId: string, userRole: Use
 
     const notificationItems: NotificationItem[] = unreadMessages.map(msg => {
       let href = '/dashboard'; // Default
-      if (userRole === 'doctor') {
-        href = `/dashboard/doctor?patientId=${msg.senderId}`;
-      } else if (userRole === 'patient') {
-        href = `/dashboard/patient`; // Patient dashboard shows chat with their assigned doctor
+      let title = `Message from ${msg.senderName}`;
+      let isCritical = false;
+
+      if (msg.senderName === 'System Alert') { // Check if it's a system alert
+        title = `🚨 Urgent: ${msg.text.substring(0,30)}...`; // Modify title for alerts
+        isCritical = true;
+        // For alerts, the doctor might want to go to the patient's detailed view.
+        // Assuming the 'senderId' for system alerts is the patientId causing the alert.
+        if (userRole === 'doctor') {
+           href = `/dashboard/doctor?patientId=${msg.senderId}`; // senderId for SystemAlert is patientId
+        } else {
+            // Patients don't typically get "System Alerts" about themselves this way,
+            // but if they did, it would go to their dashboard.
+             href = `/dashboard/patient`;
+        }
+      } else { // Regular chat message
+        if (userRole === 'doctor') {
+          href = `/dashboard/doctor?patientId=${msg.senderId}`;
+        } else if (userRole === 'patient') {
+          href = `/dashboard/patient`;
+        }
       }
-      // For admin, could be more complex if they chat with multiple types. Defaulting to /dashboard.
+
 
       return {
         id: msg._id.toString(),
-        type: 'chat',
-        title: `Message from ${msg.senderName}`,
+        type: isCritical ? 'alert' : 'chat',
+        title: title,
         description: msg.text.length > 50 ? `${msg.text.substring(0, 47)}...` : msg.text,
         timestamp: msg.timestamp.toISOString(),
         href: href,
-        isRead: false, // Since we fetched unread messages
+        isRead: false,
+        isCritical: isCritical,
       };
     });
-    
+
+    // Sort by critical first, then by timestamp
+    notificationItems.sort((a, b) => {
+        if (a.isCritical && !b.isCritical) return -1;
+        if (!a.isCritical && b.isCritical) return 1;
+        return new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime();
+    });
+
     return { items: notificationItems, unreadCount: totalUnreadCount };
   } catch (error: any) {
     console.error('Error fetching notification items:', error);
