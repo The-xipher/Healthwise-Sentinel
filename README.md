@@ -22,8 +22,7 @@ This is a Next.js application designed for post-discharge patient care managemen
         # MongoDB Connection URI
         # Replace 'your_mongodb_password' with your actual MongoDB Atlas password for the 'amithxipher' user.
         # Example: MONGODB_URI=mongodb+srv://amithxipher:Password@55555@health.bqy9gqs.mongodb.net/?appName=Health
-        MONGODB_URI=mongodb+srv://amithxipher:your_mongodb_password@health.bqy9gqs.mongodb.net/?appName=Health
-        
+        MONGODB_URI= your url
         # Optional: Specify a database name, or it defaults to 'healthwisehub'
         MONGODB_DB_NAME=healthwisehub_db 
 
