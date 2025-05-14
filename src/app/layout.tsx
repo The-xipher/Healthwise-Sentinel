@@ -43,6 +43,23 @@ export default async function RootLayout({
     }
   }
 
+  let myDashboardPath = "/dashboard"; // Default path
+  if (session) {
+    switch (session.role) {
+      case 'patient':
+        myDashboardPath = "/dashboard/patient";
+        break;
+      case 'doctor':
+        myDashboardPath = "/dashboard/doctor";
+        break;
+      case 'admin':
+        myDashboardPath = "/dashboard/admin";
+        break;
+      default:
+        myDashboardPath = "/dashboard"; // Fallback, though /dashboard itself redirects
+    }
+  }
+
   return (
     <html lang="en">
       <body className={`${geistSans.variable} ${geistMono.variable} antialiased`}>
@@ -50,7 +67,7 @@ export default async function RootLayout({
           <Sidebar variant="inset" collapsible="icon">
              <SidebarMenu className="flex-grow p-2">
                 <SidebarMenuItem>
-                    <Link href="/dashboard" passHref legacyBehavior>
+                    <Link href={myDashboardPath} passHref legacyBehavior>
                         <SidebarMenuButton tooltip="My Dashboard">
                          <Home />
                          <span>My Dashboard</span>
