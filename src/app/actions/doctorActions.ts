@@ -2,6 +2,7 @@
 'use server';
 
 import { connectToDatabase, toObjectId, ObjectId } from '@/lib/mongodb';
+import { revalidatePath } from 'next/cache';
 
 // Type definitions for data structures (can be shared or defined per component/action)
 export interface DoctorPatient {
@@ -110,19 +111,19 @@ export interface Appointment {
   doctorName: string;
   appointmentDate: string; // ISO string
   reason: string;
-  status: 'scheduled' | 'completed' | 'cancelled';
+  status: 'scheduled' | 'completed' | 'cancelled' | 'suggested';
   notes?: string;
 }
 
-interface RawAppointment { // DB representation
+export interface RawAppointment { // DB representation
   _id: ObjectId;
-  patientId: ObjectId; // Changed from string to ObjectId
+  patientId: ObjectId; 
   patientName: string;
-  doctorId: ObjectId;   // Changed from string to ObjectId
+  doctorId: ObjectId;   
   doctorName: string;
   appointmentDate: Date;
   reason: string;
-  status: 'scheduled' | 'completed' | 'cancelled';
+  status: 'scheduled' | 'completed' | 'cancelled' | 'suggested';
   notes?: string;
 }
 
@@ -272,6 +273,8 @@ export async function sendChatMessageAction(
         id: result.insertedId.toString(),
         timestamp: messageData.timestamp.toISOString()
     };
+    revalidatePath(`/dashboard/doctor`); // Revalidate to update chat for receiver potentially
+    revalidatePath(`/dashboard/patient`);
     return { message: insertedMessage };
   } catch (err: any) {
     console.error("Error sending message:", err);
@@ -309,7 +312,7 @@ export async function updateSuggestionStatusAction(
       }
       return { error: "Suggestion status was not changed. It might already be " + status + "." };
     }
-
+    revalidatePath(`/dashboard/doctor?patientId=${patientIdStr}`);
     return { updatedSuggestion: { id: suggestionIdStr, status: status } };
   } catch (err: any)
 {
@@ -342,5 +345,55 @@ export async function fetchDoctorAppointmentsAction(doctorId: string): Promise<{
   } catch (err: any) {
     console.error("Error fetching doctor's appointments:", err);
     return { error: "Could not load appointments. " + (err.message || '') };
+  }
+}
+
+export async function createAppointmentAction(appointmentData: {
+  patientId: string;
+  patientName: string;
+  doctorId: string;
+  doctorName: string;
+  appointmentDate: string; // ISO Date string
+  reason: string;
+  status: 'scheduled' | 'completed' | 'cancelled' | 'suggested';
+  notes?: string;
+}): Promise<{ appointment?: Appointment, error?: string }> {
+  
+  const patientObjectId = toObjectId(appointmentData.patientId);
+  const doctorObjectId = toObjectId(appointmentData.doctorId);
+
+  if (!patientObjectId || !doctorObjectId) {
+    return { error: "Invalid Patient or Doctor ID format." };
+  }
+
+  const rawAppointmentData: Omit<RawAppointment, '_id'> = {
+    patientId: patientObjectId,
+    patientName: appointmentData.patientName,
+    doctorId: doctorObjectId,
+    doctorName: appointmentData.doctorName,
+    appointmentDate: new Date(appointmentData.appointmentDate),
+    reason: appointmentData.reason,
+    status: appointmentData.status,
+    notes: appointmentData.notes,
+  };
+
+  try {
+    const { db } = await connectToDatabase();
+    const appointmentsCollection = db.collection<RawAppointment>('appointments');
+    const result = await appointmentsCollection.insertOne(rawAppointmentData as RawAppointment);
+    
+    const insertedAppointment: Appointment = {
+      ...rawAppointmentData,
+      _id: result.insertedId.toString(),
+      id: result.insertedId.toString(),
+      patientId: rawAppointmentData.patientId.toString(),
+      doctorId: rawAppointmentData.doctorId.toString(),
+      appointmentDate: rawAppointmentData.appointmentDate.toISOString(),
+    };
+    revalidatePath(`/dashboard/doctor`); // To refresh the appointments list
+    return { appointment: insertedAppointment };
+  } catch (err: any) {
+    console.error("Error creating appointment:", err);
+    return { error: "Could not create appointment. " + (err.message || '') };
   }
 }

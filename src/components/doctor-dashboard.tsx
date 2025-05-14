@@ -3,7 +3,7 @@
 
 import * as React from 'react';
 import { useState, useEffect, useRef, useMemo, Suspense } from 'react';
-import { useSearchParams } from 'next/navigation'; // Import useSearchParams
+import { useSearchParams } from 'next/navigation'; 
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
@@ -12,27 +12,29 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Input } from '@/components/ui/input';
-import { Loader2, AlertTriangle, Users, Stethoscope, Activity, HeartPulse, Pill, MessageSquare, Send, Check, X, Info, Brain, Search, CalendarDays } from 'lucide-react';
+import { Loader2, AlertTriangle, Users, Stethoscope, Activity, HeartPulse, Pill, MessageSquare, Send, Check, X, Info, Brain, Search, CalendarDays, Sparkles, BookMarked } from 'lucide-react';
 import { Textarea } from './ui/textarea';
 import { ScrollArea } from './ui/scroll-area';
 import { summarizePatientHistory } from '@/ai/flows/summarize-patient-history';
 import { generateCarePlan } from '@/ai/flows/generate-care-plan';
+import { suggestAppointmentForHighRiskPatient, type SuggestAppointmentOutput } from '@/ai/flows/suggest-appointment-for-high-risk-patient';
 import { useToast } from '@/hooks/use-toast';
 import {
   fetchDoctorPatientsAction,
   fetchDoctorPatientDetailsAction,
   sendChatMessageAction,
   updateSuggestionStatusAction,
-  fetchDoctorAppointmentsAction, // Added
+  fetchDoctorAppointmentsAction, 
+  createAppointmentAction, 
   type DoctorPatient,
   type DoctorPatientHealthData,
   type DoctorPatientMedication,
   type DoctorChatMessage,
   type DoctorAISuggestion,
-  type Appointment // Added
+  type Appointment 
 } from '@/app/actions/doctorActions';
 import { markMessagesAsReadAction } from '@/app/actions/chatActions';
-import { format } from 'date-fns';
+import { format, addDays } from 'date-fns';
 
 
 interface DoctorDashboardProps {
@@ -56,8 +58,12 @@ function DoctorDashboardContent({ doctorId, doctorName, userRole }: DoctorDashbo
   const [patientHealthData, setPatientHealthData] = useState<DoctorPatientHealthData[]>([]);
   const [patientMedications, setPatientMedications] = useState<DoctorPatientMedication[]>([]);
   const [aiSuggestions, setAiSuggestions] = useState<DoctorAISuggestion[]>([]);
-  const [appointments, setAppointments] = useState<Appointment[]>([]); // New state for appointments
-  const [loadingAppointments, setLoadingAppointments] = useState<boolean>(true); // Loading state for appointments
+  const [appointments, setAppointments] = useState<Appointment[]>([]); 
+  const [loadingAppointments, setLoadingAppointments] = useState<boolean>(true); 
+  const [aiSuggestedAppointment, setAiSuggestedAppointment] = useState<SuggestAppointmentOutput['suggestion'] | null>(null);
+  const [loadingAiAppointmentSuggestion, setLoadingAiAppointmentSuggestion] = useState<boolean>(false);
+  const [bookingAppointment, setBookingAppointment] = useState<boolean>(false);
+
 
   const [loadingPatients, setLoadingPatients] = useState<boolean>(true);
   const [loadingPatientDetails, setLoadingPatientDetails] = useState<boolean>(false);
@@ -81,6 +87,24 @@ function DoctorDashboardContent({ doctorId, doctorName, userRole }: DoctorDashbo
   }, [searchParams, selectedPatientId]);
 
 
+  const refreshAppointments = async () => {
+    if (!doctorId) return;
+    setLoadingAppointments(true);
+    try {
+        const appointmentsResult = await fetchDoctorAppointmentsAction(doctorId);
+        if (appointmentsResult.error) {
+            setError(prev => prev ? `${prev}\nAppointments: ${appointmentsResult.error}` : `Appointments: ${appointmentsResult.error}`);
+        } else {
+            setAppointments(appointmentsResult.appointments || []);
+        }
+    } catch (e: any) {
+        setError(prev => prev ? `${prev}\nAppointments: ${e.message}` : `Appointments: ${e.message}`);
+    } finally {
+        setLoadingAppointments(false);
+    }
+  };
+
+
   useEffect(() => {
     if (!doctorId) {
       setError("Doctor ID is missing. Cannot load dashboard.");
@@ -91,13 +115,11 @@ function DoctorDashboardContent({ doctorId, doctorName, userRole }: DoctorDashbo
     }
     async function loadInitialDoctorData() {
       setLoadingPatients(true);
-      setLoadingAppointments(true);
+      // setLoadingAppointments(true); // This will be handled by refreshAppointments
       setError(null);
       try {
-        const [patientsResult, appointmentsResult] = await Promise.all([
-          fetchDoctorPatientsAction(doctorId),
-          fetchDoctorAppointmentsAction(doctorId)
-        ]);
+        const patientsResult = await fetchDoctorPatientsAction(doctorId);
+        // const appointmentsResult = await fetchDoctorAppointmentsAction(doctorId) // Fetched by refreshAppointments
 
         if (patientsResult.error) {
           setError(prev => prev ? `${prev}\n${patientsResult.error}` : patientsResult.error);
@@ -111,20 +133,11 @@ function DoctorDashboardContent({ doctorId, doctorName, userRole }: DoctorDashbo
         } else {
           setPatients(patientsResult.patients || []);
           setDbAvailable(true);
-          if (patientIdFromQuery && (patientsResult.patients || []).find(p => p.id === patientIdFromQuery)) {
+          // if (patientIdFromQuery && (patientsResult.patients || []).find(p => p.id === patientIdFromQuery)) {
              // setSelectedPatientId is handled by the other effect
-          }
+          // }
         }
-
-        if (appointmentsResult.error) {
-          setError(prev => prev ? `${prev}\n${appointmentsResult.error}` : appointmentsResult.error);
-           if (appointmentsResult.error.toLowerCase().includes("database connection") ) {
-            setDbAvailable(false);
-          }
-          setAppointments([]);
-        } else {
-          setAppointments(appointmentsResult.appointments || []);
-        }
+        await refreshAppointments(); // Fetch initial appointments
 
       } catch (e: any) {
         setError(e.message || 'An unexpected error occurred while fetching initial doctor data.');
@@ -134,11 +147,11 @@ function DoctorDashboardContent({ doctorId, doctorName, userRole }: DoctorDashbo
         console.error("Error fetching initial doctor data:", e);
       } finally {
         setLoadingPatients(false);
-        setLoadingAppointments(false);
+        // setLoadingAppointments(false); // Handled by refreshAppointments
       }
     }
     loadInitialDoctorData();
-  }, [doctorId, patientIdFromQuery]); 
+  }, [doctorId]); 
 
   useEffect(() => {
     if (!selectedPatientId || !doctorId) {
@@ -149,13 +162,14 @@ function DoctorDashboardContent({ doctorId, doctorName, userRole }: DoctorDashbo
       setChatMessages([]);
       setHistorySummary(null);
       setCarePlan(null);
+      setAiSuggestedAppointment(null);
       setLoadingPatientDetails(false);
       return;
     }
 
     async function fetchPatientAllData() {
       setLoadingPatientDetails(true);
-      // setError(null); // Keep previous errors unless specifically cleared for this section
+      setAiSuggestedAppointment(null); 
       setHistorySummary(null);
       setCarePlan(null);
 
@@ -167,7 +181,6 @@ function DoctorDashboardContent({ doctorId, doctorName, userRole }: DoctorDashbo
                result.error.toLowerCase().includes("timeout") ||
                result.error.toLowerCase().includes("failed to connect") ||
                result.error.toLowerCase().includes("could not load patient data")) {
-            // dbAvailable might be set by initial load, this could reinforce it
             setDbAvailable(false); 
           }
           setSelectedPatientData(null);
@@ -181,8 +194,7 @@ function DoctorDashboardContent({ doctorId, doctorName, userRole }: DoctorDashbo
           setPatientMedications(result.medications || []);
           setAiSuggestions(result.aiSuggestions || []);
           setChatMessages(result.chatMessages || []);
-          // setDbAvailable(true); // Assuming if patient data loads, DB is fine
-
+          
           if (result.patient) {
             const currentChatId = getChatId(doctorId, selectedPatientId);
             await markMessagesAsReadAction(currentChatId, doctorId);
@@ -218,11 +230,33 @@ function DoctorDashboardContent({ doctorId, doctorName, userRole }: DoctorDashbo
             } finally {
               setLoadingCarePlan(false);
             }
+
+            // Fetch AI appointment suggestion if risk is high
+            if (result.patient.readmissionRisk === 'high') {
+              setLoadingAiAppointmentSuggestion(true);
+              try {
+                const appointmentSuggestionResult = await suggestAppointmentForHighRiskPatient({
+                  patientId: result.patient.id,
+                  patientName: result.patient.name,
+                  readmissionRisk: result.patient.readmissionRisk,
+                  doctorId: doctorId,
+                  doctorName: doctorName,
+                });
+                setAiSuggestedAppointment(appointmentSuggestionResult.suggestion);
+              } catch (aiError: any) {
+                console.error("AI Appointment Suggestion Error:", aiError);
+                toast({ title: "AI Suggestion Error", description: "Could not get AI appointment suggestion.", variant: "destructive"});
+                setAiSuggestedAppointment(null);
+              } finally {
+                setLoadingAiAppointmentSuggestion(false);
+              }
+            } else {
+                 setAiSuggestedAppointment(null); // Clear suggestion if risk is not high
+            }
           }
         }
       } catch (e: any) {
         setError(e.message || "An unexpected error occurred fetching patient details.");
-        // setDbAvailable(false);
         console.error("Error fetching patient details:", e);
       } finally {
         setLoadingPatientDetails(false);
@@ -230,7 +264,7 @@ function DoctorDashboardContent({ doctorId, doctorName, userRole }: DoctorDashbo
     }
 
     fetchPatientAllData();
-  }, [selectedPatientId, doctorId]);
+  }, [selectedPatientId, doctorId, doctorName, toast]); // Added doctorName and toast
 
   useEffect(() => {
     if (chatScrollAreaRef.current) {
@@ -300,6 +334,46 @@ function DoctorDashboardContent({ doctorId, doctorName, userRole }: DoctorDashbo
     }
   };
 
+  const handleBookAISuggestedAppointment = async () => {
+    if (!aiSuggestedAppointment || !selectedPatientData) {
+        toast({ title: "Booking Error", description: "No AI appointment suggestion or patient data available.", variant: "destructive" });
+        return;
+    }
+    if (!dbAvailable) {
+        toast({ title: "Booking Error", description: "Database not available.", variant: "destructive" });
+        return;
+    }
+
+    setBookingAppointment(true);
+    try {
+        // For simplicity, schedule 3 days from now.
+        const appointmentDate = addDays(new Date(), 3); 
+        const appointmentData = {
+            patientId: aiSuggestedAppointment.patientId,
+            patientName: aiSuggestedAppointment.patientName,
+            doctorId: aiSuggestedAppointment.doctorId,
+            doctorName: aiSuggestedAppointment.doctorName,
+            appointmentDate: appointmentDate.toISOString(),
+            reason: aiSuggestedAppointment.appointmentReason,
+            status: 'scheduled' as 'scheduled', // Explicitly type
+        };
+        const result = await createAppointmentAction(appointmentData);
+        if (result.error) {
+            toast({ title: "Appointment Booking Failed", description: result.error, variant: "destructive" });
+        } else if (result.appointment) {
+            toast({ title: "Appointment Booked", description: `Appointment for ${aiSuggestedAppointment.patientName} scheduled for ${formatDateOnly(appointmentDate)}.`, variant: "default" });
+            setAiSuggestedAppointment(null); // Clear the suggestion
+            await refreshAppointments(); // Refresh the appointments list
+        }
+    } catch (err: any) {
+        console.error("Error booking AI suggested appointment:", err);
+        toast({ title: "Booking Failed", description: "Could not book appointment. " + (err.message || ''), variant: "destructive" });
+    } finally {
+        setBookingAppointment(false);
+    }
+  };
+
+
   const formatTimestamp = (timestamp: Date | string | undefined): string => {
     if (!timestamp) return 'N/A';
     try {
@@ -330,10 +404,11 @@ function DoctorDashboardContent({ doctorId, doctorName, userRole }: DoctorDashbo
 
   const getInitials = (name: string | null | undefined): string => {
     if (!name) return '?';
-    const names = name.split(' ');
-    if (names.length === 1) return names[0][0].toUpperCase();
-    return (names[0][0] + names[names.length - 1][0]).toUpperCase();
+    const names = (name || "").split(' ');
+    if (names.length === 1) return names[0][0]?.toUpperCase() || '?';
+    return ((names[0][0] || '') + (names[names.length - 1][0] || '')).toUpperCase();
   };
+  
 
   const getRiskBadgeVariant = (risk?: 'low' | 'medium' | 'high'): 'default' | 'secondary' | 'destructive' => {
     if (risk === 'high') return 'destructive';
@@ -404,7 +479,7 @@ function DoctorDashboardContent({ doctorId, doctorName, userRole }: DoctorDashbo
                     <SelectContent>
                         {filteredPatients.length > 0 ? (
                         filteredPatients.map((patient) => {
-                            const patientName = patient.name; // Already guaranteed string from action
+                            const patientName = patient.name; 
                             return (
                             <SelectItem key={patient.id} value={patient.id}>
                                 <div className="flex items-center justify-between w-full gap-3">
@@ -413,7 +488,6 @@ function DoctorDashboardContent({ doctorId, doctorName, userRole }: DoctorDashbo
                                     <AvatarImage src={patient.photoURL || undefined} alt={patientName} data-ai-hint="profile person" />
                                     <AvatarFallback>{getInitials(patientName)}</AvatarFallback>
                                     </Avatar>
-                                    {/* Simplified for debugging, can revert to span */}
                                     <span>{patientName} ({patient.id?.substring(0,6)})</span>
                                 </div>
                                 {patient.readmissionRisk && (
@@ -501,6 +575,31 @@ function DoctorDashboardContent({ doctorId, doctorName, userRole }: DoctorDashbo
                   {selectedPatientData?.lastActivity && <p>Last Activity: {formatTimestamp(selectedPatientData.lastActivity)}</p>}
                 </CardContent>
               </Card>
+
+               {/* AI Appointment Suggestion Card */}
+              {loadingAiAppointmentSuggestion ? (
+                <Card className="shadow-md"><CardContent className="p-4"><Skeleton className="h-20 w-full" /></CardContent></Card>
+              ) : aiSuggestedAppointment && selectedPatientData?.readmissionRisk === 'high' ? (
+                <Card className="shadow-lg border-primary bg-primary/5">
+                  <CardHeader>
+                    <CardTitle className="text-lg flex items-center gap-2 text-primary">
+                      <Sparkles className="h-5 w-5" /> AI Suggested Appointment
+                    </CardTitle>
+                    <CardDescription>For patient: {aiSuggestedAppointment.patientName}</CardDescription>
+                  </CardHeader>
+                  <CardContent className="space-y-2">
+                    <p className="text-sm"><strong className="font-medium">Reason:</strong> {aiSuggestedAppointment.appointmentReason}</p>
+                    <p className="text-sm"><strong className="font-medium">Proposed:</strong> {aiSuggestedAppointment.proposedTimeframe}</p>
+                  </CardContent>
+                  <CardFooter>
+                    <Button onClick={handleBookAISuggestedAppointment} disabled={bookingAppointment || !dbAvailable} className="w-full">
+                      {bookingAppointment ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <BookMarked className="mr-2 h-4 w-4" />}
+                      Schedule This Appointment
+                    </Button>
+                  </CardFooter>
+                </Card>
+              ) : null}
+
 
               <Card className="shadow-md">
                 <CardHeader>
@@ -780,6 +879,11 @@ function DashboardSkeletonCentralColumn() { // Skeleton for the two right column
             <Skeleton className="h-3 w-4/5" />
           </CardContent>
         </Card>
+        <Card className="shadow-md"> {/* AI Appointment Suggestion Skeleton */}
+          <CardHeader><Skeleton className="h-6 w-4/6" /><Skeleton className="h-3 w-3/5 mt-1" /></CardHeader>
+          <CardContent className="space-y-2"><Skeleton className="h-4 w-full" /><Skeleton className="h-4 w-5/6" /></CardContent>
+          <CardFooter><Skeleton className="h-9 w-full" /></CardFooter>
+        </Card>
         <Card className="shadow-md">
           <CardHeader><Skeleton className="h-6 w-3/5" /><Skeleton className="h-3 w-4/5 mt-1" /></CardHeader>
           <CardContent className="space-y-2"><Skeleton className="h-4 w-full" /><Skeleton className="h-4 w-5/6" /><Skeleton className="h-4 w-3/4" /></CardContent>
@@ -815,3 +919,4 @@ function DashboardSkeletonCentralColumn() { // Skeleton for the two right column
     </>
   );
 }
+

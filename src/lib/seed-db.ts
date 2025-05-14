@@ -199,7 +199,8 @@ export async function seedDatabase(): Promise<{ success: boolean; message: strin
         loginEmail: 'ethan.carter@healthwise.com', 
         assignedDoctorIndex: 0, // Dr. Reed
         medicalHistory: "History of hypertension. Underwent cardiac catheterization 6 months ago. Allergic to penicillin.",
-        photoInitial: "EC"
+        photoInitial: "EC",
+        readmissionRisk: 'high' as 'low' | 'medium' | 'high',
       },
       { 
         _id: patientUserObjectId2, 
@@ -207,7 +208,8 @@ export async function seedDatabase(): Promise<{ success: boolean; message: strin
         loginEmail: 'olivia.rodriguez@healthwise.com', 
         assignedDoctorIndex: 1, // Dr. Carter
         medicalHistory: "Diagnosed with Asthma, type 2 Diabetes. Previous hospitalization for asthma exacerbation.",
-        photoInitial: "OR"
+        photoInitial: "OR",
+        readmissionRisk: 'medium' as 'low' | 'medium' | 'high',
       },
       { 
         _id: patientUserObjectId3, 
@@ -215,7 +217,8 @@ export async function seedDatabase(): Promise<{ success: boolean; message: strin
         loginEmail: 'liam.chen@healthwise.com', 
         assignedDoctorIndex: 0, // Dr. Reed
         medicalHistory: "Recovering from a mild heart attack (MI). Prescribed beta-blockers and statins. No known allergies.",
-        photoInitial: "LC"
+        photoInitial: "LC",
+        readmissionRisk: 'high' as 'low' | 'medium' | 'high',
       },
       { 
         _id: patientUserObjectId4, 
@@ -223,7 +226,8 @@ export async function seedDatabase(): Promise<{ success: boolean; message: strin
         loginEmail: 'sophia.patel@healthwise.com', 
         assignedDoctorIndex: 1, // Dr. Carter
         medicalHistory: "Chronic Obstructive Pulmonary Disease (COPD). Uses an inhaler daily. History of smoking.",
-        photoInitial: "SP"
+        photoInitial: "SP",
+        readmissionRisk: 'medium' as 'low' | 'medium' | 'high',
       },
       { 
         _id: patientUserObjectId5, 
@@ -231,7 +235,8 @@ export async function seedDatabase(): Promise<{ success: boolean; message: strin
         loginEmail: 'noah.williams@healthwise.com', 
         assignedDoctorIndex: 0, // Dr. Reed
         medicalHistory: "Atrial fibrillation. On anticoagulants. Follow-up appointment scheduled for next month.",
-        photoInitial: "NW"
+        photoInitial: "NW",
+        readmissionRisk: 'low' as 'low' | 'medium' | 'high',
       },
     ];
 
@@ -246,7 +251,7 @@ export async function seedDatabase(): Promise<{ success: boolean; message: strin
         role: 'patient',
         assignedDoctorId: assignedDoctor._id.toString(),
         assignedDoctorName: assignedDoctor.displayName,
-        readmissionRisk: faker.helpers.arrayElement(['low', 'medium', 'high']),
+        readmissionRisk: pData.readmissionRisk,
         medicalHistory: pData.medicalHistory,
         creationTime: faker.date.past({ years: 1 }),
         lastSignInTime: faker.date.recent({ days: Math.floor(Math.random() * 7) + 1 }),
@@ -360,11 +365,12 @@ export async function seedDatabase(): Promise<{ success: boolean; message: strin
           const receiver = conversationParticipants.find(u => u.id !== sender.id)!;
           
           let text = faker.helpers.arrayElement(chatTemplates);
+          const medicationForPatient = medicationEntries.find(m => m.patientId.equals(patient._id));
           text = text.replace("{doctorName}", assignedDoctor.displayName)
                      .replace("{patientName}", patient.displayName)
                      .replace("{symptom}", faker.helpers.arrayElement(["dizzy", "tired", "better", "a bit off"]))
                      .replace("{condition}", faker.helpers.arrayElement(["blood pressure", "sugar levels", "breathing"]))
-                     .replace("{medication}", (medicationEntries.find(m => m.patientId.equals(patient._id))?.name || "medication"));
+                     .replace("{medication}", (medicationForPatient?.name || "medication"));
           
           chatMessageEntries.push({
               _id: new ObjectId(),
@@ -379,7 +385,7 @@ export async function seedDatabase(): Promise<{ success: boolean; message: strin
       }
 
        // Seed Appointments
-      if (pData._id === patientUserObjectId1 || pData._id === patientUserObjectId3) { // For Dr. Reed's patients
+      if (pData._id.equals(patientUserObjectId1) || pData._id.equals(patientUserObjectId3)) { // For Dr. Reed's patients
         appointmentEntries.push({
           _id: new ObjectId(),
           patientId: pData._id,
@@ -392,7 +398,7 @@ export async function seedDatabase(): Promise<{ success: boolean; message: strin
           notes: 'Routine check-up.',
         });
       }
-      if (pData._id === patientUserObjectId2 || pData._id === patientUserObjectId4) { // For Dr. Carter's patients
+      if (pData._id.equals(patientUserObjectId2) || pData._id.equals(patientUserObjectId4)) { // For Dr. Carter's patients
         appointmentEntries.push({
           _id: new ObjectId(),
           patientId: pData._id,
@@ -446,3 +452,4 @@ if (require.main === module) {
     }
   })();
 }
+
