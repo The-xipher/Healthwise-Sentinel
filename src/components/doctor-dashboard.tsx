@@ -2,7 +2,7 @@
 'use client';
 
 import * as React from 'react';
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
@@ -10,14 +10,15 @@ import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Loader2, AlertTriangle, Users, Stethoscope, Activity, HeartPulse, Pill, MessageSquare, Send, Check, X, Info, Brain } from 'lucide-react';
+import { Input } from '@/components/ui/input';
+import { Loader2, AlertTriangle, Users, Stethoscope, Activity, HeartPulse, Pill, MessageSquare, Send, Check, X, Info, Brain, Search } from 'lucide-react';
 import { Textarea } from './ui/textarea';
 import { ScrollArea } from './ui/scroll-area';
 import { summarizePatientHistory } from '@/ai/flows/summarize-patient-history';
 import { generateCarePlan } from '@/ai/flows/generate-care-plan';
 import { useToast } from '@/hooks/use-toast';
-import { 
-  fetchDoctorPatientsAction, 
+import {
+  fetchDoctorPatientsAction,
   fetchDoctorPatientDetailsAction,
   sendChatMessageAction,
   updateSuggestionStatusAction,
@@ -26,7 +27,7 @@ import {
   type DoctorPatientMedication,
   type DoctorChatMessage,
   type DoctorAISuggestion
-} from '@/app/actions/doctorActions'; 
+} from '@/app/actions/doctorActions';
 import { markMessagesAsReadAction } from '@/app/actions/chatActions';
 
 interface DoctorDashboardProps {
@@ -41,6 +42,7 @@ const getChatId = (id1: string, id2: string): string => {
 
 export default function DoctorDashboard({ doctorId, doctorName, userRole }: DoctorDashboardProps) {
   const [patients, setPatients] = useState<DoctorPatient[]>([]);
+  const [searchQuery, setSearchQuery] = useState<string>('');
   const [selectedPatientId, setSelectedPatientId] = useState<string | null>(null);
   const [selectedPatientData, setSelectedPatientData] = useState<DoctorPatient | null>(null);
   const [patientHealthData, setPatientHealthData] = useState<DoctorPatientHealthData[]>([]);
@@ -75,16 +77,16 @@ export default function DoctorDashboard({ doctorId, doctorName, userRole }: Doct
         const result = await fetchDoctorPatientsAction(doctorId);
         if (result.error) {
           setError(result.error);
-          if (result.error.toLowerCase().includes("database connection") || 
+          if (result.error.toLowerCase().includes("database connection") ||
               result.error.toLowerCase().includes("timeout") ||
               result.error.toLowerCase().includes("failed to connect") ||
-              result.error.toLowerCase().includes("could not load patient list")) { 
+              result.error.toLowerCase().includes("could not load patient list")) {
             setDbAvailable(false);
           }
           setPatients([]);
         } else {
           setPatients(result.patients || []);
-          setDbAvailable(true); 
+          setDbAvailable(true);
         }
       } catch (e: any) {
         setError(e.message || 'An unexpected error occurred while fetching patients.');
@@ -107,25 +109,25 @@ export default function DoctorDashboard({ doctorId, doctorName, userRole }: Doct
       setChatMessages([]);
       setHistorySummary(null);
       setCarePlan(null);
-      setLoadingPatientDetails(false); 
+      setLoadingPatientDetails(false);
       return;
     }
 
     async function fetchPatientAllData() {
       setLoadingPatientDetails(true);
-      setError(null); 
-      setHistorySummary(null); 
+      setError(null);
+      setHistorySummary(null);
       setCarePlan(null);
 
       try {
         const result = await fetchDoctorPatientDetailsAction(selectedPatientId, doctorId);
         if (result.error) {
           setError(result.error);
-           if (result.error.toLowerCase().includes("database connection") || 
+           if (result.error.toLowerCase().includes("database connection") ||
                result.error.toLowerCase().includes("timeout") ||
                result.error.toLowerCase().includes("failed to connect") ||
-               result.error.toLowerCase().includes("could not load patient data")) { 
-            setDbAvailable(false); 
+               result.error.toLowerCase().includes("could not load patient data")) {
+            setDbAvailable(false);
           }
           setSelectedPatientData(null);
           setPatientHealthData([]);
@@ -138,7 +140,7 @@ export default function DoctorDashboard({ doctorId, doctorName, userRole }: Doct
           setPatientMedications(result.medications || []);
           setAiSuggestions(result.aiSuggestions || []);
           setChatMessages(result.chatMessages || []);
-          setDbAvailable(true); 
+          setDbAvailable(true);
 
           if (result.patient) {
             // Mark messages as read for this chat
@@ -149,15 +151,15 @@ export default function DoctorDashboard({ doctorId, doctorName, userRole }: Doct
             setLoadingSummary(true);
             try {
               const summaryResult = await summarizePatientHistory({
-                patientId: selectedPatientId, 
+                patientId: selectedPatientId,
                 medicalHistory: result.patient.medicalHistory || "No detailed medical history available."
               });
               setHistorySummary(summaryResult.summary);
-            } catch (aiError: any) { 
-              console.error("AI Patient Summary Error:", aiError); 
-              setHistorySummary("Could not generate AI summary: " + (aiError.message || "Service error")); 
-            } finally { 
-              setLoadingSummary(false); 
+            } catch (aiError: any) {
+              console.error("AI Patient Summary Error:", aiError);
+              setHistorySummary("Could not generate AI summary: " + (aiError.message || "Service error"));
+            } finally {
+              setLoadingSummary(false);
             }
 
             setLoadingCarePlan(true);
@@ -165,17 +167,17 @@ export default function DoctorDashboard({ doctorId, doctorName, userRole }: Doct
                 const currentMedsString = (result.medications || []).map(m => `${m.name} (${m.dosage})`).join(', ') || "None listed";
                 const predictedRisksString = result.patient?.readmissionRisk ? `Readmission Risk: ${result.patient.readmissionRisk}` : "No specific risks predicted by system.";
                 const carePlanResult = await generateCarePlan({
-                  patientId: selectedPatientId, 
+                  patientId: selectedPatientId,
                   predictedRisks: predictedRisksString,
                   medicalHistory: result.patient.medicalHistory || "No detailed medical history available.",
                   currentMedications: currentMedsString
                 });
                 setCarePlan(carePlanResult.carePlan);
-            } catch (aiError: any) { 
-              console.error("AI Care Plan Error:", aiError); 
+            } catch (aiError: any) {
+              console.error("AI Care Plan Error:", aiError);
               setCarePlan("Could not generate AI care plan: " + (aiError.message || "Service error"));
-            } finally { 
-              setLoadingCarePlan(false); 
+            } finally {
+              setLoadingCarePlan(false);
             }
           }
         }
@@ -189,13 +191,22 @@ export default function DoctorDashboard({ doctorId, doctorName, userRole }: Doct
     }
 
     fetchPatientAllData();
-  }, [selectedPatientId, doctorId]); 
+  }, [selectedPatientId, doctorId]);
 
   useEffect(() => {
     if (chatScrollAreaRef.current) {
       chatScrollAreaRef.current.scrollTop = chatScrollAreaRef.current.scrollHeight;
     }
   }, [chatMessages]);
+
+  const filteredPatients = useMemo(() => {
+    if (!searchQuery) {
+      return patients;
+    }
+    return patients.filter(patient =>
+      patient.name.toLowerCase().includes(searchQuery.toLowerCase())
+    );
+  }, [patients, searchQuery]);
 
   const handleSendMessage = async () => {
     if (!newMessage.trim() || !selectedPatientId || !doctorId) {
@@ -255,10 +266,10 @@ export default function DoctorDashboard({ doctorId, doctorName, userRole }: Doct
     try {
       return new Date(timestamp).toLocaleString();
     } catch {
-      return String(timestamp); 
+      return String(timestamp);
     }
   };
-  
+
   const getInitials = (name: string | null | undefined): string => {
     if (!name) return '?';
     const names = name.split(' ');
@@ -266,12 +277,18 @@ export default function DoctorDashboard({ doctorId, doctorName, userRole }: Doct
     return (names[0][0] + names[names.length - 1][0]).toUpperCase();
   };
 
-  const coreDataLoading = loadingPatientDetails && selectedPatientId; 
+  const getRiskBadgeVariant = (risk?: 'low' | 'medium' | 'high'): 'default' | 'secondary' | 'destructive' => {
+    if (risk === 'high') return 'destructive';
+    if (risk === 'medium') return 'secondary'; // Or 'warning' if you add a yellow/orange variant
+    return 'default'; // For 'low' or undefined
+  };
+
+  const coreDataLoading = loadingPatientDetails && selectedPatientId;
 
   return (
     <div className="space-y-6">
       <h1 className="text-3xl font-bold text-foreground flex items-center gap-2">
-        <Stethoscope className="h-8 w-8" /> 
+        <Stethoscope className="h-8 w-8" />
         {userRole === 'admin' ? `Doctor View (Admin: ${doctorName})` : `${doctorName}'s Dashboard`}
       </h1>
 
@@ -283,7 +300,7 @@ export default function DoctorDashboard({ doctorId, doctorName, userRole }: Doct
         </Alert>
       )}
 
-      {!dbAvailable && !loadingPatients && !loadingPatientDetails && ( 
+      {!dbAvailable && !loadingPatients && !loadingPatientDetails && (
         <Alert variant="default" className="bg-yellow-50 border-yellow-200 text-yellow-800 dark:bg-yellow-900 dark:border-yellow-700 dark:text-yellow-200">
           <AlertTriangle className="h-4 w-4 text-yellow-600 dark:text-yellow-400" />
           <AlertTitle>Database Disconnected</AlertTitle>
@@ -296,36 +313,49 @@ export default function DoctorDashboard({ doctorId, doctorName, userRole }: Doct
       <Card className="shadow-lg">
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
-            <Users className="h-5 w-5" /> Select Patient
+            <Users className="h-5 w-5" /> Patient Management
           </CardTitle>
-          <CardDescription>Choose a patient to view their details, manage care, and interact.</CardDescription>
+          <CardDescription>Search for and select a patient to view their details.</CardDescription>
         </CardHeader>
         <CardContent>
+          <div className="relative mb-4">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+            <Input
+              type="search"
+              placeholder="Search patient by name..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="pl-10 w-full md:w-[350px] text-base py-3"
+              disabled={loadingPatients || !dbAvailable}
+            />
+          </div>
           {loadingPatients ? (
-            <Skeleton className="h-10 w-full md:w-[300px]" />
+            <Skeleton className="h-12 w-full md:w-[350px]" />
           ) : (
             <Select
               onValueChange={(value) => setSelectedPatientId(value)}
               value={selectedPatientId || ''}
               disabled={!dbAvailable || patients.length === 0}
             >
-              <SelectTrigger className="w-full md:w-[350px] text-base py-3">
-                <SelectValue placeholder={!dbAvailable ? "Patient list unavailable (DB offline)" : (patients.length === 0 ? "No patients assigned" : "Select a patient...")} />
+              <SelectTrigger className="w-full md:w-[350px] text-base py-3 h-12">
+                <SelectValue placeholder={!dbAvailable ? "Patient list unavailable (DB offline)" : (filteredPatients.length === 0 && searchQuery ? "No patients match search" : (patients.length === 0 ? "No patients assigned" : "Select a patient..."))} />
               </SelectTrigger>
               <SelectContent>
-                {patients.length > 0 ? (
-                  patients.map((patient) => (
+                {filteredPatients.length > 0 ? (
+                  filteredPatients.map((patient) => (
                     <SelectItem key={patient.id} value={patient.id}>
-                      <div className="flex items-center gap-3">
-                        <Avatar className="h-7 w-7">
-                          <AvatarImage src={patient.photoURL || undefined} alt={patient.name} data-ai-hint="profile person" />
-                          <AvatarFallback>{getInitials(patient.name)}</AvatarFallback>
-                        </Avatar>
-                        <span>{patient.name}</span>
+                      <div className="flex items-center justify-between w-full gap-3">
+                        <div className="flex items-center gap-2">
+                          <Avatar className="h-7 w-7">
+                            <AvatarImage src={patient.photoURL || undefined} alt={patient.name} data-ai-hint="profile person" />
+                            <AvatarFallback>{getInitials(patient.name)}</AvatarFallback>
+                          </Avatar>
+                          <span>{patient.name}</span>
+                        </div>
                         {patient.readmissionRisk && (
-                          <Badge 
-                            variant={patient.readmissionRisk === 'high' ? 'destructive' : patient.readmissionRisk === 'medium' ? 'secondary' : 'default'} 
-                            className="ml-auto text-xs px-2 py-0.5"
+                          <Badge
+                            variant={getRiskBadgeVariant(patient.readmissionRisk)}
+                            className="ml-auto text-xs px-2 py-0.5 capitalize"
                           >
                             {patient.readmissionRisk} risk
                           </Badge>
@@ -335,7 +365,7 @@ export default function DoctorDashboard({ doctorId, doctorName, userRole }: Doct
                   ))
                 ) : (
                   <div className="p-4 text-center text-sm text-muted-foreground">
-                    {dbAvailable ? "No patients currently assigned to you." : "Patient data is unavailable due to connection issues."}
+                    {dbAvailable ? (searchQuery ? "No patients match your search." : "No patients currently assigned to you.") : "Patient data is unavailable."}
                   </div>
                 )}
               </SelectContent>
@@ -344,9 +374,9 @@ export default function DoctorDashboard({ doctorId, doctorName, userRole }: Doct
         </CardContent>
       </Card>
 
-      {coreDataLoading ? ( 
+      {coreDataLoading ? (
           <DashboardSkeleton />
-      ) : selectedPatientId && dbAvailable && selectedPatientData ? ( 
+      ) : selectedPatientId && dbAvailable && selectedPatientData ? (
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
             {/* Patient Info Column */}
             <div className="lg:col-span-1 space-y-6">
@@ -360,7 +390,7 @@ export default function DoctorDashboard({ doctorId, doctorName, userRole }: Doct
                     <CardTitle className="text-xl">{selectedPatientData?.name}</CardTitle>
                     <CardDescription className="text-sm">{selectedPatientData?.email || 'No email'}</CardDescription>
                     {selectedPatientData?.readmissionRisk && (
-                      <Badge variant={selectedPatientData.readmissionRisk === 'high' ? 'destructive' : selectedPatientData.readmissionRisk === 'medium' ? 'secondary' : 'default'} className="mt-2 text-xs px-2 py-0.5">
+                      <Badge variant={getRiskBadgeVariant(selectedPatientData.readmissionRisk)} className="mt-2 text-xs px-2 py-0.5 capitalize">
                         {selectedPatientData.readmissionRisk} readmission risk
                       </Badge>
                     )}
@@ -476,7 +506,7 @@ export default function DoctorDashboard({ doctorId, doctorName, userRole }: Doct
                   <CardDescription className="text-xs">Review and act on AI-driven suggestions.</CardDescription>
                 </CardHeader>
                 <CardContent>
-                  {(loadingPatientDetails && !aiSuggestions.length) ? ( 
+                  {(loadingPatientDetails && !aiSuggestions.length) ? (
                     <div className="flex items-center justify-center p-4"><Loader2 className="h-6 w-6 animate-spin text-primary" /></div>
                   ) : aiSuggestions.length > 0 ? (
                     <ScrollArea className="h-[200px] pr-3">
@@ -567,7 +597,7 @@ export default function DoctorDashboard({ doctorId, doctorName, userRole }: Doct
               </Card>
             </div>
           </div>
-        ) : selectedPatientId && !coreDataLoading && dbAvailable ? ( 
+        ) : selectedPatientId && !coreDataLoading && dbAvailable ? (
           <Alert variant="default" className="bg-orange-50 border-orange-200 text-orange-800 dark:bg-orange-900 dark:border-orange-700 dark:text-orange-200">
             <AlertTriangle className="h-4 w-4 text-orange-600 dark:text-orange-400" />
             <AlertTitle>Patient Data Not Found</AlertTitle>
@@ -576,16 +606,16 @@ export default function DoctorDashboard({ doctorId, doctorName, userRole }: Doct
         ) : null
       }
 
-      {!selectedPatientId && dbAvailable && !loadingPatients && ( 
+      {!selectedPatientId && dbAvailable && !loadingPatients && (
         <Card className="shadow-md">
           <CardContent className="pt-6">
             <p className="text-center text-muted-foreground text-lg">
-              Please select a patient from the list above to view their details.
+              Please {searchQuery ? "clear your search or " : ""}select a patient from the list above to view their details.
             </p>
           </CardContent>
         </Card>
       )}
-       {!selectedPatientId && !dbAvailable && !loadingPatients && ( 
+       {!selectedPatientId && !dbAvailable && !loadingPatients && (
         <Card className="shadow-md">
           <CardContent className="pt-6">
             <p className="text-center text-muted-foreground text-lg">Patient selection unavailable. Database connection may be down.</p>
@@ -596,7 +626,7 @@ export default function DoctorDashboard({ doctorId, doctorName, userRole }: Doct
   );
 }
 
-function DashboardSkeleton() { 
+function DashboardSkeleton() {
   return (
     <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
       <div className="lg:col-span-1 space-y-6">
@@ -652,3 +682,4 @@ function DashboardSkeleton() {
     </div>
   );
 }
+
