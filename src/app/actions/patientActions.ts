@@ -92,6 +92,23 @@ interface PatientUserForAlerts { // For fetching patient details including assig
     // other fields if needed
 }
 
+export interface PatientApprovedAISuggestion {
+  _id: string;
+  id: string;
+  patientId: string;
+  suggestionText: string;
+  timestamp: string; // ISO string from Date
+}
+
+interface RawPatientApprovedAISuggestion {
+  _id: ObjectId;
+  patientId: ObjectId; // Should match the patientId being queried
+  suggestionText: string;
+  timestamp: Date;
+  status: 'approved'; // We will query for this status
+}
+
+
 const getChatId = (id1: string, id2: string): string => {
   return [id1, id2].sort().join('_');
 };
@@ -102,6 +119,7 @@ export async function fetchPatientDashboardDataAction(patientIdStr: string): Pro
   medications?: PatientMedication[],
   symptomReports?: PatientSymptomReport[],
   chatMessages?: PatientChatMessage[],
+  approvedAISuggestions?: PatientApprovedAISuggestion[],
   assignedDoctorId?: string,
   assignedDoctorName?: string,
   patientDisplayName?: string,
@@ -116,7 +134,7 @@ export async function fetchPatientDashboardDataAction(patientIdStr: string): Pro
     const { db } = await connectToDatabase();
 
     // Fetch patient profile to get assigned doctor info
-    const usersCollection = db.collection<PatientUserForAlerts>('users'); // Use the more specific type
+    const usersCollection = db.collection<PatientUserForAlerts>('users'); 
     const patientProfile = await usersCollection.findOne({ _id: patientObjectId });
 
     if (!patientProfile) {
@@ -174,12 +192,27 @@ export async function fetchPatientDashboardDataAction(patientIdStr: string): Pro
         }));
     }
 
+    const approvedAISuggestionsCollection = db.collection<RawPatientApprovedAISuggestion>('aiSuggestions');
+    const rawApprovedSuggestions = await approvedAISuggestionsCollection
+      .find({ patientId: patientObjectId, status: 'approved' })
+      .sort({ timestamp: -1 })
+      .limit(5) // Get latest 5 approved suggestions
+      .toArray();
+    const approvedAISuggestions: PatientApprovedAISuggestion[] = rawApprovedSuggestions.map(s => ({
+      _id: s._id.toString(),
+      id: s._id.toString(),
+      patientId: s.patientId.toString(),
+      suggestionText: s.suggestionText,
+      timestamp: s.timestamp.toISOString(),
+    }));
+
 
     return {
         healthData,
         medications,
         symptomReports,
         chatMessages,
+        approvedAISuggestions,
         assignedDoctorId,
         assignedDoctorName,
         patientDisplayName
@@ -308,5 +341,42 @@ export async function sendPatientChatMessageAction(
         return { error: "Database connection timeout. Please check your network and MongoDB Atlas settings." };
     }
     return { error: "Could not send message. " + (err.message || '') };
+  }
+}
+
+// New action to fetch approved AI suggestions for a patient
+export async function fetchPatientApprovedSuggestionsAction(patientIdStr: string): Promise<{
+  suggestions?: PatientApprovedAISuggestion[],
+  error?: string
+}> {
+  const patientObjectId = toObjectId(patientIdStr);
+  if (!patientObjectId) {
+    return { error: "Invalid patient ID format." };
+  }
+
+  try {
+    const { db } = await connectToDatabase();
+    const suggestionsCollection = db.collection<RawPatientApprovedAISuggestion>('aiSuggestions');
+    const rawSuggestions = await suggestionsCollection
+      .find({ patientId: patientObjectId, status: 'approved' })
+      .sort({ timestamp: -1 }) // Get newest first
+      .limit(5) // Limit to latest 5, or adjust as needed
+      .toArray();
+
+    const suggestions: PatientApprovedAISuggestion[] = rawSuggestions.map(s => ({
+      _id: s._id.toString(),
+      id: s._id.toString(),
+      patientId: s.patientId.toString(),
+      suggestionText: s.suggestionText,
+      timestamp: s.timestamp.toISOString(),
+    }));
+
+    return { suggestions };
+  } catch (err: any) {
+    console.error("Error fetching approved AI suggestions for patient:", err);
+    if (err.message.includes('queryTxt ETIMEOUT') || err.message.includes('querySrv ENOTFOUND')) {
+      return { error: "Database connection timeout. Please check your network and MongoDB Atlas settings." };
+    }
+    return { error: "Could not load approved suggestions. " + (err.message || '') };
   }
 }
