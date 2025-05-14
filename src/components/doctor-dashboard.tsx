@@ -203,8 +203,8 @@ export default function DoctorDashboard({ doctorId, doctorName, userRole }: Doct
     if (!searchQuery) {
       return patients;
     }
-    return patients.filter(patient =>
-      patient.name.toLowerCase().includes(searchQuery.toLowerCase())
+    return patients.filter(patient => 
+      patient && typeof patient.name === 'string' && patient.name.toLowerCase().includes(searchQuery.toLowerCase())
     );
   }, [patients, searchQuery]);
 
