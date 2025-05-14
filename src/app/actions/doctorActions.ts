@@ -120,7 +120,7 @@ export async function fetchDoctorPatientsAction(doctorId: string): Promise<{ pat
       ...p,
       _id: p._id.toString(),
       id: p._id.toString(),
-      name: p.displayName, // Map displayName to name
+      name: p.displayName || 'Unknown Patient', // Ensure 'name' is always a string
       lastActivity: p.lastActivity?.toISOString(),
     }));
     return { patients };
@@ -162,7 +162,7 @@ export async function fetchDoctorPatientDetailsAction(patientIdStr: string, doct
         ...rawPatient,
          _id: rawPatient._id.toString(),
          id: rawPatient._id.toString(),
-         name: rawPatient.displayName, // Map displayName to name
+         name: rawPatient.displayName || 'Unknown Patient', // Ensure 'name' is always a string
          lastActivity: rawPatient.lastActivity?.toISOString()
     };
 

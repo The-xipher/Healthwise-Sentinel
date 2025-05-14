@@ -217,11 +217,13 @@ function DoctorDashboardContent({ doctorId, doctorName, userRole }: DoctorDashbo
   }, [chatMessages]);
 
   const filteredPatients = useMemo(() => {
+    // Assuming `patient.name` is now always a string from the action
     if (!searchQuery) {
-      return patients;
+      return patients; 
     }
     return patients.filter(patient =>
-      patient && typeof patient.name === 'string' && patient.name.toLowerCase().includes(searchQuery.toLowerCase())
+      // patient.name is guaranteed to be a string by the action due to defaulting
+      patient.name.toLowerCase().includes(searchQuery.toLowerCase())
     );
   }, [patients, searchQuery]);
 
@@ -359,27 +361,30 @@ function DoctorDashboardContent({ doctorId, doctorName, userRole }: DoctorDashbo
               </SelectTrigger>
               <SelectContent>
                 {filteredPatients.length > 0 ? (
-                  filteredPatients.map((patient) => (
-                    <SelectItem key={patient.id} value={patient.id}>
-                      <div className="flex items-center justify-between w-full gap-3">
-                        <div className="flex items-center gap-2">
-                          <Avatar className="h-7 w-7">
-                            <AvatarImage src={patient.photoURL || undefined} alt={patient.name} data-ai-hint="profile person" />
-                            <AvatarFallback>{getInitials(patient.name)}</AvatarFallback>
-                          </Avatar>
-                          <span>{patient.name}</span>
+                  filteredPatients.map((patient) => {
+                    const patientName = patient.name; // Guaranteed to be a string by the action
+                    return (
+                      <SelectItem key={patient.id} value={patient.id}>
+                        <div className="flex items-center justify-between w-full gap-3">
+                          <div className="flex items-center gap-2">
+                            <Avatar className="h-7 w-7">
+                              <AvatarImage src={patient.photoURL || undefined} alt={patientName} data-ai-hint="profile person" />
+                              <AvatarFallback>{getInitials(patientName)}</AvatarFallback>
+                            </Avatar>
+                            <span>{patientName}</span>
+                          </div>
+                          {patient.readmissionRisk && (
+                            <Badge
+                              variant={getRiskBadgeVariant(patient.readmissionRisk)}
+                              className="ml-auto text-xs px-2 py-0.5 capitalize"
+                            >
+                              {patient.readmissionRisk} risk
+                            </Badge>
+                          )}
                         </div>
-                        {patient.readmissionRisk && (
-                          <Badge
-                            variant={getRiskBadgeVariant(patient.readmissionRisk)}
-                            className="ml-auto text-xs px-2 py-0.5 capitalize"
-                          >
-                            {patient.readmissionRisk} risk
-                          </Badge>
-                        )}
-                      </div>
-                    </SelectItem>
-                  ))
+                      </SelectItem>
+                    );
+                  })
                 ) : (
                   <div className="p-4 text-center text-sm text-muted-foreground">
                     {dbAvailable ? (searchQuery ? "No patients match your search." : "No patients currently assigned to you.") : "Patient data is unavailable."}
