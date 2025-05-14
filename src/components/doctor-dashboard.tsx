@@ -12,7 +12,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Input } from '@/components/ui/input';
-import { Loader2, AlertTriangle, Users, Stethoscope, Activity, HeartPulse, Pill, MessageSquare, Send, Check, X, Info, Brain, Search, CalendarDays } from 'lucide-react';
+import { Loader2, AlertTriangle, Users, Stethoscope, Activity, HeartPulse, Pill, MessageSquare, Send, Check, X, Info, Brain, Search, CalendarDays, Sparkles, BookMarked } from 'lucide-react';
 import { Textarea } from './ui/textarea';
 import { ScrollArea } from './ui/scroll-area';
 import { summarizePatientHistory } from '@/ai/flows/summarize-patient-history';
@@ -141,7 +141,7 @@ function DoctorDashboardContent({ doctorId, doctorName, userRole }: DoctorDashbo
       }
     }
     loadInitialDoctorData();
-  }, [doctorId, patientIdFromQuery]); // Added patientIdFromQuery to re-evaluate if admin switches patient view via URL
+  }, [doctorId, patientIdFromQuery]);
 
   useEffect(() => {
     if (!selectedPatientId || !doctorId) {
@@ -198,7 +198,7 @@ function DoctorDashboardContent({ doctorId, doctorName, userRole }: DoctorDashbo
               setHistorySummary(summaryResult.summary);
             } catch (aiError: any) {
               console.error("AI Patient Summary Error:", aiError);
-              const errorMsg = aiError.message?.includes("NOT_FOUND") || aiError.message?.includes("API key") ? "Model not found or API key issue." : "Service error.";
+              const errorMsg = aiError.message?.includes("NOT_FOUND") || aiError.message?.includes("API key") || aiError.message?.includes("model") ? "Model not found or API key issue." : "Service error.";
               setHistorySummary("Could not generate AI summary. " + errorMsg);
             } finally {
               setLoadingSummary(false);
@@ -217,7 +217,7 @@ function DoctorDashboardContent({ doctorId, doctorName, userRole }: DoctorDashbo
                 setCarePlan(carePlanResult.carePlan);
             } catch (aiError: any) {
               console.error("AI Care Plan Error:", aiError);
-              const errorMsg = aiError.message?.includes("NOT_FOUND") || aiError.message?.includes("API key") ? "Model not found or API key issue." : "Service error.";
+              const errorMsg = aiError.message?.includes("NOT_FOUND") || aiError.message?.includes("API key") || aiError.message?.includes("model") ? "Model not found or API key issue." : "Service error.";
               setCarePlan("Could not generate AI care plan. " + errorMsg);
             } finally {
               setLoadingCarePlan(false);
@@ -349,7 +349,6 @@ function DoctorDashboardContent({ doctorId, doctorName, userRole }: DoctorDashbo
   };
 
   const coreDataLoading = loadingPatientDetails && selectedPatientId;
-  const currentDoctorId = doctorId; // Explicitly capture for use in map, just in case of closure issues.
 
   return (
     <div className="space-y-6">
@@ -411,7 +410,7 @@ function DoctorDashboardContent({ doctorId, doctorName, userRole }: DoctorDashbo
                     <SelectContent>
                         {filteredPatients.length > 0 ? (
                         filteredPatients.map((patient) => {
-                            const patientName = patient.name; // Already guaranteed to be string by action
+                            const patientName = patient.name;
                             return (
                             <SelectItem key={patient.id} value={patient.id}>
                                 <div className="flex items-center justify-between w-full gap-3">
@@ -420,7 +419,7 @@ function DoctorDashboardContent({ doctorId, doctorName, userRole }: DoctorDashbo
                                     <AvatarImage src={patient.photoURL || undefined} alt={patientName} data-ai-hint="profile person" />
                                     <AvatarFallback>{getInitials(patientName)}</AvatarFallback>
                                     </Avatar>
-                                    <span>{patientName} ({patient.id?.substring(0,6)})</span>
+                                     <span>{patientName} ({patient.id?.substring(0,6)})</span>
                                 </div>
                                 {patient.readmissionRisk && (
                                     <Badge
@@ -487,7 +486,7 @@ function DoctorDashboardContent({ doctorId, doctorName, userRole }: DoctorDashbo
               <Card className="shadow-md">
                 <CardHeader className="flex flex-row items-center gap-4 pb-3">
                   <Avatar className="h-16 w-16 border-2 border-primary">
-                    <AvatarImage src={selectedPatientData?.photoURL || undefined} alt={selectedPatientData?.name} data-ai-hint="profile person" />
+                    <AvatarImage src={selectedPatientData?.photoURL || undefined} alt={selectedPatientData?.name} data-ai-hint="profile person"/>
                     <AvatarFallback className="text-xl">{getInitials(selectedPatientData?.name)}</AvatarFallback>
                   </Avatar>
                   <div>
@@ -656,7 +655,7 @@ function DoctorDashboardContent({ doctorId, doctorName, userRole }: DoctorDashbo
                         ) : chatMessages.length > 0 ? (
                         <div className="space-y-4">
                             {chatMessages.map(msg => {
-                                const isDoctorMessage = msg.senderId === currentDoctorId;
+                                const isDoctorMessage = msg.senderId === doctorId; // Use doctorId prop directly
                                 return (
                                 <div key={msg.id} className={`flex ${isDoctorMessage ? 'justify-end' : 'justify-start'}`}>
                                     <div className={`p-3 rounded-xl max-w-[80%] shadow-sm ${isDoctorMessage ? 'bg-primary text-primary-foreground' : 'bg-card text-card-foreground border'}`}>
@@ -820,5 +819,7 @@ function DashboardSkeletonCentralColumn() {
     </>
   );
 }
+
+    
 
     
