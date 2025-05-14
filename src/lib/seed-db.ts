@@ -3,6 +3,8 @@
 import { MongoClient, ObjectId } from 'mongodb';
 import { faker } from '@faker-js/faker';
 import { connectToDatabase } from './mongodb'; // Use existing connection helper
+import type { Appointment as ApptInterface, RawAppointment as RawApptInterface } from '@/app/actions/doctorActions'; // Import appointment types
+
 
 // Define interfaces for mock data
 interface User {
@@ -77,6 +79,10 @@ interface ChatMessage {
     isRead?: boolean; 
 }
 
+// Use the imported types for Appointment
+type Appointment = ApptInterface;
+type RawAppointment = RawApptInterface;
+
 
 const DEFAULT_PASSWORD = "password123";
 
@@ -105,7 +111,7 @@ export async function seedDatabase(): Promise<{ success: boolean; message: strin
 
     const collectionsToClear = [
       'users', 'credentials', 'healthData', 'medications', 
-      'symptomReports', 'aiSuggestions', 'chatMessages'
+      'symptomReports', 'aiSuggestions', 'chatMessages', 'appointments'
     ];
     console.log(`Clearing existing data from collections: ${collectionsToClear.join(', ')}...`);
     for (const coll of collectionsToClear) {
@@ -121,6 +127,8 @@ export async function seedDatabase(): Promise<{ success: boolean; message: strin
     const symptomReportEntries: SymptomReport[] = [];
     const aiSuggestionEntries: AISuggestion[] = [];
     const chatMessageEntries: ChatMessage[] = [];
+    const appointmentEntries: RawAppointment[] = [];
+
 
     // --- Admins ---
     const adminUser: User = {
@@ -286,10 +294,10 @@ export async function seedDatabase(): Promise<{ success: boolean; message: strin
         });
       }
       // Ensure patients with specific conditions get relevant meds
-      if (patient.medicalHistory.includes('hypertension') && !medicationEntries.find(m=>m.patientId === patient._id && m.name === 'Lisinopril')) {
+      if (patient.medicalHistory.includes('hypertension') && !medicationEntries.find(m=>m.patientId.equals(patient._id) && m.name === 'Lisinopril')) {
         medicationEntries.push({...commonMeds[0], _id: new ObjectId(), patientId: patient._id, lastTaken: faker.date.recent({ days: 1 }), adherence: faker.number.int({ min: 70, max: 95 }) });
       }
-      if (patient.medicalHistory.includes('Diabetes') && !medicationEntries.find(m=>m.patientId === patient._id && m.name === 'Metformin')) {
+      if (patient.medicalHistory.includes('Diabetes') && !medicationEntries.find(m=>m.patientId.equals(patient._id) && m.name === 'Metformin')) {
          medicationEntries.push({...commonMeds[1], _id: new ObjectId(), patientId: patient._id, lastTaken: faker.date.recent({ days: 1 }), adherence: faker.number.int({ min: 70, max: 95 }) });
       }
 
@@ -356,7 +364,7 @@ export async function seedDatabase(): Promise<{ success: boolean; message: strin
                      .replace("{patientName}", patient.displayName)
                      .replace("{symptom}", faker.helpers.arrayElement(["dizzy", "tired", "better", "a bit off"]))
                      .replace("{condition}", faker.helpers.arrayElement(["blood pressure", "sugar levels", "breathing"]))
-                     .replace("{medication}", faker.helpers.arrayElement(medicationEntries.filter(m => m.patientId === patient._id).map(m => m.name)).name || "medication");
+                     .replace("{medication}", (medicationEntries.find(m => m.patientId.equals(patient._id))?.name || "medication"));
           
           chatMessageEntries.push({
               _id: new ObjectId(),
@@ -369,6 +377,33 @@ export async function seedDatabase(): Promise<{ success: boolean; message: strin
               isRead: n < 3 // Mark first few as read, last few as potentially unread
           });
       }
+
+       // Seed Appointments
+      if (pData._id === patientUserObjectId1 || pData._id === patientUserObjectId3) { // For Dr. Reed's patients
+        appointmentEntries.push({
+          _id: new ObjectId(),
+          patientId: pData._id,
+          patientName: pData.displayName,
+          doctorId: doctorUserObjectId1,
+          doctorName: doctor1.displayName,
+          appointmentDate: faker.date.soon({ days: 7, refDate: new Date() }),
+          reason: `Follow-up for ${pData.medicalHistory.split('.')[0]}`,
+          status: 'scheduled',
+          notes: 'Routine check-up.',
+        });
+      }
+      if (pData._id === patientUserObjectId2 || pData._id === patientUserObjectId4) { // For Dr. Carter's patients
+        appointmentEntries.push({
+          _id: new ObjectId(),
+          patientId: pData._id,
+          patientName: pData.displayName,
+          doctorId: doctorUserObjectId2,
+          doctorName: doctor2.displayName,
+          appointmentDate: faker.date.soon({ days: 10, refDate: new Date() }),
+          reason: `Consultation regarding ${pData.medicalHistory.split('.')[0]}`,
+          status: 'scheduled',
+        });
+      }
     }
 
     console.log('Inserting mock data into collections...');
@@ -379,13 +414,16 @@ export async function seedDatabase(): Promise<{ success: boolean; message: strin
     if (symptomReportEntries.length > 0) await db.collection('symptomReports').insertMany(symptomReportEntries);
     if (aiSuggestionEntries.length > 0) await db.collection('aiSuggestions').insertMany(aiSuggestionEntries);
     if (chatMessageEntries.length > 0) await db.collection('chatMessages').insertMany(chatMessageEntries);
+    if (appointmentEntries.length > 0) await db.collection('appointments').insertMany(appointmentEntries);
+
 
     console.log('Mock data insertion complete.');
     console.log(`Seeded ${usersToInsert.length} users.`);
     console.log(`Seeded ${credentialsToInsert.length} credentials.`);
     console.log(`Seeded ${chatMessageEntries.length} chat messages.`);
+    console.log(`Seeded ${appointmentEntries.length} appointments.`);
     
-    return { success: true, message: `Database seeded successfully! Users: ${usersToInsert.length}, Credentials: ${credentialsToInsert.length}, Health Data: ${healthDataEntries.length}, Medications: ${medicationEntries.length}, Symptoms: ${symptomReportEntries.length}, AI Suggestions: ${aiSuggestionEntries.length}, Chats: ${chatMessageEntries.length}` };
+    return { success: true, message: `Database seeded successfully! Users: ${usersToInsert.length}, Credentials: ${credentialsToInsert.length}, Health Data: ${healthDataEntries.length}, Medications: ${medicationEntries.length}, Symptoms: ${symptomReportEntries.length}, AI Suggestions: ${aiSuggestionEntries.length}, Chats: ${chatMessageEntries.length}, Appointments: ${appointmentEntries.length}` };
 
   } catch (error: any) {
     const errorMessage = `Error during database seeding: ${error.message}`;

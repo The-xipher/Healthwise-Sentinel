@@ -12,7 +12,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Input } from '@/components/ui/input';
-import { Loader2, AlertTriangle, Users, Stethoscope, Activity, HeartPulse, Pill, MessageSquare, Send, Check, X, Info, Brain, Search } from 'lucide-react';
+import { Loader2, AlertTriangle, Users, Stethoscope, Activity, HeartPulse, Pill, MessageSquare, Send, Check, X, Info, Brain, Search, CalendarDays } from 'lucide-react';
 import { Textarea } from './ui/textarea';
 import { ScrollArea } from './ui/scroll-area';
 import { summarizePatientHistory } from '@/ai/flows/summarize-patient-history';
@@ -23,13 +23,17 @@ import {
   fetchDoctorPatientDetailsAction,
   sendChatMessageAction,
   updateSuggestionStatusAction,
+  fetchDoctorAppointmentsAction, // Added
   type DoctorPatient,
   type DoctorPatientHealthData,
   type DoctorPatientMedication,
   type DoctorChatMessage,
-  type DoctorAISuggestion
+  type DoctorAISuggestion,
+  type Appointment // Added
 } from '@/app/actions/doctorActions';
 import { markMessagesAsReadAction } from '@/app/actions/chatActions';
+import { format } from 'date-fns';
+
 
 interface DoctorDashboardProps {
   doctorId: string;
@@ -47,11 +51,14 @@ function DoctorDashboardContent({ doctorId, doctorName, userRole }: DoctorDashbo
 
   const [patients, setPatients] = useState<DoctorPatient[]>([]);
   const [searchQuery, setSearchQuery] = useState<string>('');
-  const [selectedPatientId, setSelectedPatientId] = useState<string | null>(patientIdFromQuery); // Initialize with query param
+  const [selectedPatientId, setSelectedPatientId] = useState<string | null>(patientIdFromQuery); 
   const [selectedPatientData, setSelectedPatientData] = useState<DoctorPatient | null>(null);
   const [patientHealthData, setPatientHealthData] = useState<DoctorPatientHealthData[]>([]);
   const [patientMedications, setPatientMedications] = useState<DoctorPatientMedication[]>([]);
   const [aiSuggestions, setAiSuggestions] = useState<DoctorAISuggestion[]>([]);
+  const [appointments, setAppointments] = useState<Appointment[]>([]); // New state for appointments
+  const [loadingAppointments, setLoadingAppointments] = useState<boolean>(true); // Loading state for appointments
+
   const [loadingPatients, setLoadingPatients] = useState<boolean>(true);
   const [loadingPatientDetails, setLoadingPatientDetails] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
@@ -66,7 +73,6 @@ function DoctorDashboardContent({ doctorId, doctorName, userRole }: DoctorDashbo
   const [dbAvailable, setDbAvailable] = useState<boolean>(true);
   const chatScrollAreaRef = useRef<HTMLDivElement>(null);
 
-  // Effect to handle patientId from query parameters
   useEffect(() => {
     const queryPatientId = searchParams.get('patientId');
     if (queryPatientId && queryPatientId !== selectedPatientId) {
@@ -79,45 +85,60 @@ function DoctorDashboardContent({ doctorId, doctorName, userRole }: DoctorDashbo
     if (!doctorId) {
       setError("Doctor ID is missing. Cannot load dashboard.");
       setLoadingPatients(false);
+      setLoadingAppointments(false);
       setDbAvailable(false);
       return;
     }
-    async function loadInitialData() {
+    async function loadInitialDoctorData() {
       setLoadingPatients(true);
+      setLoadingAppointments(true);
       setError(null);
       try {
-        const result = await fetchDoctorPatientsAction(doctorId);
-        if (result.error) {
-          setError(result.error);
-          if (result.error.toLowerCase().includes("database connection") ||
-              result.error.toLowerCase().includes("timeout") ||
-              result.error.toLowerCase().includes("failed to connect") ||
-              result.error.toLowerCase().includes("could not load patient list")) {
+        const [patientsResult, appointmentsResult] = await Promise.all([
+          fetchDoctorPatientsAction(doctorId),
+          fetchDoctorAppointmentsAction(doctorId)
+        ]);
+
+        if (patientsResult.error) {
+          setError(prev => prev ? `${prev}\n${patientsResult.error}` : patientsResult.error);
+          if (patientsResult.error.toLowerCase().includes("database connection") ||
+              patientsResult.error.toLowerCase().includes("timeout") ||
+              patientsResult.error.toLowerCase().includes("failed to connect") ||
+              patientsResult.error.toLowerCase().includes("could not load patient list")) {
             setDbAvailable(false);
           }
           setPatients([]);
         } else {
-          setPatients(result.patients || []);
+          setPatients(patientsResult.patients || []);
           setDbAvailable(true);
-          // If patientIdFromQuery exists and is valid, it will trigger the next useEffect
-          if (patientIdFromQuery && (result.patients || []).find(p => p.id === patientIdFromQuery)) {
-            // setSelectedPatientId is already initialized with it or will be set by the other effect
-          } else if (result.patients && result.patients.length > 0 && !selectedPatientId) {
-            // Optionally, select the first patient if no query param and no patient selected yet
-            // setSelectedPatientId(result.patients[0].id);
+          if (patientIdFromQuery && (patientsResult.patients || []).find(p => p.id === patientIdFromQuery)) {
+             // setSelectedPatientId is handled by the other effect
           }
         }
+
+        if (appointmentsResult.error) {
+          setError(prev => prev ? `${prev}\n${appointmentsResult.error}` : appointmentsResult.error);
+           if (appointmentsResult.error.toLowerCase().includes("database connection") ) {
+            setDbAvailable(false);
+          }
+          setAppointments([]);
+        } else {
+          setAppointments(appointmentsResult.appointments || []);
+        }
+
       } catch (e: any) {
-        setError(e.message || 'An unexpected error occurred while fetching patients.');
+        setError(e.message || 'An unexpected error occurred while fetching initial doctor data.');
         setDbAvailable(false);
         setPatients([]);
-        console.error("Error fetching doctor's patients:", e);
+        setAppointments([]);
+        console.error("Error fetching initial doctor data:", e);
       } finally {
         setLoadingPatients(false);
+        setLoadingAppointments(false);
       }
     }
-    loadInitialData();
-  }, [doctorId, patientIdFromQuery]); // patientIdFromQuery added to re-evaluate if it changes
+    loadInitialDoctorData();
+  }, [doctorId, patientIdFromQuery]); 
 
   useEffect(() => {
     if (!selectedPatientId || !doctorId) {
@@ -134,19 +155,20 @@ function DoctorDashboardContent({ doctorId, doctorName, userRole }: DoctorDashbo
 
     async function fetchPatientAllData() {
       setLoadingPatientDetails(true);
-      setError(null);
+      // setError(null); // Keep previous errors unless specifically cleared for this section
       setHistorySummary(null);
       setCarePlan(null);
 
       try {
         const result = await fetchDoctorPatientDetailsAction(selectedPatientId, doctorId);
         if (result.error) {
-          setError(result.error);
+          setError(prev => prev ? `${prev}\nPatient Details: ${result.error}` : `Patient Details: ${result.error}`);
            if (result.error.toLowerCase().includes("database connection") ||
                result.error.toLowerCase().includes("timeout") ||
                result.error.toLowerCase().includes("failed to connect") ||
                result.error.toLowerCase().includes("could not load patient data")) {
-            setDbAvailable(false);
+            // dbAvailable might be set by initial load, this could reinforce it
+            setDbAvailable(false); 
           }
           setSelectedPatientData(null);
           setPatientHealthData([]);
@@ -159,7 +181,7 @@ function DoctorDashboardContent({ doctorId, doctorName, userRole }: DoctorDashbo
           setPatientMedications(result.medications || []);
           setAiSuggestions(result.aiSuggestions || []);
           setChatMessages(result.chatMessages || []);
-          setDbAvailable(true);
+          // setDbAvailable(true); // Assuming if patient data loads, DB is fine
 
           if (result.patient) {
             const currentChatId = getChatId(doctorId, selectedPatientId);
@@ -200,7 +222,7 @@ function DoctorDashboardContent({ doctorId, doctorName, userRole }: DoctorDashbo
         }
       } catch (e: any) {
         setError(e.message || "An unexpected error occurred fetching patient details.");
-        setDbAvailable(false);
+        // setDbAvailable(false);
         console.error("Error fetching patient details:", e);
       } finally {
         setLoadingPatientDetails(false);
@@ -217,13 +239,11 @@ function DoctorDashboardContent({ doctorId, doctorName, userRole }: DoctorDashbo
   }, [chatMessages]);
 
   const filteredPatients = useMemo(() => {
-    // Assuming `patient.name` is now always a string from the action
     if (!searchQuery) {
       return patients; 
     }
     return patients.filter(patient =>
-      // patient.name is guaranteed to be a string by the action due to defaulting
-      patient.name.toLowerCase().includes(searchQuery.toLowerCase())
+      (patient.name || '').toLowerCase().includes(searchQuery.toLowerCase())
     );
   }, [patients, searchQuery]);
 
@@ -288,6 +308,25 @@ function DoctorDashboardContent({ doctorId, doctorName, userRole }: DoctorDashbo
       return String(timestamp);
     }
   };
+  
+  const formatDateOnly = (dateString: string | Date): string => {
+    if (!dateString) return 'N/A';
+    try {
+      return format(new Date(dateString), 'PPP'); // e.g., Jun 24, 2024
+    } catch {
+      return 'Invalid Date';
+    }
+  };
+
+  const formatTimeOnly = (dateString: string | Date): string => {
+     if (!dateString) return 'N/A';
+    try {
+      return format(new Date(dateString), 'p'); // e.g., 10:30 AM
+    } catch {
+      return 'Invalid Time';
+    }
+  };
+
 
   const getInitials = (name: string | null | undefined): string => {
     if (!name) return '?';
@@ -315,11 +354,11 @@ function DoctorDashboardContent({ doctorId, doctorName, userRole }: DoctorDashbo
         <Alert variant="destructive">
           <AlertTriangle className="h-4 w-4" />
           <AlertTitle>Error</AlertTitle>
-          <AlertDescription>{error}</AlertDescription>
+          <AlertDescription className="whitespace-pre-line">{error}</AlertDescription>
         </Alert>
       )}
 
-      {!dbAvailable && !loadingPatients && !loadingPatientDetails && (
+      {!dbAvailable && !loadingPatients && !loadingPatientDetails && !loadingAppointments && (
         <Alert variant="default" className="bg-yellow-50 border-yellow-200 text-yellow-800 dark:bg-yellow-900 dark:border-yellow-700 dark:text-yellow-200">
           <AlertTriangle className="h-4 w-4 text-yellow-600 dark:text-yellow-400" />
           <AlertTitle>Database Disconnected</AlertTitle>
@@ -329,78 +368,117 @@ function DoctorDashboardContent({ doctorId, doctorName, userRole }: DoctorDashbo
         </Alert>
       )}
 
-      <Card className="shadow-lg">
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Users className="h-5 w-5" /> Patient Management
-          </CardTitle>
-          <CardDescription>Search for and select a patient to view their details.</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="relative mb-4">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-            <Input
-              type="search"
-              placeholder="Search patient by name..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="pl-10 w-full md:w-[350px] text-base py-3"
-              disabled={loadingPatients || !dbAvailable}
-            />
-          </div>
-          {loadingPatients ? (
-            <Skeleton className="h-12 w-full md:w-[350px]" />
-          ) : (
-            <Select
-              onValueChange={(value) => setSelectedPatientId(value)}
-              value={selectedPatientId || ''}
-              disabled={!dbAvailable || patients.length === 0}
-            >
-              <SelectTrigger className="w-full md:w-[350px] text-base py-3 h-12">
-                <SelectValue placeholder={!dbAvailable ? "Patient list unavailable (DB offline)" : (filteredPatients.length === 0 && searchQuery ? "No patients match search" : (patients.length === 0 ? "No patients assigned" : "Select a patient..."))} />
-              </SelectTrigger>
-              <SelectContent>
-                {filteredPatients.length > 0 ? (
-                  filteredPatients.map((patient) => {
-                    const patientName = patient.name; // Guaranteed to be a string by the action
-                    return (
-                      <SelectItem key={patient.id} value={patient.id}>
-                        <div className="flex items-center justify-between w-full gap-3">
-                          <div className="flex items-center gap-2">
-                            <Avatar className="h-7 w-7">
-                              <AvatarImage src={patient.photoURL || undefined} alt={patientName} data-ai-hint="profile person" />
-                              <AvatarFallback>{getInitials(patientName)}</AvatarFallback>
-                            </Avatar>
-                            <span>{patientName}</span>
-                          </div>
-                          {patient.readmissionRisk && (
-                            <Badge
-                              variant={getRiskBadgeVariant(patient.readmissionRisk)}
-                              className="ml-auto text-xs px-2 py-0.5 capitalize"
-                            >
-                              {patient.readmissionRisk} risk
-                            </Badge>
-                          )}
-                        </div>
-                      </SelectItem>
-                    );
-                  })
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        {/* Left Column: Patient Management & Appointments */}
+        <div className="lg:col-span-1 space-y-6">
+            <Card className="shadow-lg">
+                <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                    <Users className="h-5 w-5" /> Patient Management
+                </CardTitle>
+                <CardDescription>Search for and select a patient to view their details.</CardDescription>
+                </CardHeader>
+                <CardContent>
+                <div className="relative mb-4">
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                    <Input
+                    type="search"
+                    placeholder="Search patient by name..."
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    className="pl-10 w-full text-base py-3"
+                    disabled={loadingPatients || !dbAvailable}
+                    />
+                </div>
+                {loadingPatients ? (
+                    <Skeleton className="h-12 w-full" />
                 ) : (
-                  <div className="p-4 text-center text-sm text-muted-foreground">
-                    {dbAvailable ? (searchQuery ? "No patients match your search." : "No patients currently assigned to you.") : "Patient data is unavailable."}
-                  </div>
+                    <Select
+                    onValueChange={(value) => setSelectedPatientId(value)}
+                    value={selectedPatientId || ''}
+                    disabled={!dbAvailable || patients.length === 0}
+                    >
+                    <SelectTrigger className="w-full text-base py-3 h-12">
+                        <SelectValue placeholder={!dbAvailable ? "Patient list unavailable (DB offline)" : (patients.length === 0 ? "No patients assigned" : (filteredPatients.length === 0 && searchQuery ? "No patients match search" : "Select a patient..."))} />
+                    </SelectTrigger>
+                    <SelectContent>
+                        {filteredPatients.length > 0 ? (
+                        filteredPatients.map((patient) => {
+                            const patientName = patient.name; // Already guaranteed string from action
+                            return (
+                            <SelectItem key={patient.id} value={patient.id}>
+                                <div className="flex items-center justify-between w-full gap-3">
+                                <div className="flex items-center gap-2">
+                                    <Avatar className="h-7 w-7">
+                                    <AvatarImage src={patient.photoURL || undefined} alt={patientName} data-ai-hint="profile person" />
+                                    <AvatarFallback>{getInitials(patientName)}</AvatarFallback>
+                                    </Avatar>
+                                    {/* Simplified for debugging, can revert to span */}
+                                    <span>{patientName} ({patient.id?.substring(0,6)})</span>
+                                </div>
+                                {patient.readmissionRisk && (
+                                    <Badge
+                                    variant={getRiskBadgeVariant(patient.readmissionRisk)}
+                                    className="ml-auto text-xs px-2 py-0.5 capitalize"
+                                    >
+                                    {patient.readmissionRisk} risk
+                                    </Badge>
+                                )}
+                                </div>
+                            </SelectItem>
+                            );
+                        })
+                        ) : (
+                        <div className="p-4 text-center text-sm text-muted-foreground">
+                            {dbAvailable ? (searchQuery ? "No patients match your search." : "No patients currently assigned to you.") : "Patient data is unavailable."}
+                        </div>
+                        )}
+                    </SelectContent>
+                    </Select>
                 )}
-              </SelectContent>
-            </Select>
-          )}
-        </CardContent>
-      </Card>
+                </CardContent>
+            </Card>
 
-      {coreDataLoading ? (
-          <DashboardSkeleton />
-      ) : selectedPatientId && dbAvailable && selectedPatientData ? (
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-            {/* Patient Info Column */}
+            <Card className="shadow-lg">
+                <CardHeader>
+                    <CardTitle className="text-lg flex items-center gap-2"><CalendarDays className="h-5 w-5 text-primary"/> Upcoming Appointments</CardTitle>
+                </CardHeader>
+                <CardContent>
+                    {loadingAppointments ? (
+                         <div className="space-y-2">
+                            <Skeleton className="h-10 w-full" />
+                            <Skeleton className="h-10 w-full" />
+                            <Skeleton className="h-10 w-full" />
+                        </div>
+                    ) : appointments.length > 0 ? (
+                        <ScrollArea className="h-[240px] pr-2">
+                            <ul className="space-y-3">
+                                {appointments.map(appt => (
+                                    <li key={appt.id} className="p-3 border rounded-md bg-card hover:shadow-sm transition-shadow space-y-1">
+                                        <div className="flex justify-between items-center">
+                                            <span className="font-medium text-sm">{appt.patientName}</span>
+                                            <Badge variant="outline" className="text-xs">{formatTimeOnly(appt.appointmentDate)}</Badge>
+                                        </div>
+                                        <p className="text-xs text-muted-foreground">{formatDateOnly(appt.appointmentDate)}</p>
+                                        <p className="text-xs text-muted-foreground">Reason: {appt.reason}</p>
+                                         <Button variant="link" size="xs" className="p-0 h-auto text-primary" onClick={() => setSelectedPatientId(appt.patientId)}>View Patient</Button>
+                                    </li>
+                                ))}
+                            </ul>
+                        </ScrollArea>
+                    ) : (
+                        <p className="text-sm text-muted-foreground text-center py-4">No upcoming appointments scheduled.</p>
+                    )}
+                </CardContent>
+            </Card>
+        </div>
+        
+        {/* Right Column: Patient Details & Chat (conditionally rendered) */}
+        {coreDataLoading ? (
+            <DashboardSkeletonCentralColumn /> 
+        ) : selectedPatientId && dbAvailable && selectedPatientData ? (
+            <>
+            {/* Patient Info Column (was Column 1) */}
             <div className="lg:col-span-1 space-y-6">
               <Card className="shadow-md">
                 <CardHeader className="flex flex-row items-center gap-4 pb-3">
@@ -460,11 +538,7 @@ function DoctorDashboardContent({ doctorId, doctorName, userRole }: DoctorDashbo
                   </Button>
                 </CardFooter>
               </Card>
-            </div>
-
-            {/* Health Data & Meds Column */}
-            <div className="lg:col-span-1 space-y-6">
-              <Card className="shadow-md">
+                <Card className="shadow-md">
                 <CardHeader>
                   <CardTitle className="text-lg flex items-center gap-2"><Activity className="h-5 w-5 text-primary" /> Recent Health Data</CardTitle>
                 </CardHeader>
@@ -491,7 +565,10 @@ function DoctorDashboardContent({ doctorId, doctorName, userRole }: DoctorDashbo
                   <Button variant="link" size="sm" disabled={!dbAvailable} className="text-primary">View All Health Data</Button>
                 </CardFooter>
               </Card>
+            </div>
 
+            {/* Health Data, Meds & AI Suggestions Column (was Column 2) */}
+            <div className="lg:col-span-1 space-y-6">
               <Card className="shadow-md">
                 <CardHeader>
                   <CardTitle className="text-lg flex items-center gap-2"><Pill className="h-5 w-5 text-primary" /> Medication Overview</CardTitle>
@@ -562,105 +639,132 @@ function DoctorDashboardContent({ doctorId, doctorName, userRole }: DoctorDashbo
                   )}
                 </CardContent>
               </Card>
-            </div>
-
-            {/* Chat Column */}
-            <div className="lg:col-span-1 flex flex-col">
-              <Card className="flex-grow flex flex-col shadow-md">
-                <CardHeader>
-                  <CardTitle className="text-lg flex items-center gap-2">
-                    <MessageSquare className="h-5 w-5 text-primary" /> Chat with {selectedPatientData?.name || 'Patient'}
-                  </CardTitle>
-                </CardHeader>
-                <CardContent className="flex-grow overflow-hidden flex flex-col p-0">
-                  <ScrollArea className="flex-grow p-4 bg-muted/20 dark:bg-muted/10" ref={chatScrollAreaRef}>
-                    {(loadingPatientDetails && !chatMessages.length) ? (
-                       <div className="flex items-center justify-center h-full"><Loader2 className="h-6 w-6 animate-spin text-primary"/></div>
-                    ) : chatMessages.length > 0 ? (
-                      <div className="space-y-4">
-                        {chatMessages.map(msg => (
-                          <div key={msg.id} className={`flex ${msg.senderId === doctorId ? 'justify-end' : 'justify-start'}`}>
-                            <div className={`p-3 rounded-xl max-w-[80%] shadow-sm ${msg.senderId === doctorId ? 'bg-primary text-primary-foreground' : 'bg-card text-card-foreground border'}`}>
-                              <p className="text-sm">{msg.text}</p>
-                              <p className={`text-xs mt-1 ${msg.senderId === doctorId ? 'text-primary-foreground/70 text-right' : 'text-muted-foreground text-left'}`}>
-                                {msg.senderName} - {formatTimestamp(msg.timestamp)} {msg.isRead === false && msg.senderId !== doctorId ? '(Unread)' : ''}
-                              </p>
+                <Card className="lg:col-span-1 flex flex-col shadow-md"> {/* Chat Column */}
+                    <CardHeader>
+                    <CardTitle className="text-lg flex items-center gap-2">
+                        <MessageSquare className="h-5 w-5 text-primary" /> Chat with {selectedPatientData?.name || 'Patient'}
+                    </CardTitle>
+                    </CardHeader>
+                    <CardContent className="flex-grow overflow-hidden flex flex-col p-0">
+                    <ScrollArea className="flex-grow p-4 bg-muted/20 dark:bg-muted/10" ref={chatScrollAreaRef}>
+                        {(loadingPatientDetails && !chatMessages.length) ? (
+                        <div className="flex items-center justify-center h-full"><Loader2 className="h-6 w-6 animate-spin text-primary"/></div>
+                        ) : chatMessages.length > 0 ? (
+                        <div className="space-y-4">
+                            {chatMessages.map(msg => (
+                            <div key={msg.id} className={`flex ${msg.senderId === doctorId ? 'justify-end' : 'justify-start'}`}>
+                                <div className={`p-3 rounded-xl max-w-[80%] shadow-sm ${msg.senderId === doctorId ? 'bg-primary text-primary-foreground' : 'bg-card text-card-foreground border'}`}>
+                                <p className="text-sm">{msg.text}</p>
+                                <p className={`text-xs mt-1 ${msg.senderId === doctorId ? 'text-primary-foreground/70 text-right' : 'text-muted-foreground text-left'}`}>
+                                    {msg.senderName} - {formatTimestamp(msg.timestamp)} {msg.isRead === false && msg.senderId !== doctorId ? '(Unread)' : ''}
+                                </p>
+                                </div>
                             </div>
-                          </div>
-                        ))}
-                      </div>
-                    ) : (
-                      <p className="text-sm text-muted-foreground text-center h-full flex items-center justify-center">No messages in this chat yet.</p>
-                    )}
-                  </ScrollArea>
-                </CardContent>
-                <CardFooter className="p-4 border-t bg-card">
-                  <div className="flex w-full items-center gap-2">
-                    <Textarea
-                      placeholder="Type your message..."
-                      value={newMessage}
-                      onChange={(e) => setNewMessage(e.target.value)}
-                      className="flex-grow resize-none min-h-[40px] h-10 text-sm border-input focus:ring-primary"
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter' && !e.shiftKey) {
-                          e.preventDefault();
-                          handleSendMessage();
-                        }
-                      }}
-                      disabled={sendingMessage || !dbAvailable}
-                      rows={1}
-                    />
-                    <Button onClick={handleSendMessage} disabled={sendingMessage || !newMessage.trim() || !dbAvailable} size="icon" className="shrink-0">
-                      {sendingMessage ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
-                       <span className="sr-only">Send message</span>
-                    </Button>
-                  </div>
-                </CardFooter>
-              </Card>
+                            ))}
+                        </div>
+                        ) : (
+                        <p className="text-sm text-muted-foreground text-center h-full flex items-center justify-center">No messages in this chat yet.</p>
+                        )}
+                    </ScrollArea>
+                    </CardContent>
+                    <CardFooter className="p-4 border-t bg-card">
+                    <div className="flex w-full items-center gap-2">
+                        <Textarea
+                        placeholder="Type your message..."
+                        value={newMessage}
+                        onChange={(e) => setNewMessage(e.target.value)}
+                        className="flex-grow resize-none min-h-[40px] h-10 text-sm border-input focus:ring-primary"
+                        onKeyDown={(e) => {
+                            if (e.key === 'Enter' && !e.shiftKey) {
+                            e.preventDefault();
+                            handleSendMessage();
+                            }
+                        }}
+                        disabled={sendingMessage || !dbAvailable}
+                        rows={1}
+                        />
+                        <Button onClick={handleSendMessage} disabled={sendingMessage || !newMessage.trim() || !dbAvailable} size="icon" className="shrink-0">
+                        {sendingMessage ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+                        <span className="sr-only">Send message</span>
+                        </Button>
+                    </div>
+                    </CardFooter>
+                </Card>
             </div>
-          </div>
+            </>
         ) : selectedPatientId && !coreDataLoading && dbAvailable ? (
-          <Alert variant="default" className="bg-orange-50 border-orange-200 text-orange-800 dark:bg-orange-900 dark:border-orange-700 dark:text-orange-200">
-            <AlertTriangle className="h-4 w-4 text-orange-600 dark:text-orange-400" />
-            <AlertTitle>Patient Data Not Found</AlertTitle>
-            <AlertDescription>{error || "Could not load data for the selected patient. They might not have any records or an error occurred. Please try again or select a different patient."}</AlertDescription>
-          </Alert>
-        ) : null
-      }
+             <div className="lg:col-span-2"> {/* Occupy the space of the two right columns */}
+                <Alert variant="default" className="bg-orange-50 border-orange-200 text-orange-800 dark:bg-orange-900 dark:border-orange-700 dark:text-orange-200 h-full flex flex-col justify-center items-center">
+                    <AlertTriangle className="h-6 w-6 text-orange-600 dark:text-orange-400 mb-2" />
+                    <AlertTitle className="text-lg">Patient Data Not Found</AlertTitle>
+                    <AlertDescription>{error || "Could not load data for the selected patient. They might not have any records or an error occurred. Please try again or select a different patient."}</AlertDescription>
+                </Alert>
+            </div>
+        ) : !selectedPatientId && dbAvailable && !loadingPatients && (
+            <div className="lg:col-span-2"> {/* Occupy the space of the two right columns */}
+                <Card className="shadow-md h-full flex items-center justify-center">
+                    <CardContent className="pt-6">
+                        <p className="text-center text-muted-foreground text-lg">
+                        Please {searchQuery ? "clear your search or " : ""}select a patient from the list to view their details.
+                        </p>
+                    </CardContent>
+                </Card>
+            </div>
+        )}
+        {!selectedPatientId && !dbAvailable && !loadingPatients && (
+            <div className="lg:col-span-2">
+                <Card className="shadow-md h-full flex items-center justify-center">
+                <CardContent className="pt-6">
+                    <p className="text-center text-muted-foreground text-lg">Patient selection unavailable. Database connection may be down.</p>
+                </CardContent>
+                </Card>
+            </div>
+        )}
 
-      {!selectedPatientId && dbAvailable && !loadingPatients && (
-        <Card className="shadow-md">
-          <CardContent className="pt-6">
-            <p className="text-center text-muted-foreground text-lg">
-              Please {searchQuery ? "clear your search or " : ""}select a patient from the list above to view their details.
-            </p>
-          </CardContent>
-        </Card>
-      )}
-       {!selectedPatientId && !dbAvailable && !loadingPatients && (
-        <Card className="shadow-md">
-          <CardContent className="pt-6">
-            <p className="text-center text-muted-foreground text-lg">Patient selection unavailable. Database connection may be down.</p>
-          </CardContent>
-        </Card>
-      )}
+      </div>
     </div>
   );
 }
 
 export default function DoctorDashboard(props: DoctorDashboardProps) {
   return (
-    // Suspense boundary for useSearchParams
-    <Suspense fallback={<DashboardSkeleton />}>
+    <Suspense fallback={<DoctorDashboardPageSkeleton />}> {/* Use the main page skeleton */}
       <DoctorDashboardContent {...props} />
     </Suspense>
   );
 }
 
 
-function DashboardSkeleton() {
+function DoctorDashboardPageSkeleton({ message }: { message?: string }) { // Main page skeleton
   return (
-    <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+    <div className="flex flex-col items-center justify-center min-h-screen p-4 bg-secondary">
+      {message && (
+        <div className="flex items-center text-lg text-foreground mb-6">
+          <Loader2 className="h-6 w-6 animate-spin mr-2" />
+          {message}
+        </div>
+      )}
+      <div className="w-full max-w-7xl p-8 space-y-8 bg-card rounded-lg shadow-md">
+        <Skeleton className="h-10 w-1/3 mb-4" /> {/* Title Skeleton */}
+        
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            {/* Left Column Skeleton */}
+            <div className="lg:col-span-1 space-y-6">
+                <Skeleton className="h-48 rounded-lg" /> {/* Patient Selector Card */}
+                <Skeleton className="h-64 rounded-lg" /> {/* Appointments Card */}
+            </div>
+            {/* Central Column Skeleton (Patient Details Placeholder) */}
+            <DashboardSkeletonCentralColumn />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+
+function DashboardSkeletonCentralColumn() { // Skeleton for the two right columns when a patient is selected
+  return (
+    <>
       <div className="lg:col-span-1 space-y-6">
         <Card className="shadow-md">
           <CardHeader className="flex flex-row items-center gap-4 pb-3">
@@ -685,32 +789,29 @@ function DashboardSkeleton() {
           <CardContent className="space-y-2"><Skeleton className="h-4 w-full" /><Skeleton className="h-4 w-full" /><Skeleton className="h-4 w-5/6" /></CardContent>
           <CardFooter><Skeleton className="h-8 w-24" /></CardFooter>
         </Card>
-      </div>
-
-      <div className="lg:col-span-1 space-y-6">
-        <Card className="shadow-md">
+        <Card className="shadow-md"> {/* Health Data Skeleton */}
           <CardHeader><Skeleton className="h-6 w-4/5" /></CardHeader>
           <CardContent className="space-y-2.5"><Skeleton className="h-5 w-full" /><Skeleton className="h-5 w-full" /><Skeleton className="h-5 w-full" /></CardContent>
           <CardFooter><Skeleton className="h-6 w-28" /></CardFooter>
         </Card>
-        <Card className="shadow-md">
+      </div>
+
+      <div className="lg:col-span-1 space-y-6">
+        <Card className="shadow-md"> {/* Medications Card Skeleton */}
           <CardHeader><Skeleton className="h-6 w-4/5" /></CardHeader>
           <CardContent className="space-y-3"><Skeleton className="h-8 w-full" /><Skeleton className="h-8 w-full" /></CardContent>
           <CardFooter><Skeleton className="h-6 w-32" /></CardFooter>
         </Card>
-        <Card className="shadow-md">
+        <Card className="shadow-md"> {/* AI Suggestions Skeleton */}
           <CardHeader><Skeleton className="h-6 w-4/5" /><Skeleton className="h-3 w-full mt-1" /></CardHeader>
           <CardContent><Skeleton className="h-24 w-full" /></CardContent>
         </Card>
-      </div>
-
-      <div className="lg:col-span-1 flex flex-col">
-        <Card className="flex-grow flex flex-col shadow-md">
+         <Card className="flex-grow flex flex-col shadow-md min-h-[400px]"> {/* Chat Card Skeleton */}
           <CardHeader><Skeleton className="h-6 w-3/5" /></CardHeader>
           <CardContent className="flex-grow p-2"><Skeleton className="h-full w-full rounded-md" /></CardContent>
           <CardFooter className="p-2"><Skeleton className="h-10 w-full" /></CardFooter>
         </Card>
       </div>
-    </div>
+    </>
   );
 }

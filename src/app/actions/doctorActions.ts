@@ -101,6 +101,32 @@ interface RawDoctorAISuggestion {
   status: 'pending' | 'approved' | 'rejected';
 }
 
+export interface Appointment {
+  _id: string;
+  id: string;
+  patientId: string;
+  patientName: string;
+  doctorId: string;
+  doctorName: string;
+  appointmentDate: string; // ISO string
+  reason: string;
+  status: 'scheduled' | 'completed' | 'cancelled';
+  notes?: string;
+}
+
+interface RawAppointment { // DB representation
+  _id: ObjectId;
+  patientId: ObjectId; // Changed from string to ObjectId
+  patientName: string;
+  doctorId: ObjectId;   // Changed from string to ObjectId
+  doctorName: string;
+  appointmentDate: Date;
+  reason: string;
+  status: 'scheduled' | 'completed' | 'cancelled';
+  notes?: string;
+}
+
+
 const getChatId = (id1: string, id2: string): string => {
   return [id1, id2].sort().join('_');
 };
@@ -285,8 +311,36 @@ export async function updateSuggestionStatusAction(
     }
 
     return { updatedSuggestion: { id: suggestionIdStr, status: status } };
-  } catch (err: any) {
+  } catch (err: any)
+{
     console.error(`Error updating suggestion status:`, err);
     return { error: `Could not update suggestion status. ${err.message}` };
+  }
+}
+
+export async function fetchDoctorAppointmentsAction(doctorId: string): Promise<{ appointments?: Appointment[], error?: string }> {
+  const doctorObjectId = toObjectId(doctorId);
+  if (!doctorObjectId) {
+    return { error: "Invalid doctor ID format." };
+  }
+
+  try {
+    const { db } = await connectToDatabase();
+    const appointmentsCollection = db.collection<RawAppointment>('appointments');
+    const rawAppointments = await appointmentsCollection.find({ doctorId: doctorObjectId, status: 'scheduled' })
+      .sort({ appointmentDate: 1 }).toArray();
+
+    const appointments: Appointment[] = rawAppointments.map(appt => ({
+      ...appt,
+      _id: appt._id.toString(),
+      id: appt._id.toString(),
+      patientId: appt.patientId.toString(),
+      doctorId: appt.doctorId.toString(),
+      appointmentDate: appt.appointmentDate.toISOString(),
+    }));
+    return { appointments };
+  } catch (err: any) {
+    console.error("Error fetching doctor's appointments:", err);
+    return { error: "Could not load appointments. " + (err.message || '') };
   }
 }
