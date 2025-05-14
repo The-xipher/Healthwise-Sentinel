@@ -67,3 +67,31 @@ export async function fetchUserProfile(userId: string): Promise<{ profile?: User
     return { error: 'Could not load user profile. ' + (error.message || '') };
   }
 }
+
+export async function fetchUnreadMessageCountAction(userId: string): Promise<{ count?: number; error?: string }> {
+  if (!ObjectId.isValid(userId)) {
+    // Non-ObjectId userIds might exist if coming from a different auth system or if generic strings are used.
+    // For this app, userIds are ObjectIds from MongoDB.
+    // return { error: 'Invalid user ID format for fetching unread messages.' };
+    // Let's assume if it's not a valid ObjectId, it might be a string ID that is still valid in context
+    // For now, proceed, but ideally, ensure consistent ID types.
+  }
+  try {
+    const { db } = await connectToDatabase();
+    const chatMessagesCollection = db.collection('chatMessages');
+    
+    // Count messages where the current user is the receiver and the message is unread
+    const count = await chatMessagesCollection.countDocuments({
+      receiverId: userId, // userId is expected to be a string here from the session
+      isRead: false,
+    });
+    
+    return { count };
+  } catch (error: any) {
+    console.error('Error fetching unread message count:', error);
+    if (error.message.includes('queryTxt ETIMEOUT') || error.message.includes('querySrv ENOTFOUND')) {
+        return { error: "Database connection timeout. Please check your network and MongoDB Atlas settings." };
+    }
+    return { error: 'Could not fetch unread message count. ' + (error.message || '') };
+  }
+}

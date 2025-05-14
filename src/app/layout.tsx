@@ -5,8 +5,9 @@ import { SidebarProvider, Sidebar, SidebarInset, SidebarMenu, SidebarMenuItem, S
 import { Toaster } from '@/components/ui/toaster';
 import Header from '@/components/header';
 import Link from 'next/link';
-import { Home, User, Stethoscope, ShieldCheck, Database, LogOut } from 'lucide-react'; 
+import { Home, User, Stethoscope, ShieldCheck, Database, LogOut, Bell } from 'lucide-react'; 
 import { getSession } from '@/app/actions/authActions'; 
+import { fetchUnreadMessageCountAction } from '@/app/actions/userActions';
 
 const geistSans = Geist({
   variable: '--font-geist-sans',
@@ -29,6 +30,16 @@ export default async function RootLayout({
   children: React.ReactNode;
 }>) {
   const session = await getSession(); 
+  let unreadMessagesCount = 0;
+
+  if (session) {
+    const unreadResult = await fetchUnreadMessageCountAction(session.userId);
+    if (unreadResult.count !== undefined) {
+      unreadMessagesCount = unreadResult.count;
+    } else if (unreadResult.error) {
+      console.warn("Could not fetch unread messages count for layout:", unreadResult.error);
+    }
+  }
 
   return (
     <html lang="en">
@@ -38,7 +49,7 @@ export default async function RootLayout({
              <SidebarMenu className="flex-grow p-2">
                 {/* Always show generic dashboard link, it will redirect based on role */}
                 <SidebarMenuItem>
-                    <Link href="/dashboard" asChild>
+                    <Link href="/dashboard" passHref legacyBehavior>
                         <SidebarMenuButton tooltip="My Dashboard">
                          <Home />
                          <span>My Dashboard</span>
@@ -48,7 +59,7 @@ export default async function RootLayout({
 
                 {session?.role === 'patient' && (
                   <SidebarMenuItem>
-                      <Link href="/dashboard/patient" asChild>
+                      <Link href="/dashboard/patient" passHref legacyBehavior>
                           <SidebarMenuButton tooltip="Patient View">
                            <User />
                            <span>Patient View</span>
@@ -58,7 +69,7 @@ export default async function RootLayout({
                 )}
                 {session?.role === 'doctor' && (
                   <SidebarMenuItem>
-                      <Link href="/dashboard/doctor" asChild>
+                      <Link href="/dashboard/doctor" passHref legacyBehavior>
                           <SidebarMenuButton tooltip="Doctor View">
                            <Stethoscope />
                            <span>Doctor View</span>
@@ -69,7 +80,7 @@ export default async function RootLayout({
                  {session?.role === 'admin' && (
                   <>
                     <SidebarMenuItem>
-                        <Link href="/dashboard/admin" asChild>
+                        <Link href="/dashboard/admin" passHref legacyBehavior>
                             <SidebarMenuButton tooltip="Admin View">
                              <ShieldCheck />
                              <span>Admin View</span>
@@ -77,7 +88,7 @@ export default async function RootLayout({
                         </Link>
                     </SidebarMenuItem>
                     <SidebarMenuItem>
-                        <Link href="/dashboard/patient" asChild>
+                        <Link href="/dashboard/patient" passHref legacyBehavior>
                             <SidebarMenuButton tooltip="View as Patient (Admin)">
                              <User />
                              <span>Patient View (Admin)</span>
@@ -85,7 +96,7 @@ export default async function RootLayout({
                         </Link>
                     </SidebarMenuItem>
                     <SidebarMenuItem>
-                        <Link href="/dashboard/doctor" asChild>
+                        <Link href="/dashboard/doctor" passHref legacyBehavior>
                             <SidebarMenuButton tooltip="View as Doctor (Admin)">
                              <Stethoscope />
                              <span>Doctor View (Admin)</span>
@@ -96,7 +107,7 @@ export default async function RootLayout({
                 )}
 
                 <SidebarMenuItem>
-                    <Link href="/seed-database" asChild>
+                    <Link href="/seed-database" passHref legacyBehavior>
                         <SidebarMenuButton tooltip="Seed Database">
                          <Database /> 
                          <span>Seed Data</span>
@@ -118,7 +129,7 @@ export default async function RootLayout({
              )}
           </Sidebar>
           <SidebarInset>
-             <Header session={session} /> 
+             <Header session={session} unreadMessagesCount={unreadMessagesCount} /> 
             {children}
           </SidebarInset>
         </SidebarProvider>

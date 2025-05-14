@@ -29,6 +29,8 @@ import {
   type PatientSymptomReport,
   type PatientChatMessage,
 } from '@/app/actions/patientActions';
+import { markMessagesAsReadAction } from '@/app/actions/chatActions';
+
 
 const symptomFormSchema = z.object({
   severity: z.enum(['mild', 'moderate', 'severe'], {
@@ -47,6 +49,12 @@ interface PatientDashboardProps {
   userId: string; 
   userRole: 'patient' | 'admin'; 
 }
+
+const getChatId = (id1: string, id2: string): string => {
+  if (!id1 || !id2) return ""; // handle undefined/null case
+  return [id1, id2].sort().join('_');
+};
+
 
 export default function PatientDashboard({ userId, userRole }: PatientDashboardProps) {
   const [healthData, setHealthData] = useState<PatientHealthData[]>([]);
@@ -108,6 +116,14 @@ export default function PatientDashboard({ userId, userRole }: PatientDashboardP
           setAssignedDoctorName(result.assignedDoctorName || null);
           setPatientDisplayName(result.patientDisplayName || "Patient");
           setDbAvailable(true);
+
+          if (result.assignedDoctorId) {
+            const currentChatId = getChatId(userId, result.assignedDoctorId);
+            if (currentChatId) {
+              await markMessagesAsReadAction(currentChatId, userId);
+              // Potentially re-fetch unread count for header, or manage state locally
+            }
+          }
           fetchInterventionsIfNeeded(result.healthData || [], result.medications || [], result.symptomReports || []);
         }
       } catch (e: any) {
@@ -214,7 +230,7 @@ export default function PatientDashboard({ userId, userRole }: PatientDashboardP
         toast({ title: "Message Sent", variant: "default" });
       }
     } catch (err: any) {
-      console.error("Error sending message:", err);
+      console.error("Error sending patient message:", err);
       toast({ title: "Message Failed", description: "Could not send message. " + (err.message || ''), variant: "destructive" });
     } finally {
       setSendingMessage(false);
@@ -525,7 +541,7 @@ export default function PatientDashboard({ userId, userRole }: PatientDashboardP
                                 <div className={`p-3 rounded-xl max-w-[80%] shadow-sm ${msg.senderId === userId ? 'bg-primary text-primary-foreground' : 'bg-card text-card-foreground border'}`}>
                                 <p className="text-sm">{msg.text}</p>
                                 <p className={`text-xs mt-1 ${msg.senderId === userId ? 'text-primary-foreground/70 text-right' : 'text-muted-foreground text-left'}`}>
-                                    {msg.senderName} - {formatDateForDisplay(msg.timestamp)}
+                                    {msg.senderName} - {formatDateForDisplay(msg.timestamp)} {msg.isRead === false && msg.senderId !== userId ? '(Unread)' : ''}
                                 </p>
                                 </div>
                             </div>

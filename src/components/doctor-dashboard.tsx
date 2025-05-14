@@ -1,3 +1,4 @@
+
 'use client';
 
 import * as React from 'react';
@@ -26,12 +27,17 @@ import {
   type DoctorChatMessage,
   type DoctorAISuggestion
 } from '@/app/actions/doctorActions'; 
+import { markMessagesAsReadAction } from '@/app/actions/chatActions';
 
 interface DoctorDashboardProps {
   doctorId: string;
   doctorName: string;
   userRole: 'doctor' | 'admin';
 }
+
+const getChatId = (id1: string, id2: string): string => {
+  return [id1, id2].sort().join('_');
+};
 
 export default function DoctorDashboard({ doctorId, doctorName, userRole }: DoctorDashboardProps) {
   const [patients, setPatients] = useState<DoctorPatient[]>([]);
@@ -72,13 +78,13 @@ export default function DoctorDashboard({ doctorId, doctorName, userRole }: Doct
           if (result.error.toLowerCase().includes("database connection") || 
               result.error.toLowerCase().includes("timeout") ||
               result.error.toLowerCase().includes("failed to connect") ||
-              result.error.toLowerCase().includes("could not load patient list")) { // Broader check for connection issues
+              result.error.toLowerCase().includes("could not load patient list")) { 
             setDbAvailable(false);
           }
           setPatients([]);
         } else {
           setPatients(result.patients || []);
-          setDbAvailable(true); // Explicitly set true on success
+          setDbAvailable(true); 
         }
       } catch (e: any) {
         setError(e.message || 'An unexpected error occurred while fetching patients.');
@@ -118,7 +124,7 @@ export default function DoctorDashboard({ doctorId, doctorName, userRole }: Doct
            if (result.error.toLowerCase().includes("database connection") || 
                result.error.toLowerCase().includes("timeout") ||
                result.error.toLowerCase().includes("failed to connect") ||
-               result.error.toLowerCase().includes("could not load patient data")) { // Broader check
+               result.error.toLowerCase().includes("could not load patient data")) { 
             setDbAvailable(false); 
           }
           setSelectedPatientData(null);
@@ -132,9 +138,14 @@ export default function DoctorDashboard({ doctorId, doctorName, userRole }: Doct
           setPatientMedications(result.medications || []);
           setAiSuggestions(result.aiSuggestions || []);
           setChatMessages(result.chatMessages || []);
-          setDbAvailable(true); // Explicitly set true on success
+          setDbAvailable(true); 
 
           if (result.patient) {
+            // Mark messages as read for this chat
+            const currentChatId = getChatId(doctorId, selectedPatientId);
+            await markMessagesAsReadAction(currentChatId, doctorId);
+            // Potentially re-fetch unread count for header, or manage state locally
+
             setLoadingSummary(true);
             try {
               const summaryResult = await summarizePatientHistory({
@@ -520,7 +531,7 @@ export default function DoctorDashboard({ doctorId, doctorName, userRole }: Doct
                             <div className={`p-3 rounded-xl max-w-[80%] shadow-sm ${msg.senderId === doctorId ? 'bg-primary text-primary-foreground' : 'bg-card text-card-foreground border'}`}>
                               <p className="text-sm">{msg.text}</p>
                               <p className={`text-xs mt-1 ${msg.senderId === doctorId ? 'text-primary-foreground/70 text-right' : 'text-muted-foreground text-left'}`}>
-                                {msg.senderName} - {formatTimestamp(msg.timestamp)}
+                                {msg.senderName} - {formatTimestamp(msg.timestamp)} {msg.isRead === false && msg.senderId !== doctorId ? '(Unread)' : ''}
                               </p>
                             </div>
                           </div>
