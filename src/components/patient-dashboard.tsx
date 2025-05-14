@@ -46,12 +46,12 @@ const symptomFormSchema = z.object({
 type SymptomFormValues = z.infer<typeof symptomFormSchema>;
 
 interface PatientDashboardProps {
-  userId: string; 
-  userRole: 'patient' | 'admin'; 
+  userId: string;
+  userRole: 'patient' | 'admin';
 }
 
 const getChatId = (id1: string, id2: string): string => {
-  if (!id1 || !id2) return ""; // handle undefined/null case
+  if (!id1 || !id2) return "";
   return [id1, id2].sort().join('_');
 };
 
@@ -68,11 +68,11 @@ export default function PatientDashboard({ userId, userRole }: PatientDashboardP
   const [loadingData, setLoadingData] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [reportingSymptom, setReportingSymptom] = useState(false);
-  const [suggestedInterventions, setSuggestedInterventions] = useState<string | null>(null);
+  const [suggestedInterventions, setSuggestedInterventions] = useState<string | null>("Loading AI suggestions...");
   const [loadingInterventions, setLoadingInterventions] = useState(false);
   const { toast } = useToast();
   const [dbAvailable, setDbAvailable] = useState(true);
-  
+
   const [newMessage, setNewMessage] = useState<string>('');
   const [sendingMessage, setSendingMessage] = useState<boolean>(false);
   const chatScrollAreaRef = useRef<HTMLDivElement>(null);
@@ -85,12 +85,13 @@ export default function PatientDashboard({ userId, userRole }: PatientDashboardP
       description: "",
     },
   });
-  
+
   useEffect(() => {
     if (!userId) {
         setError("Patient ID is missing. Cannot load dashboard.");
         setLoadingData(false);
         setDbAvailable(false);
+        setSuggestedInterventions("Could not load AI suggestions due to data error.");
         return;
     }
     async function loadData() {
@@ -101,12 +102,13 @@ export default function PatientDashboard({ userId, userRole }: PatientDashboardP
         if (result.error) {
           setError(result.error);
           if (result.error.startsWith("Invalid patient ID format") || result.error.includes("Database connection")) {
-            setDbAvailable(false); 
+            setDbAvailable(false);
           }
           setHealthData([]);
           setMedications([]);
           setSymptomReports([]);
           setChatMessages([]);
+          setSuggestedInterventions("Could not load AI suggestions due to data error.");
         } else {
           setHealthData(result.healthData || []);
           setMedications(result.medications || []);
@@ -121,7 +123,6 @@ export default function PatientDashboard({ userId, userRole }: PatientDashboardP
             const currentChatId = getChatId(userId, result.assignedDoctorId);
             if (currentChatId) {
               await markMessagesAsReadAction(currentChatId, userId);
-              // Potentially re-fetch unread count for header, or manage state locally
             }
           }
           fetchInterventionsIfNeeded(result.healthData || [], result.medications || [], result.symptomReports || []);
@@ -129,6 +130,7 @@ export default function PatientDashboard({ userId, userRole }: PatientDashboardP
       } catch (e: any) {
         setError(e.message || 'An unexpected error occurred fetching patient data.');
         setDbAvailable(false);
+        setSuggestedInterventions("Error fetching data for AI suggestions.");
         console.error(e);
       } finally {
         setLoadingData(false);
@@ -148,9 +150,13 @@ export default function PatientDashboard({ userId, userRole }: PatientDashboardP
     currentMedications: PatientMedication[],
     currentSymptomReports: PatientSymptomReport[]
   ) => {
-    if (loadingInterventions || suggestedInterventions !== null || !dbAvailable) return;
+    if (loadingInterventions || !dbAvailable) { // Don't fetch if already loading or DB offline
+        if (!dbAvailable) setSuggestedInterventions("AI suggestions unavailable (DB offline).");
+        return;
+    }
 
     setLoadingInterventions(true);
+    setSuggestedInterventions("Generating AI suggestions...");
     try {
       const latestHealth = currentHealthData.length > 0 ? currentHealthData[currentHealthData.length - 1] : {} as PatientHealthData;
       const healthSummary = `Latest Health: Steps: ${latestHealth.steps ?? 'N/A'}, HR: ${latestHealth.heartRate ?? 'N/A'}, Glucose: ${latestHealth.bloodGlucose ?? 'N/A'}. `;
@@ -159,19 +165,19 @@ export default function PatientDashboard({ userId, userRole }: PatientDashboardP
 
       const input = {
         patientHealthData: `${healthSummary} Medication Adherence: ${adherenceSummary}. Recent Symptoms: ${symptomsSummaryText}`,
-        riskPredictions: `Readmission Risk: ${Math.random() > 0.7 ? 'High' : 'Low'}. Potential Complications: Dehydration, Medication side-effects.`, 
+        riskPredictions: `Readmission Risk: ${Math.random() > 0.7 ? 'High' : 'Low'}. Potential Complications: Dehydration, Medication side-effects.`,
       };
 
       const result = await generateSuggestedInterventions(input);
       setSuggestedInterventions(result.suggestedInterventions);
-    } catch (err) {
+    } catch (err: any) {
       console.error('Error generating suggested interventions:', err);
-      // toast({ title: "AI Suggestion Error", description: "Could not generate AI suggestions.", variant: "destructive" });
+      setSuggestedInterventions("Could not generate AI suggestions. " + (err.message?.includes("NOT_FOUND") ? "Model not found or API key issue." : "Service error."));
     } finally {
       setLoadingInterventions(false);
     }
   };
-  
+
   const onSubmitSymptom = async (values: SymptomFormValues) => {
     if (!dbAvailable) {
        toast({ title: "Error", description: "Cannot submit report. Database connection inactive.", variant: "destructive" });
@@ -191,7 +197,7 @@ export default function PatientDashboard({ userId, userRole }: PatientDashboardP
         toast({
           title: "Symptom Reported",
           description: "Your healthcare provider has been notified.",
-          variant: "default", 
+          variant: "default",
           className: "bg-green-50 border-green-200 dark:bg-green-900 dark:border-green-700 text-green-700 dark:text-green-200",
           duration: 5000,
           action: <CheckCircle className="text-green-600 dark:text-green-400" />,
@@ -272,7 +278,7 @@ export default function PatientDashboard({ userId, userRole }: PatientDashboardP
           <AlertDescription>{error}</AlertDescription>
         </Alert>
       )}
-      
+
       {!dbAvailable && !loadingData && !error && (
          <Alert variant="default" className="bg-yellow-50 border-yellow-200 text-yellow-800 dark:bg-yellow-900 dark:border-yellow-700 dark:text-yellow-200">
             <AlertTriangle className="h-4 w-4 text-yellow-600 dark:text-yellow-400" />
@@ -319,9 +325,8 @@ export default function PatientDashboard({ userId, userRole }: PatientDashboardP
           <Skeleton className="h-72 rounded-lg lg:col-span-1" />
         </div>
       ) : (
-        !error && dbAvailable && 
+        !error && dbAvailable &&
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          {/* Column 1: Health Stats & Chart */}
           <div className="lg:col-span-2 space-y-6">
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                 <Card>
@@ -369,7 +374,7 @@ export default function PatientDashboard({ userId, userRole }: PatientDashboardP
                         <XAxis dataKey="timestamp" tickFormatter={(ts) => formatTimestampForChart(ts as string)} stroke="hsl(var(--muted-foreground))" />
                         <YAxis yAxisId="left" orientation="left" stroke="hsl(var(--chart-1))" label={{ value: 'Steps', angle: -90, position: 'insideLeft', fill: 'hsl(var(--chart-1))' }} />
                         <YAxis yAxisId="right" orientation="right" stroke="hsl(var(--chart-2))" label={{ value: 'Heart Rate (bpm)', angle: 90, position: 'insideRight', fill: 'hsl(var(--chart-2))' }} />
-                        <Tooltip 
+                        <Tooltip
                             labelFormatter={(label, payload) => formatDateForDisplay(payload?.[0]?.payload?.timestamp as string)}
                             contentStyle={{ backgroundColor: 'hsl(var(--background))', border: '1px solid hsl(var(--border))' }}
                             itemStyle={{ color: 'hsl(var(--foreground))' }}
@@ -386,7 +391,7 @@ export default function PatientDashboard({ userId, userRole }: PatientDashboardP
                 )}
                 </CardContent>
             </Card>
-            
+
             <Card>
                 <CardHeader>
                 <CardTitle className="flex items-center gap-2">
@@ -417,7 +422,6 @@ export default function PatientDashboard({ userId, userRole }: PatientDashboardP
             </Card>
           </div>
 
-          {/* Column 2: Symptoms & Chat */}
           <div className="lg:col-span-1 space-y-6 flex flex-col">
             <Card>
                 <CardHeader>
@@ -425,7 +429,7 @@ export default function PatientDashboard({ userId, userRole }: PatientDashboardP
                 <CardDescription>Let your doctor know how you're feeling.</CardDescription>
                 </CardHeader>
                 <CardContent>
-                {(!dbAvailable && !loadingData) || (userRole === 'admin' && !loadingData) ? ( 
+                {(!dbAvailable && !loadingData) || (userRole === 'admin' && !loadingData) ? (
                     <Alert variant="default" className="mb-4 bg-yellow-50 border-yellow-200 text-yellow-800 dark:bg-yellow-900 dark:border-yellow-700 dark:text-yellow-200">
                     <AlertTriangle className="h-4 w-4 text-yellow-600 dark:text-yellow-400" />
                     <AlertTitle>Symptom Reporting {userRole === 'admin' ? 'Disabled (Admin View)' : 'Unavailable'}</AlertTitle>
@@ -434,7 +438,7 @@ export default function PatientDashboard({ userId, userRole }: PatientDashboardP
                     </AlertDescription>
                     </Alert>
                 ): null}
-                {(dbAvailable && userRole === 'patient') || loadingData ? ( 
+                {(dbAvailable && userRole === 'patient') || loadingData ? (
                     <Form {...form}>
                     <form onSubmit={form.handleSubmit(onSubmitSymptom)} className="space-y-4">
                         <FormField
@@ -452,7 +456,7 @@ export default function PatientDashboard({ userId, userRole }: PatientDashboardP
                                     variant={field.value === severity ? 'default' : 'outline'}
                                     onClick={() => field.onChange(severity)}
                                     className={`flex-1 capitalize ${field.value === severity ? 'ring-2 ring-primary ring-offset-background dark:ring-offset-card' : ''}`}
-                                    disabled={!dbAvailable || reportingSymptom || userRole === 'admin'} 
+                                    disabled={!dbAvailable || reportingSymptom || userRole === 'admin'}
                                     >
                                     {getSeverityIcon(severity)}
                                     <span className="ml-2">{severity}</span>
@@ -487,7 +491,7 @@ export default function PatientDashboard({ userId, userRole }: PatientDashboardP
                         </Button>
                     </form>
                     </Form>
-                ) : ( userRole !== 'patient' && 
+                ) : ( userRole !== 'patient' &&
                     <div className="space-y-4 opacity-50 cursor-not-allowed">
                     <div className="space-y-3">
                         <Label>How severe are your symptoms?</Label>
@@ -524,7 +528,7 @@ export default function PatientDashboard({ userId, userRole }: PatientDashboardP
                 </div>
                 </CardContent>
             </Card>
-            
+
             {userRole === 'patient' && assignedDoctorId && (
                 <Card className="flex-grow flex flex-col shadow-md">
                     <CardHeader>
@@ -582,3 +586,4 @@ export default function PatientDashboard({ userId, userRole }: PatientDashboardP
     </div>
   );
 }
+
