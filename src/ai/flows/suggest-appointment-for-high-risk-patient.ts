@@ -11,7 +11,7 @@
 import {ai} from '@/ai/ai-instance';
 import {z} from 'genkit';
 
-export const SuggestAppointmentInputSchema = z.object({
+const SuggestAppointmentInputSchema = z.object({
   patientId: z.string().describe('The ID of the patient.'),
   patientName: z.string().describe('The name of the patient.'),
   readmissionRisk: z.enum(['low', 'medium', 'high']).describe('The readmission risk level of the patient.'),
@@ -20,7 +20,7 @@ export const SuggestAppointmentInputSchema = z.object({
 });
 export type SuggestAppointmentInput = z.infer<typeof SuggestAppointmentInputSchema>;
 
-export const SuggestAppointmentOutputSchema = z.object({
+const SuggestAppointmentOutputSchema = z.object({
   suggestion: z.object({
     appointmentReason: z.string().describe('The suggested reason for the appointment.'),
     proposedTimeframe: z.string().describe('A human-readable suggested timeframe for the appointment (e.g., "within 3 days", "next week").'),

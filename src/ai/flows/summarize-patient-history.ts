@@ -31,15 +31,10 @@ export async function summarizePatientHistory(
 const prompt = ai.definePrompt({
   name: 'summarizePatientHistoryPrompt',
   input: {
-    schema: z.object({
-      patientId: z.string().describe('The ID of the patient whose history needs to be summarized.'),
-      medicalHistory: z.string().describe('The patient medical history to be summarized.'),
-    }),
+    schema: SummarizePatientHistoryInputSchema, // Use the internal schema
   },
   output: {
-    schema: z.object({
-      summary: z.string().describe('A concise summary of the patient medical history.'),
-    }),
+    schema: SummarizePatientHistoryOutputSchema, // Use the internal schema
   },
   prompt: `You are an AI assistant helping doctors quickly understand a patient\'s medical history.
 
@@ -49,8 +44,8 @@ const prompt = ai.definePrompt({
 });
 
 const summarizePatientHistoryFlow = ai.defineFlow<
-  typeof SummarizePatientHistoryInputSchema,
-  typeof SummarizePatientHistoryOutputSchema
+  SummarizePatientHistoryInput, // Use the exported type
+  SummarizePatientHistoryOutput // Use the exported type
 >(
   {
     name: 'summarizePatientHistoryFlow',

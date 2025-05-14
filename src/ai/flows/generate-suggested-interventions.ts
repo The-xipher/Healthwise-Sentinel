@@ -39,21 +39,10 @@ export async function generateSuggestedInterventions(
 const prompt = ai.definePrompt({
   name: 'generateSuggestedInterventionsPrompt',
   input: {
-    schema: z.object({
-      patientHealthData: z
-        .string()
-        .describe("The patient's health data, including vital signs, medication adherence, and self-reported symptoms."),
-      riskPredictions: z
-        .string()
-        .describe('AI-generated risk predictions for the patient, including readmission risk and potential complications.'),
-    }),
+    schema: GenerateSuggestedInterventionsInputSchema, // Use the internal schema
   },
   output: {
-    schema: z.object({
-      suggestedInterventions: z
-        .string()
-        .describe('A list of suggested interventions based on the patient data and risk predictions.'),
-    }),
+    schema: GenerateSuggestedInterventionsOutputSchema, // Use the internal schema
   },
   prompt: `You are an AI assistant specialized in generating suggested interventions for patients based on their health data and risk predictions.
 
@@ -69,8 +58,8 @@ const prompt = ai.definePrompt({
 });
 
 const generateSuggestedInterventionsFlow = ai.defineFlow<
-  typeof GenerateSuggestedInterventionsInputSchema,
-  typeof GenerateSuggestedInterventionsOutputSchema
+  GenerateSuggestedInterventionsInput, // Use the exported type
+  GenerateSuggestedInterventionsOutput // Use the exported type
 >({
   name: 'generateSuggestedInterventionsFlow',
   inputSchema: GenerateSuggestedInterventionsInputSchema,

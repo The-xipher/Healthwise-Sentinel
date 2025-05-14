@@ -30,17 +30,10 @@ export async function generateCarePlan(input: GenerateCarePlanInput): Promise<Ge
 const prompt = ai.definePrompt({
   name: 'generateCarePlanPrompt',
   input: {
-    schema: z.object({
-      patientId: z.string().describe('The ID of the patient.'),
-      predictedRisks: z.string().describe('The predicted risks for the patient.'),
-      medicalHistory: z.string().describe('The medical history of the patient.'),
-      currentMedications: z.string().describe('The current medications of the patient.'),
-    }),
+    schema: GenerateCarePlanInputSchema, // Use the internal schema directly
   },
   output: {
-    schema: z.object({
-      carePlan: z.string().describe('The generated care plan for the patient.'),
-    }),
+    schema: GenerateCarePlanOutputSchema, // Use the internal schema directly
   },
   prompt: `You are an AI assistant specialized in generating personalized care plans for patients post-discharge. As a doctor, I want you to generate a care plan for patient with ID {{{patientId}}} based on their predicted risks, so I can adjust and approve it to save time and ensure comprehensive post-discharge care.
 
@@ -53,8 +46,8 @@ const prompt = ai.definePrompt({
 });
 
 const generateCarePlanFlow = ai.defineFlow<
-  typeof GenerateCarePlanInputSchema,
-  typeof GenerateCarePlanOutputSchema
+  GenerateCarePlanInput, // Use the exported type
+  GenerateCarePlanOutput // Use the exported type
 >(
   {
     name: 'generateCarePlanFlow',
