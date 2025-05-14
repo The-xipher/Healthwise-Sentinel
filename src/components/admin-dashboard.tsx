@@ -30,8 +30,7 @@ import { useForm, Controller } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { Textarea } from './ui/textarea';
-import { cn } from '@/lib/utils'; // Import the cn utility
-
+import { cn } from "@/lib/utils"
 
 interface AuditLog {
   id: string;
