@@ -57,6 +57,11 @@ const getChatId = (id1: string, id2: string): string => {
   return [id1, id2].sort().join('_');
 };
 
+const formatBoldMarkdown = (text: string | null | undefined): string => {
+  if (!text) return '';
+  return text.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>').replace(/\n/g, '<br />');
+};
+
 
 export default function PatientDashboard({ userId, userRole }: PatientDashboardProps) {
   const [healthData, setHealthData] = useState<PatientHealthData[]>([]);
@@ -327,7 +332,7 @@ export default function PatientDashboard({ userId, userRole }: PatientDashboardP
                 <span className="text-blue-600 dark:text-blue-300">Generating insights...</span>
               </div>
             ) : suggestedInterventions ? (
-              <p className="text-sm text-blue-700 dark:text-blue-200 whitespace-pre-line">{suggestedInterventions}</p>
+              <p className="text-sm text-blue-700 dark:text-blue-200" dangerouslySetInnerHTML={{ __html: formatBoldMarkdown(suggestedInterventions) }} />
             ) : (
               dbAvailable && <p className="text-sm text-blue-600 dark:text-blue-300">No specific insights available at this time.</p>
             )}
@@ -354,7 +359,7 @@ export default function PatientDashboard({ userId, userRole }: PatientDashboardP
               <ul className="space-y-3">
                 {approvedAISuggestions.map(suggestion => (
                   <li key={suggestion.id} className="p-3 border rounded-md bg-green-50 dark:bg-green-900/30 border-green-200 dark:border-green-700">
-                    <p className="text-sm text-green-800 dark:text-green-200">{suggestion.suggestionText}</p>
+                    <p className="text-sm text-green-800 dark:text-green-200" dangerouslySetInnerHTML={{ __html: formatBoldMarkdown(suggestion.suggestionText) }} />
                     <p className="text-xs text-muted-foreground mt-1">Approved on: {formatDateOnly(suggestion.timestamp)}</p>
                   </li>
                 ))}
@@ -641,3 +646,4 @@ export default function PatientDashboard({ userId, userRole }: PatientDashboardP
     </div>
   );
 }
+

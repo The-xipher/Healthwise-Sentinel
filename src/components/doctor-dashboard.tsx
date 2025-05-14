@@ -46,6 +46,11 @@ const getChatId = (id1: string, id2: string): string => {
   return [id1, id2].sort().join('_');
 };
 
+const formatBoldMarkdown = (text: string | null | undefined): string => {
+  if (!text) return '';
+  return text.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>').replace(/\n/g, '<br />');
+};
+
 function DoctorDashboardContent({ doctorId, doctorName, userRole }: DoctorDashboardProps) {
   const searchParams = useSearchParams();
   const patientIdFromQuery = searchParams.get('patientId');
@@ -74,6 +79,12 @@ function DoctorDashboardContent({ doctorId, doctorName, userRole }: DoctorDashbo
   const { toast } = useToast();
   const [dbAvailable, setDbAvailable] = useState<boolean>(true);
   const chatScrollAreaRef = useRef<HTMLDivElement>(null);
+  
+  // Removed AI appointment suggestion state as per reversion request
+  // const [aiSuggestedAppointment, setAiSuggestedAppointment] = useState<SuggestAppointmentOutput | null>(null);
+  // const [loadingAiAppointmentSuggestion, setLoadingAiAppointmentSuggestion] = useState<boolean>(false);
+  const [bookingAppointment, setBookingAppointment] = useState<boolean>(false);
+
 
   useEffect(() => {
     const queryPatientId = searchParams.get('patientId');
@@ -153,6 +164,8 @@ function DoctorDashboardContent({ doctorId, doctorName, userRole }: DoctorDashbo
       setHistorySummary(null);
       setCarePlan(null);
       setLoadingPatientDetails(false);
+      //setAiSuggestedAppointment(null); // Reverted
+      //setLoadingAiAppointmentSuggestion(false); // Reverted
       return;
     }
 
@@ -160,6 +173,9 @@ function DoctorDashboardContent({ doctorId, doctorName, userRole }: DoctorDashbo
       setLoadingPatientDetails(true);
       setHistorySummary("Loading AI Summary...");
       setCarePlan("Loading AI Care Plan...");
+      //setAiSuggestedAppointment(null); // Reverted
+      //setLoadingAiAppointmentSuggestion(true); // Reverted
+
 
       try {
         const result = await fetchDoctorPatientDetailsAction(selectedPatientId, doctorId);
@@ -222,6 +238,23 @@ function DoctorDashboardContent({ doctorId, doctorName, userRole }: DoctorDashbo
             } finally {
               setLoadingCarePlan(false);
             }
+
+            // AI Appointment Suggestion logic removed as per reversion
+            // if (result.patient.readmissionRisk === 'high') {
+            //   try {
+            //     const apptSuggestion = await suggestAppointmentForHighRiskPatient({
+            //       patientId: result.patient.id,
+            //       patientName: result.patient.name,
+            //       patientRiskLevel: result.patient.readmissionRisk,
+            //       doctorId: doctorId,
+            //       doctorName: doctorName,
+            //     });
+            //     setAiSuggestedAppointment(apptSuggestion);
+            //   } catch (aiError: any) {
+            //     console.error("AI Appointment Suggestion Error:", aiError);
+            //     toast({ title: "AI Suggestion Error", description: "Could not get AI appointment suggestion. " + (aiError.message?.includes("NOT_FOUND") ? "Model not found or API key issue." : "Service error."), variant: "destructive" });
+            //   }
+            // }
           }
         }
       } catch (e: any) {
@@ -231,6 +264,7 @@ function DoctorDashboardContent({ doctorId, doctorName, userRole }: DoctorDashbo
         console.error("Error fetching patient details:", e);
       } finally {
         setLoadingPatientDetails(false);
+        //setLoadingAiAppointmentSuggestion(false); // Reverted
       }
     }
 
@@ -304,6 +338,9 @@ function DoctorDashboardContent({ doctorId, doctorName, userRole }: DoctorDashbo
       toast({ title: "Update Failed", description: `Could not ${status} the suggestion. ` + (err.message || ''), variant: "destructive" });
     }
   };
+
+  // AI Appointment Booking logic removed as per reversion request
+  // const handleBookAISuggestedAppointment = async () => { ... }
 
 
   const formatTimestamp = (timestamp: Date | string | undefined): string => {
@@ -410,7 +447,7 @@ function DoctorDashboardContent({ doctorId, doctorName, userRole }: DoctorDashbo
                     <SelectContent>
                         {filteredPatients.length > 0 ? (
                         filteredPatients.map((patient) => {
-                            const patientName = patient.name;
+                            const patientName = patient.name; // Name is guaranteed by action
                             return (
                             <SelectItem key={patient.id} value={patient.id}>
                                 <div className="flex items-center justify-between w-full gap-3">
@@ -476,6 +513,8 @@ function DoctorDashboardContent({ doctorId, doctorName, userRole }: DoctorDashbo
                     )}
                 </CardContent>
             </Card>
+             {/* AI Appointment Suggestion Card - Removed as per reversion */}
+             {/* {selectedPatientData?.readmissionRisk === 'high' && ( ... card content ... ) } */}
         </div>
 
         {coreDataLoading ? (
@@ -516,7 +555,7 @@ function DoctorDashboardContent({ doctorId, doctorName, userRole }: DoctorDashbo
                     <div className="space-y-2"><Skeleton className="h-4 w-full" /><Skeleton className="h-4 w-5/6" /><Skeleton className="h-4 w-3/4" /></div>
                   ) : (
                     <ScrollArea className="h-[120px] pr-3">
-                      <p className="text-sm text-muted-foreground whitespace-pre-line">{historySummary || "No summary available."}</p>
+                      <p className="text-sm text-muted-foreground" dangerouslySetInnerHTML={{ __html: formatBoldMarkdown(historySummary) }} />
                     </ScrollArea>
                   )}
                 </CardContent>
@@ -532,7 +571,7 @@ function DoctorDashboardContent({ doctorId, doctorName, userRole }: DoctorDashbo
                     <div className="space-y-2"><Skeleton className="h-4 w-full" /><Skeleton className="h-4 w-full" /><Skeleton className="h-4 w-5/6" /></div>
                   ) : (
                      <ScrollArea className="h-[150px] pr-3">
-                      <p className="text-sm text-muted-foreground whitespace-pre-line">{carePlan || "No care plan generated yet."}</p>
+                      <p className="text-sm text-muted-foreground" dangerouslySetInnerHTML={{ __html: formatBoldMarkdown(carePlan) }} />
                     </ScrollArea>
                   )}
                 </CardContent>
@@ -615,7 +654,7 @@ function DoctorDashboardContent({ doctorId, doctorName, userRole }: DoctorDashbo
                       <ul className="space-y-3">
                         {aiSuggestions.map(suggestion => (
                           <li key={suggestion.id} className="p-3 border rounded-md bg-card hover:shadow-sm transition-shadow space-y-2">
-                            <p className="text-sm">{suggestion.suggestionText}</p>
+                            <p className="text-sm" dangerouslySetInnerHTML={{ __html: formatBoldMarkdown(suggestion.suggestionText) }} />
                             <div className="flex justify-between items-center">
                               <span className="text-xs text-muted-foreground">{formatTimestamp(suggestion.timestamp)}</span>
                               {suggestion.status === 'pending' ? (
@@ -655,7 +694,7 @@ function DoctorDashboardContent({ doctorId, doctorName, userRole }: DoctorDashbo
                         ) : chatMessages.length > 0 ? (
                         <div className="space-y-4">
                             {chatMessages.map(msg => {
-                                const isDoctorMessage = msg.senderId === doctorId; // Use doctorId prop directly
+                                const isDoctorMessage = msg.senderId === doctorId; 
                                 return (
                                 <div key={msg.id} className={`flex ${isDoctorMessage ? 'justify-end' : 'justify-start'}`}>
                                     <div className={`p-3 rounded-xl max-w-[80%] shadow-sm ${isDoctorMessage ? 'bg-primary text-primary-foreground' : 'bg-card text-card-foreground border'}`}>
