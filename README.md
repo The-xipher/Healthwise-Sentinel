@@ -22,9 +22,19 @@ This is a Next.js application designed for post-discharge patient care managemen
         # MongoDB Connection URI
         # Replace 'your_mongodb_password' with your actual MongoDB Atlas password for the 'amithxipher' user.
         # Example: MONGODB_URI=mongodb+srv://amithxipher:Password@55555@health.bqy9gqs.mongodb.net/?appName=Health
-        MONGODB_URI= your url
+        MONGODB_URI=mongodb+srv://amithxipher:Password%4055555@health.bqy9gqs.mongodb.net/?appName=Health
         # Optional: Specify a database name, or it defaults to 'healthwisehub'
-        MONGODB_DB_NAME=healthwisehub_db 
+        MONGODB_DB_NAME=healthwisehub_db
+
+        # If using GenAI features with Google AI
+        GOOGLE_GENAI_API_KEY=YOUR_GOOGLE_AI_API_KEY_HERE
+
+        # Brevo (Sendinblue) SMTP Credentials for Email Sending
+        BREVO_SMTP_HOST=smtp-relay.brevo.com
+        BREVO_SMTP_PORT=587 # Or your configured port
+        BREVO_SMTP_USER=YOUR_BREVO_SMTP_LOGIN_EMAIL # e.g., 8d02ed001@smtp-brevo.com
+        BREVO_SMTP_PASS=YOUR_BREVO_SMTP_PASSWORD_OR_API_KEY # e.g., vH8IykmhV4dzQXqg
+        BREVO_SMTP_FROM_EMAIL="Your App Name <noreply@yourdomain.com>" # The "From" address for emails
 
         # Firebase (Optional - if using Firebase Auth or other Firebase services)
         # NEXT_PUBLIC_FIREBASE_API_KEY=YOUR_API_KEY
@@ -34,12 +44,11 @@ This is a Next.js application designed for post-discharge patient care managemen
         # NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID=YOUR_MESSAGING_SENDER_ID # If using Firebase Messaging
         # NEXT_PUBLIC_FIREBASE_APP_ID=YOUR_APP_ID
         # NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID=YOUR_MEASUREMENT_ID # Optional
-
-        # If using GenAI features with Google AI
-        GOOGLE_GENAI_API_KEY=YOUR_GOOGLE_AI_API_KEY
         ```
-    *   **Important:** The application relies on `MONGODB_URI` for database connectivity. Make sure to replace `your_mongodb_password` with your actual password.
-    *   For Firebase services (like Auth, if re-enabled), ensure the respective `NEXT_PUBLIC_FIREBASE_` variables are set.
+    *   **Important:**
+        *   The application relies on `MONGODB_URI` for database connectivity.
+        *   Ensure `GOOGLE_GENAI_API_KEY` is set if you intend to use AI features.
+        *   Update `BREVO_SMTP_USER`, `BREVO_SMTP_PASS`, and `BREVO_SMTP_FROM_EMAIL` with your actual Brevo credentials for email sending functionality.
 
 3.  **Seed the Database (Optional, for initial mock data):**
     If you want to populate your database with mock data for testing:
@@ -73,21 +82,22 @@ This is a Next.js application designed for post-discharge patient care managemen
 
 ## Key Features
 
-*   **Patient Dashboard:** View health trends, medication adherence, report symptoms.
-*   **Doctor Dashboard:** Manage assigned patients, view summaries, monitor health data, review AI suggestions, chat with patients.
-*   **Admin Dashboard:** User management, system audit logs (simulated).
+*   **Patient Dashboard:** View health trends, medication adherence, report symptoms, chat with doctor.
+*   **Doctor Dashboard:** Manage assigned patients, view summaries, monitor health data, review AI suggestions, chat with patients, view appointments.
+*   **Admin Dashboard:** User management (view, add new users with email notifications), system audit logs (simulated).
 *   **AI Integration (Genkit):**
     *   Summarize patient history.
     *   Generate suggested interventions based on patient data.
     *   Generate initial care plans.
 *   **MongoDB:** Data persistence for users, health data, medications, etc.
-*   **Firebase (Potentially for Auth):** User authentication (currently disabled, can be re-enabled).
+*   **Email Notifications (Brevo):** Welcome emails for new users.
+*   **Firebase (Potentially for Auth):** User authentication (currently custom, Firebase can be re-enabled).
 
 ## Project Structure
 
 *   `src/app/`: Next.js App Router pages and layouts.
 *   `src/components/`: React components, including UI elements (`ui/`) and feature-specific components (dashboards).
-*   `src/lib/`: Utility functions, including Firebase setup (`firebase.ts`), MongoDB setup (`mongodb.ts`), and database seeding (`seed-db.ts`).
+*   `src/lib/`: Utility functions, including Firebase setup (`firebase.ts`), MongoDB setup (`mongodb.ts`), database seeding (`seed-db.ts`), and email service (`email.ts`).
 *   `src/hooks/`: Custom React hooks (`useToast`, `useMobile`).
 *   `src/ai/`: Genkit AI flows and configuration.
 *   `public/`: Static assets.
@@ -100,7 +110,8 @@ This is a Next.js application designed for post-discharge patient care managemen
 *   Tailwind CSS
 *   Shadcn/ui
 *   MongoDB (via `mongodb` driver)
-*   Firebase (Auth - currently disabled)
+*   Brevo (for SMTP email)
+*   Nodemailer
 *   Genkit (for AI features)
 *   Recharts (for charts)
 *   Zod (for schema validation)

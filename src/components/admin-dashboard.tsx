@@ -10,8 +10,27 @@ import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
-import { Users, Activity, ShieldCheck, AlertTriangle } from 'lucide-react';
-import { fetchAdminDashboardData, type AdminUser } from '@/app/actions/adminActions';
+import { Users, Activity, ShieldCheck, AlertTriangle, UserPlus, Loader2 } from 'lucide-react';
+import { fetchAdminDashboardData, createUserAction, type AdminUser } from '@/app/actions/adminActions';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+  DialogClose,
+} from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { useToast } from '@/hooks/use-toast';
+import { useForm, Controller } from 'react-hook-form';
+import { zodResolver } from '@hookform/resolvers/zod';
+import { z } from 'zod';
+import { Textarea } from './ui/textarea';
+
 
 interface AuditLog {
   id: string;
@@ -26,6 +45,17 @@ interface AdminDashboardProps {
   adminUserId: string; // Logged-in admin's ID
 }
 
+const addUserSchema = z.object({
+  displayName: z.string().min(3, "Display name must be at least 3 characters."),
+  email: z.string().email("Invalid email address."),
+  role: z.enum(['patient', 'doctor', 'admin'], { required_error: "Role is required." }),
+  specialty: z.string().optional(), // Optional, can be made required for doctors later
+  assignedDoctorId: z.string().optional(), // Optional for patients
+  medicalHistory: z.string().optional(), // Optional for patients
+});
+
+type AddUserFormValues = z.infer<typeof addUserSchema>;
+
 export default function AdminDashboard({ adminUserId }: AdminDashboardProps) {
   const [users, setUsers] = useState<AdminUser[]>([]);
   const [loadingUsers, setLoadingUsers] = useState<boolean>(true);
@@ -33,6 +63,17 @@ export default function AdminDashboard({ adminUserId }: AdminDashboardProps) {
   const [loadingLogs, setLoadingLogs] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
   const [dbAvailable, setDbAvailable] = useState<boolean>(true);
+  const [isAddUserDialogOpen, setIsAddUserDialogOpen] = useState(false);
+  const [addingUser, setAddingUser] = useState(false);
+  const { toast } = useToast();
+
+  const { register, handleSubmit, control, formState: { errors }, reset, watch } = useForm<AddUserFormValues>({
+    resolver: zodResolver(addUserSchema),
+    defaultValues: {
+      role: undefined,
+    }
+  });
+  const selectedRole = watch("role");
 
   useEffect(() => {
     async function loadData() {
@@ -63,7 +104,6 @@ export default function AdminDashboard({ adminUserId }: AdminDashboardProps) {
     setLoadingLogs(true);
     const fetchLogs = async () => {
       await new Promise(resolve => setTimeout(resolve, 1500)); 
-      // Simulate fetching audit logs, using the logged-in admin's ID if needed for context
       const simulatedLogs: AuditLog[] = [
         { id: 'log1', timestamp: new Date(), userId: 'doctor_example_id', userEmail: 'dr.smith@example.com', action: 'view_patient_data', details: 'Patient ID: patient_example_id' },
         { id: 'log2', timestamp: new Date(Date.now() - 60000 * 5), userId: 'patient_example_id', userEmail: 'patient@example.com', action: 'symptom_report', details: 'Severity: moderate' },
@@ -75,7 +115,37 @@ export default function AdminDashboard({ adminUserId }: AdminDashboardProps) {
     };
     fetchLogs();
 
-  }, [adminUserId]); // Re-fetch audit logs if adminUserId changes (though not typical for this component)
+  }, [adminUserId]);
+
+  const onAddUserSubmit = async (data: AddUserFormValues) => {
+    setAddingUser(true);
+    const formData = new FormData();
+    formData.append('displayName', data.displayName);
+    formData.append('email', data.email);
+    formData.append('role', data.role);
+    if (data.role === 'doctor' && data.specialty) formData.append('specialty', data.specialty);
+    if (data.role === 'patient' && data.assignedDoctorId) formData.append('assignedDoctorId', data.assignedDoctorId);
+    if (data.role === 'patient' && data.medicalHistory) formData.append('medicalHistory', data.medicalHistory);
+
+
+    try {
+      const result = await createUserAction(formData);
+      if (result.success) {
+        toast({ title: "User Created", description: result.message, variant: "default" });
+        if (result.user) {
+          setUsers(prev => [...prev, result.user!]);
+        }
+        setIsAddUserDialogOpen(false);
+        reset();
+      } else {
+        toast({ title: "Creation Failed", description: result.message || result.error, variant: "destructive" });
+      }
+    } catch (err: any) {
+      toast({ title: "Error", description: "An unexpected error occurred: " + err.message, variant: "destructive" });
+    } finally {
+      setAddingUser(false);
+    }
+  };
 
   const getInitials = (name: string | null | undefined): string => {
     if (!name) return '?';
@@ -98,11 +168,115 @@ export default function AdminDashboard({ adminUserId }: AdminDashboardProps) {
     return date.toLocaleString();
   };
   
+  const doctorOptions = users.filter(u => u.role === 'doctor').map(doc => ({
+    value: doc.id,
+    label: doc.displayName || `Doctor (${doc.id.substring(0,6)})`
+  }));
+
   return (
     <div className="space-y-6">
-      <h1 className="text-3xl font-bold text-foreground flex items-center gap-2">
-        <ShieldCheck className="h-7 w-7" /> Admin Portal
-      </h1>
+      <div className="flex justify-between items-center">
+        <h1 className="text-3xl font-bold text-foreground flex items-center gap-2">
+          <ShieldCheck className="h-7 w-7" /> Admin Portal
+        </h1>
+        <Dialog open={isAddUserDialogOpen} onOpenChange={setIsAddUserDialogOpen}>
+          <DialogTrigger asChild>
+            <Button variant="default" disabled={!dbAvailable}>
+              <UserPlus className="mr-2 h-4 w-4" /> Add New User
+            </Button>
+          </DialogTrigger>
+          <DialogContent className="sm:max-w-[525px]">
+            <DialogHeader>
+              <DialogTitle>Add New User</DialogTitle>
+              <DialogDescription>
+                Create a new patient, doctor, or admin account. An email with a temporary password will be sent.
+              </DialogDescription>
+            </DialogHeader>
+            <form onSubmit={handleSubmit(onAddUserSubmit)} className="grid gap-4 py-4">
+              <div className="grid grid-cols-4 items-center gap-4">
+                <Label htmlFor="displayName" className="text-right">Display Name</Label>
+                <Input id="displayName" {...register("displayName")} className="col-span-3" />
+                {errors.displayName && <p className="col-span-4 text-xs text-destructive text-right">{errors.displayName.message}</p>}
+              </div>
+              <div className="grid grid-cols-4 items-center gap-4">
+                <Label htmlFor="email" className="text-right">Login Email</Label>
+                <Input id="email" type="email" {...register("email")} className="col-span-3" />
+                 {errors.email && <p className="col-span-4 text-xs text-destructive text-right">{errors.email.message}</p>}
+              </div>
+              <div className="grid grid-cols-4 items-center gap-4">
+                <Label htmlFor="role" className="text-right">Role</Label>
+                <Controller
+                  name="role"
+                  control={control}
+                  render={({ field }) => (
+                    <Select onValueChange={field.onChange} defaultValue={field.value} value={field.value}>
+                      <SelectTrigger className="col-span-3">
+                        <SelectValue placeholder="Select a role" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="patient">Patient</SelectItem>
+                        <SelectItem value="doctor">Doctor</SelectItem>
+                        <SelectItem value="admin">Admin</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  )}
+                />
+                 {errors.role && <p className="col-span-4 text-xs text-destructive text-right">{errors.role.message}</p>}
+              </div>
+
+              {selectedRole === 'doctor' && (
+                <div className="grid grid-cols-4 items-center gap-4">
+                    <Label htmlFor="specialty" className="text-right">Specialty</Label>
+                    <Input id="specialty" {...register("specialty")} className="col-span-3" placeholder="e.g., Cardiology"/>
+                    {errors.specialty && <p className="col-span-4 text-xs text-destructive text-right">{errors.specialty.message}</p>}
+                </div>
+              )}
+
+              {selectedRole === 'patient' && (
+                <>
+                  <div className="grid grid-cols-4 items-center gap-4">
+                    <Label htmlFor="assignedDoctorId" className="text-right">Assigned Doctor</Label>
+                     <Controller
+                        name="assignedDoctorId"
+                        control={control}
+                        render={({ field }) => (
+                            <Select onValueChange={field.onChange} defaultValue={field.value} value={field.value}>
+                            <SelectTrigger className="col-span-3">
+                                <SelectValue placeholder="Select assigned doctor (optional)" />
+                            </SelectTrigger>
+                            <SelectContent>
+                                {doctorOptions.length > 0 ? doctorOptions.map(doc => (
+                                <SelectItem key={doc.value} value={doc.value}>{doc.label}</SelectItem>
+                                )) : <p className="p-2 text-sm text-muted-foreground">No doctors available</p>}
+                            </SelectContent>
+                            </Select>
+                        )}
+                        />
+                    {errors.assignedDoctorId && <p className="col-span-4 text-xs text-destructive text-right">{errors.assignedDoctorId.message}</p>}
+                  </div>
+                  <div className="grid grid-cols-4 items-start gap-4">
+                     <Label htmlFor="medicalHistory" className="text-right pt-2">Medical History</Label>
+                     <Textarea id="medicalHistory" {...register("medicalHistory")} className="col-span-3" placeholder="Brief medical history (optional)"/>
+                     {errors.medicalHistory && <p className="col-span-4 text-xs text-destructive text-right">{errors.medicalHistory.message}</p>}
+                  </div>
+                </>
+              )}
+
+
+              <DialogFooter>
+                <DialogClose asChild>
+                  <Button type="button" variant="outline">Cancel</Button>
+                </DialogClose>
+                <Button type="submit" disabled={addingUser}>
+                  {addingUser && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                  Create User
+                </Button>
+              </DialogFooter>
+            </form>
+          </DialogContent>
+        </Dialog>
+      </div>
+      
 
       {error && (
         <Alert variant="destructive">
@@ -257,4 +431,3 @@ export default function AdminDashboard({ adminUserId }: AdminDashboardProps) {
     </div>
   );
 }
-
