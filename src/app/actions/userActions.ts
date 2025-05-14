@@ -37,6 +37,25 @@ interface RawUserProfile {
     specialty?: string;
 }
 
+export interface NotificationItem {
+  id: string; // message_id or alert_id
+  type: 'chat' | 'alert';
+  title: string; // e.g., "Message from John Doe"
+  description: string; // message snippet
+  timestamp: string;
+  href: string; // navigation link
+  isRead?: boolean; 
+}
+
+interface RawChatMessageForNotification {
+  _id: ObjectId;
+  senderId: string;
+  senderName: string;
+  text: string;
+  timestamp: Date;
+  chatId: string; // To help determine context if needed
+}
+
 
 export async function fetchUserProfile(userId: string): Promise<{ profile?: UserProfileData; error?: string }> {
   if (!ObjectId.isValid(userId)) {
@@ -55,8 +74,8 @@ export async function fetchUserProfile(userId: string): Promise<{ profile?: User
       ...user,
       _id: user._id.toString(),
       id: user._id.toString(),
-      creationTime: user.creationTime?.toISOString(), // Convert Date to ISO string
-      lastSignInTime: user.lastSignInTime?.toISOString(), // Convert Date to ISO string
+      creationTime: user.creationTime?.toISOString(), 
+      lastSignInTime: user.lastSignInTime?.toISOString(), 
     };
     return { profile };
   } catch (error: any) {
@@ -68,30 +87,47 @@ export async function fetchUserProfile(userId: string): Promise<{ profile?: User
   }
 }
 
-export async function fetchUnreadMessageCountAction(userId: string): Promise<{ count?: number; error?: string }> {
-  if (!ObjectId.isValid(userId)) {
-    // Non-ObjectId userIds might exist if coming from a different auth system or if generic strings are used.
-    // For this app, userIds are ObjectIds from MongoDB.
-    // return { error: 'Invalid user ID format for fetching unread messages.' };
-    // Let's assume if it's not a valid ObjectId, it might be a string ID that is still valid in context
-    // For now, proceed, but ideally, ensure consistent ID types.
-  }
+export async function fetchNotificationItemsAction(userId: string, userRole: UserProfileData['role']): Promise<{ items: NotificationItem[]; unreadCount: number; error?: string }> {
   try {
     const { db } = await connectToDatabase();
-    const chatMessagesCollection = db.collection('chatMessages');
+    const chatMessagesCollection = db.collection<RawChatMessageForNotification>('chatMessages');
     
-    // Count messages where the current user is the receiver and the message is unread
-    const count = await chatMessagesCollection.countDocuments({
-      receiverId: userId, // userId is expected to be a string here from the session
+    const unreadMessages = await chatMessagesCollection.find({
+      receiverId: userId, 
+      isRead: false,
+    }).sort({ timestamp: -1 }).limit(10).toArray(); // Get latest 10 unread
+
+    const totalUnreadCount = await chatMessagesCollection.countDocuments({
+      receiverId: userId,
       isRead: false,
     });
+
+    const notificationItems: NotificationItem[] = unreadMessages.map(msg => {
+      let href = '/dashboard'; // Default
+      if (userRole === 'doctor') {
+        href = `/dashboard/doctor?patientId=${msg.senderId}`;
+      } else if (userRole === 'patient') {
+        href = `/dashboard/patient`; // Patient dashboard shows chat with their assigned doctor
+      }
+      // For admin, could be more complex if they chat with multiple types. Defaulting to /dashboard.
+
+      return {
+        id: msg._id.toString(),
+        type: 'chat',
+        title: `Message from ${msg.senderName}`,
+        description: msg.text.length > 50 ? `${msg.text.substring(0, 47)}...` : msg.text,
+        timestamp: msg.timestamp.toISOString(),
+        href: href,
+        isRead: false, // Since we fetched unread messages
+      };
+    });
     
-    return { count };
+    return { items: notificationItems, unreadCount: totalUnreadCount };
   } catch (error: any) {
-    console.error('Error fetching unread message count:', error);
+    console.error('Error fetching notification items:', error);
     if (error.message.includes('queryTxt ETIMEOUT') || error.message.includes('querySrv ENOTFOUND')) {
-        return { error: "Database connection timeout. Please check your network and MongoDB Atlas settings." };
+        return { items: [], unreadCount: 0, error: "Database connection timeout. Please check your network and MongoDB Atlas settings." };
     }
-    return { error: 'Could not fetch unread message count. ' + (error.message || '') };
+    return { items: [], unreadCount: 0, error: 'Could not fetch notifications. ' + (error.message || '') };
   }
 }

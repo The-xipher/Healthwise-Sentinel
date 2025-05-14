@@ -6,8 +6,8 @@ import { Toaster } from '@/components/ui/toaster';
 import Header from '@/components/header';
 import Link from 'next/link';
 import { Home, User, Stethoscope, ShieldCheck, Database, LogOut, Bell } from 'lucide-react'; 
-import { getSession } from '@/app/actions/authActions'; 
-import { fetchUnreadMessageCountAction } from '@/app/actions/userActions';
+import { getSession, type UserSession } from '@/app/actions/authActions'; 
+import { fetchNotificationItemsAction, type NotificationItem } from '@/app/actions/userActions';
 
 const geistSans = Geist({
   variable: '--font-geist-sans',
@@ -30,14 +30,16 @@ export default async function RootLayout({
   children: React.ReactNode;
 }>) {
   const session = await getSession(); 
+  let notificationItems: NotificationItem[] = [];
   let unreadMessagesCount = 0;
 
   if (session) {
-    const unreadResult = await fetchUnreadMessageCountAction(session.userId);
-    if (unreadResult.count !== undefined) {
-      unreadMessagesCount = unreadResult.count;
-    } else if (unreadResult.error) {
-      console.warn("Could not fetch unread messages count for layout:", unreadResult.error);
+    const notificationResult = await fetchNotificationItemsAction(session.userId, session.role);
+    if (notificationResult.items) {
+      notificationItems = notificationResult.items;
+      unreadMessagesCount = notificationResult.unreadCount;
+    } else if (notificationResult.error) {
+      console.warn("Could not fetch notification items for layout:", notificationResult.error);
     }
   }
 
@@ -47,7 +49,6 @@ export default async function RootLayout({
         <SidebarProvider>
           <Sidebar variant="inset" collapsible="icon">
              <SidebarMenu className="flex-grow p-2">
-                {/* Always show generic dashboard link, it will redirect based on role */}
                 <SidebarMenuItem>
                     <Link href="/dashboard" passHref legacyBehavior>
                         <SidebarMenuButton tooltip="My Dashboard">
@@ -129,7 +130,7 @@ export default async function RootLayout({
              )}
           </Sidebar>
           <SidebarInset>
-             <Header session={session} unreadMessagesCount={unreadMessagesCount} /> 
+             <Header session={session} unreadMessagesCount={unreadMessagesCount} notificationItems={notificationItems} /> 
             {children}
           </SidebarInset>
         </SidebarProvider>
