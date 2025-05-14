@@ -12,12 +12,11 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Input } from '@/components/ui/input';
-import { Loader2, AlertTriangle, Users, Stethoscope, Activity, HeartPulse, Pill, MessageSquare, Send, Check, X, Info, Brain, Search, CalendarDays } from 'lucide-react'; // Removed Sparkles, BookMarked
+import { Loader2, AlertTriangle, Users, Stethoscope, Activity, HeartPulse, Pill, MessageSquare, Send, Check, X, Info, Brain, Search, CalendarDays } from 'lucide-react';
 import { Textarea } from './ui/textarea';
 import { ScrollArea } from './ui/scroll-area';
 import { summarizePatientHistory } from '@/ai/flows/summarize-patient-history';
 import { generateCarePlan } from '@/ai/flows/generate-care-plan';
-// Removed: import { suggestAppointmentForHighRiskPatient, type SuggestAppointmentOutput } from '@/ai/flows/suggest-appointment-for-high-risk-patient';
 import { useToast } from '@/hooks/use-toast';
 import {
   fetchDoctorPatientsAction,
@@ -25,7 +24,7 @@ import {
   sendChatMessageAction,
   updateSuggestionStatusAction,
   fetchDoctorAppointmentsAction,
-  createAppointmentAction, // Keep for potential manual booking
+  createAppointmentAction,
   type DoctorPatient,
   type DoctorPatientHealthData,
   type DoctorPatientMedication,
@@ -60,10 +59,6 @@ function DoctorDashboardContent({ doctorId, doctorName, userRole }: DoctorDashbo
   const [aiSuggestions, setAiSuggestions] = useState<DoctorAISuggestion[]>([]);
   const [appointments, setAppointments] = useState<Appointment[]>([]);
   const [loadingAppointments, setLoadingAppointments] = useState<boolean>(true);
-  // Removed AI appointment suggestion state
-  // const [aiSuggestedAppointment, setAiSuggestedAppointment] = useState<SuggestAppointmentOutput['suggestion'] | null>(null);
-  // const [loadingAiAppointmentSuggestion, setLoadingAiAppointmentSuggestion] = useState<boolean>(false);
-  // const [bookingAppointment, setBookingAppointment] = useState<boolean>(false);
 
 
   const [loadingPatients, setLoadingPatients] = useState<boolean>(true);
@@ -146,7 +141,7 @@ function DoctorDashboardContent({ doctorId, doctorName, userRole }: DoctorDashbo
       }
     }
     loadInitialDoctorData();
-  }, [doctorId]);
+  }, [doctorId, patientIdFromQuery]); // Added patientIdFromQuery to re-evaluate if admin switches patient view via URL
 
   useEffect(() => {
     if (!selectedPatientId || !doctorId) {
@@ -157,14 +152,12 @@ function DoctorDashboardContent({ doctorId, doctorName, userRole }: DoctorDashbo
       setChatMessages([]);
       setHistorySummary(null);
       setCarePlan(null);
-      // Removed: setAiSuggestedAppointment(null);
       setLoadingPatientDetails(false);
       return;
     }
 
     async function fetchPatientAllData() {
       setLoadingPatientDetails(true);
-      // Removed: setAiSuggestedAppointment(null);
       setHistorySummary("Loading AI Summary...");
       setCarePlan("Loading AI Care Plan...");
 
@@ -205,7 +198,8 @@ function DoctorDashboardContent({ doctorId, doctorName, userRole }: DoctorDashbo
               setHistorySummary(summaryResult.summary);
             } catch (aiError: any) {
               console.error("AI Patient Summary Error:", aiError);
-              setHistorySummary("Could not generate AI summary. " + (aiError.message?.includes("NOT_FOUND") ? "Model not found or API key issue." : "Service error."));
+              const errorMsg = aiError.message?.includes("NOT_FOUND") || aiError.message?.includes("API key") ? "Model not found or API key issue." : "Service error.";
+              setHistorySummary("Could not generate AI summary. " + errorMsg);
             } finally {
               setLoadingSummary(false);
             }
@@ -223,14 +217,11 @@ function DoctorDashboardContent({ doctorId, doctorName, userRole }: DoctorDashbo
                 setCarePlan(carePlanResult.carePlan);
             } catch (aiError: any) {
               console.error("AI Care Plan Error:", aiError);
-              setCarePlan("Could not generate AI care plan. " + (aiError.message?.includes("NOT_FOUND") ? "Model not found or API key issue." : "Service error."));
+              const errorMsg = aiError.message?.includes("NOT_FOUND") || aiError.message?.includes("API key") ? "Model not found or API key issue." : "Service error.";
+              setCarePlan("Could not generate AI care plan. " + errorMsg);
             } finally {
               setLoadingCarePlan(false);
             }
-
-            // Removed AI appointment suggestion logic
-            // if (result.patient.readmissionRisk === 'high') { ... }
-            // else { setAiSuggestedAppointment(null); }
           }
         }
       } catch (e: any) {
@@ -244,7 +235,7 @@ function DoctorDashboardContent({ doctorId, doctorName, userRole }: DoctorDashbo
     }
 
     fetchPatientAllData();
-  }, [selectedPatientId, doctorId, doctorName, toast]); // Removed dependency on doctorName (if only used for AI suggestions)
+  }, [selectedPatientId, doctorId, doctorName, toast]);
 
   useEffect(() => {
     if (chatScrollAreaRef.current) {
@@ -314,7 +305,6 @@ function DoctorDashboardContent({ doctorId, doctorName, userRole }: DoctorDashbo
     }
   };
 
-  // Removed handleBookAISuggestedAppointment
 
   const formatTimestamp = (timestamp: Date | string | undefined): string => {
     if (!timestamp) return 'N/A';
@@ -359,6 +349,7 @@ function DoctorDashboardContent({ doctorId, doctorName, userRole }: DoctorDashbo
   };
 
   const coreDataLoading = loadingPatientDetails && selectedPatientId;
+  const currentDoctorId = doctorId; // Explicitly capture for use in map, just in case of closure issues.
 
   return (
     <div className="space-y-6">
@@ -420,7 +411,7 @@ function DoctorDashboardContent({ doctorId, doctorName, userRole }: DoctorDashbo
                     <SelectContent>
                         {filteredPatients.length > 0 ? (
                         filteredPatients.map((patient) => {
-                            const patientName = patient.name;
+                            const patientName = patient.name; // Already guaranteed to be string by action
                             return (
                             <SelectItem key={patient.id} value={patient.id}>
                                 <div className="flex items-center justify-between w-full gap-3">
@@ -515,7 +506,6 @@ function DoctorDashboardContent({ doctorId, doctorName, userRole }: DoctorDashbo
                 </CardContent>
               </Card>
 
-              {/* Removed AI Suggested Appointment Card */}
 
               <Card className="shadow-md">
                 <CardHeader>
@@ -665,16 +655,19 @@ function DoctorDashboardContent({ doctorId, doctorName, userRole }: DoctorDashbo
                         <div className="flex items-center justify-center h-full"><Loader2 className="h-6 w-6 animate-spin text-primary"/></div>
                         ) : chatMessages.length > 0 ? (
                         <div className="space-y-4">
-                            {chatMessages.map(msg => (
-                            <div key={msg.id} className={`flex ${msg.senderId === doctorId ? 'justify-end' : 'justify-start'}`}>
-                                <div className={`p-3 rounded-xl max-w-[80%] shadow-sm ${msg.senderId === doctorId ? 'bg-primary text-primary-foreground' : 'bg-card text-card-foreground border'}`}>
-                                <p className="text-sm">{msg.text}</p>
-                                <p className={`text-xs mt-1 ${msg.senderId === doctorId ? 'text-primary-foreground/70 text-right' : 'text-muted-foreground text-left'}`}>
-                                    {msg.senderName} - {formatTimestamp(msg.timestamp)} {msg.isRead === false && msg.senderId !== doctorId ? '(Unread)' : ''}
-                                </p>
+                            {chatMessages.map(msg => {
+                                const isDoctorMessage = msg.senderId === currentDoctorId;
+                                return (
+                                <div key={msg.id} className={`flex ${isDoctorMessage ? 'justify-end' : 'justify-start'}`}>
+                                    <div className={`p-3 rounded-xl max-w-[80%] shadow-sm ${isDoctorMessage ? 'bg-primary text-primary-foreground' : 'bg-card text-card-foreground border'}`}>
+                                    <p className="text-sm">{msg.text}</p>
+                                    <p className={`text-xs mt-1 ${isDoctorMessage ? 'text-primary-foreground/70 text-right' : 'text-muted-foreground text-left'}`}>
+                                        {msg.senderName} - {formatTimestamp(msg.timestamp)} {msg.isRead === false && !isDoctorMessage ? '(Unread)' : ''}
+                                    </p>
+                                    </div>
                                 </div>
-                            </div>
-                            ))}
+                                );
+                            })}
                         </div>
                         ) : (
                         <p className="text-sm text-muted-foreground text-center h-full flex items-center justify-center">No messages in this chat yet.</p>
@@ -792,7 +785,6 @@ function DashboardSkeletonCentralColumn() {
             <Skeleton className="h-3 w-4/5" />
           </CardContent>
         </Card>
-        {/* Removed AI Suggested Appointment Skeleton Card */}
         <Card className="shadow-md">
           <CardHeader><Skeleton className="h-6 w-4/6" /><Skeleton className="h-3 w-3/5 mt-1" /></CardHeader>
           <CardContent className="space-y-2"><Skeleton className="h-4 w-full" /><Skeleton className="h-4 w-5/6" /></CardContent>
@@ -829,3 +821,4 @@ function DashboardSkeletonCentralColumn() {
   );
 }
 
+    
