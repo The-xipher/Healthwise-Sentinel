@@ -10,7 +10,7 @@ import { formatDistanceToNow, parseISO } from 'date-fns';
 export interface DoctorPatient {
   _id: string;
   id: string;
-  name: string; 
+  name: string;
   email?: string;
   photoURL?: string;
   lastActivity?: Date | string;
@@ -23,9 +23,9 @@ export interface DoctorPatient {
   carePlanLastUpdatedByDoctorName?: string; // To show who approved it
   carePlanLastUpdatedDate?: Date | string;
 }
-interface RawDoctorPatient { 
+interface RawDoctorPatient {
   _id: ObjectId;
-  displayName: string; 
+  displayName: string;
   email?: string;
   photoURL?: string;
   lastActivity?: Date;
@@ -65,6 +65,8 @@ export interface DoctorPatientMedication {
   dosage: string;
   frequency: string;
   adherence?: number;
+  reminderTimes?: string[]; // Added for display and management
+  lastTaken?: string; // For display, from patient actions
 }
 interface RawDoctorPatientMedication {
   _id: ObjectId;
@@ -73,6 +75,8 @@ interface RawDoctorPatientMedication {
   dosage: string;
   frequency: string;
   adherence?: number;
+  reminderTimes?: string[];
+  lastTaken?: Date;
 }
 
 
@@ -82,20 +86,20 @@ export interface DoctorChatMessage {
   chatId: string;
   senderId: string;
   senderName: string;
-  receiverId: string; 
+  receiverId: string;
   text: string;
   timestamp: Date | string;
-  isRead?: boolean; 
+  isRead?: boolean;
 }
 interface RawDoctorChatMessage {
   _id: ObjectId;
   chatId: string;
   senderId: string;
   senderName: string;
-  receiverId: string; 
+  receiverId: string;
   text: string;
   timestamp: Date;
-  isRead?: boolean; 
+  isRead?: boolean;
 }
 
 export interface DoctorAISuggestion {
@@ -105,7 +109,7 @@ export interface DoctorAISuggestion {
   suggestionText: string;
   timestamp: Date | string;
   status: 'pending' | 'approved' | 'rejected';
-  source?: string; 
+  source?: string;
   symptomReportId?: string;
 }
 interface RawDoctorAISuggestion {
@@ -133,9 +137,9 @@ export interface Appointment {
 
 export interface RawAppointment { // DB representation
   _id: ObjectId;
-  patientId: ObjectId; 
+  patientId: ObjectId;
   patientName: string;
-  doctorId: ObjectId;   
+  doctorId: ObjectId;
   doctorName: string;
   appointmentDate: Date;
   reason: string;
@@ -157,12 +161,11 @@ export async function fetchDoctorPatientsAction(doctorId: string): Promise<{ pat
       assignedDoctorId: doctorId
     }).toArray();
 
-    // Fetch doctor details to populate carePlanLastUpdatedByDoctorName
     const doctorObjectIds = patientList
       .map(p => p.carePlanLastUpdatedByDoctorId)
       .filter(id => id && ObjectId.isValid(id))
       .map(id => toObjectId(id!));
-    
+
     let doctorMap: Map<string, string> = new Map();
     if (doctorObjectIds.length > 0) {
         const doctors = await usersCollection.find({ _id: { $in: doctorObjectIds } }).toArray();
@@ -174,7 +177,7 @@ export async function fetchDoctorPatientsAction(doctorId: string): Promise<{ pat
       ...p,
       _id: p._id.toString(),
       id: p._id.toString(),
-      name: p.displayName || 'Unknown Patient', 
+      name: p.displayName || 'Unknown Patient',
       lastActivity: p.lastActivity?.toISOString(),
       carePlanLastUpdatedDate: p.carePlanLastUpdatedDate?.toISOString(),
       carePlanLastUpdatedByDoctorName: p.carePlanLastUpdatedByDoctorId ? doctorMap.get(p.carePlanLastUpdatedByDoctorId) : undefined,
@@ -182,6 +185,9 @@ export async function fetchDoctorPatientsAction(doctorId: string): Promise<{ pat
     return { patients };
   } catch (err: any) {
     console.error("Error fetching doctor's patients:", err);
+    if (err.message.includes('queryTxt ETIMEOUT') || err.message.includes('querySrv ENOTFOUND')) {
+        return { error: "Database connection timeout. Please check your network and MongoDB Atlas settings." };
+    }
     return { error: "Could not load patient list. " + err.message };
   }
 }
@@ -201,7 +207,7 @@ export async function fetchDoctorPatientDetailsAction(patientIdStr: string, doct
 
   try {
     const { db } = await connectToDatabase();
-    const usersCollection = db.collection<RawDoctorPatient>('users'); 
+    const usersCollection = db.collection<RawDoctorPatient>('users');
 
     const rawPatient = await usersCollection.findOne({ _id: patientObjectId, assignedDoctorId: doctorId, role: 'patient' });
 
@@ -212,7 +218,7 @@ export async function fetchDoctorPatientDetailsAction(patientIdStr: string, doct
       }
       return { error: "Patient not assigned to this doctor." };
     }
-    
+
     let carePlanDoctorName: string | undefined = undefined;
     if (rawPatient.carePlanLastUpdatedByDoctorId) {
         const carePlanDoctor = await usersCollection.findOne({ _id: toObjectId(rawPatient.carePlanLastUpdatedByDoctorId) });
@@ -224,7 +230,7 @@ export async function fetchDoctorPatientDetailsAction(patientIdStr: string, doct
         ...rawPatient,
          _id: rawPatient._id.toString(),
          id: rawPatient._id.toString(),
-         name: rawPatient.displayName || 'Unknown Patient', 
+         name: rawPatient.displayName || 'Unknown Patient',
          lastActivity: rawPatient.lastActivity?.toISOString(),
          carePlanLastUpdatedDate: rawPatient.carePlanLastUpdatedDate?.toISOString(),
          carePlanLastUpdatedByDoctorName: carePlanDoctorName,
@@ -248,7 +254,9 @@ export async function fetchDoctorPatientDetailsAction(patientIdStr: string, doct
       _id: med._id.toString(),
       id: med._id.toString(),
       patientId: med.patientId.toString(),
-      adherence: med.adherence ?? Math.floor(Math.random() * 31) + 70
+      adherence: med.adherence ?? Math.floor(Math.random() * 31) + 70,
+      reminderTimes: med.reminderTimes || [],
+      lastTaken: med.lastTaken?.toISOString()
     }));
 
     const suggestionsCollection = db.collection<RawDoctorAISuggestion>('aiSuggestions');
@@ -276,6 +284,9 @@ export async function fetchDoctorPatientDetailsAction(patientIdStr: string, doct
 
   } catch (err: any) {
     console.error("Error fetching patient details:", err);
+     if (err.message.includes('queryTxt ETIMEOUT') || err.message.includes('querySrv ENOTFOUND')) {
+        return { error: "Database connection timeout. Please check your network and MongoDB Atlas settings." };
+    }
     return { error: "Could not load patient data. " + err.message };
   }
 }
@@ -310,11 +321,14 @@ export async function sendChatMessageAction(
         id: result.insertedId.toString(),
         timestamp: messageData.timestamp.toISOString()
     };
-    revalidatePath(`/dashboard/doctor`); 
+    revalidatePath(`/dashboard/doctor`);
     revalidatePath(`/dashboard/patient`);
     return { message: insertedMessage };
   } catch (err: any) {
     console.error("Error sending message:", err);
+    if (err.message.includes('queryTxt ETIMEOUT') || err.message.includes('querySrv ENOTFOUND')) {
+        return { error: "Database connection timeout. Please check your network and MongoDB Atlas settings." };
+    }
     return { error: "Could not send message. " + err.message };
   }
 }
@@ -355,6 +369,9 @@ export async function updateSuggestionStatusAction(
   } catch (err: any)
 {
     console.error(`Error updating suggestion status:`, err);
+    if (err.message.includes('queryTxt ETIMEOUT') || err.message.includes('querySrv ENOTFOUND')) {
+        return { error: "Database connection timeout. Please check your network and MongoDB Atlas settings." };
+    }
     return { error: `Could not update suggestion status. ${err.message}` };
   }
 }
@@ -382,6 +399,9 @@ export async function fetchDoctorAppointmentsAction(doctorId: string): Promise<{
     return { appointments };
   } catch (err: any) {
     console.error("Error fetching doctor's appointments:", err);
+    if (err.message.includes('queryTxt ETIMEOUT') || err.message.includes('querySrv ENOTFOUND')) {
+        return { error: "Database connection timeout. Please check your network and MongoDB Atlas settings." };
+    }
     return { error: "Could not load appointments. " + (err.message || '') };
   }
 }
@@ -396,7 +416,7 @@ export async function createAppointmentAction(appointmentData: {
   status: 'scheduled' | 'completed' | 'cancelled' | 'suggested';
   notes?: string;
 }): Promise<{ appointment?: Appointment, error?: string }> {
-  
+
   const patientObjectId = toObjectId(appointmentData.patientId);
   const doctorObjectId = toObjectId(appointmentData.doctorId);
 
@@ -419,7 +439,7 @@ export async function createAppointmentAction(appointmentData: {
     const { db } = await connectToDatabase();
     const appointmentsCollection = db.collection<RawAppointment>('appointments');
     const result = await appointmentsCollection.insertOne(rawAppointmentData as RawAppointment);
-    
+
     const insertedAppointment: Appointment = {
       ...rawAppointmentData,
       _id: result.insertedId.toString(),
@@ -428,10 +448,13 @@ export async function createAppointmentAction(appointmentData: {
       doctorId: rawAppointmentData.doctorId.toString(),
       appointmentDate: rawAppointmentData.appointmentDate.toISOString(),
     };
-    revalidatePath(`/dashboard/doctor`); 
+    revalidatePath(`/dashboard/doctor`);
     return { appointment: insertedAppointment };
   } catch (err: any) {
     console.error("Error creating appointment:", err);
+    if (err.message.includes('queryTxt ETIMEOUT') || err.message.includes('querySrv ENOTFOUND')) {
+        return { error: "Database connection timeout. Please check your network and MongoDB Atlas settings." };
+    }
     return { error: "Could not create appointment. " + (err.message || '') };
   }
 }
@@ -445,10 +468,9 @@ export async function fetchFullPatientHealthDataAction(patientIdStr: string): Pr
   try {
     const { db } = await connectToDatabase();
     const healthCollection = db.collection<RawDoctorPatientHealthData>('healthData');
-    // Fetch more entries, e.g., last 50, sorted by newest first
     const rawHealthData = await healthCollection.find({ patientId: patientObjectId })
-      .sort({ timestamp: -1 }).limit(50).toArray(); 
-    
+      .sort({ timestamp: -1 }).limit(50).toArray();
+
     const healthData: DoctorPatientHealthData[] = rawHealthData.map(d => ({
       ...d,
       _id: d._id.toString(),
@@ -459,6 +481,9 @@ export async function fetchFullPatientHealthDataAction(patientIdStr: string): Pr
     return { healthData };
   } catch (err: any) {
     console.error("Error fetching full patient health data:", err);
+    if (err.message.includes('queryTxt ETIMEOUT') || err.message.includes('querySrv ENOTFOUND')) {
+        return { error: "Database connection timeout. Please check your network and MongoDB Atlas settings." };
+    }
     return { error: "Could not load full health data. " + (err.message || '') };
   }
 }
@@ -495,22 +520,155 @@ export async function approveCarePlanAction(
       return { success: false, error: "Patient not found." };
     }
     if (updateResult.modifiedCount === 0) {
-        // Could mean the plan was already the same, still consider it a success for UI
         return { success: true, updatedPatient: { approvedCarePlanText: carePlanText } };
     }
-    
+
     revalidatePath(`/dashboard/doctor?patientId=${patientIdStr}`);
-    
-    // For optimistic update, return the key fields that changed
-    return { success: true, updatedPatient: { 
+
+    return { success: true, updatedPatient: {
         approvedCarePlanText: carePlanText,
         carePlanLastUpdatedByDoctorId: doctorId,
         carePlanLastUpdatedDate: new Date().toISOString(),
-        // We would need to fetch the doctor's name if we want to return it here for the UI
-      } 
+      }
     };
   } catch (err: any) {
     console.error("Error approving care plan:", err);
+    if (err.message.includes('queryTxt ETIMEOUT') || err.message.includes('querySrv ENOTFOUND')) {
+        return { success: false, error: "Database connection timeout. Please check your network and MongoDB Atlas settings." };
+    }
     return { success: false, error: "Could not approve care plan. " + (err.message || '') };
+  }
+}
+
+
+// --- Medication Management Actions ---
+
+export async function addPatientMedicationAction(
+  patientIdStr: string,
+  medicationData: { name: string; dosage: string; frequency: string; reminderTimes?: string[] }
+): Promise<{ medication?: DoctorPatientMedication; error?: string }> {
+  const patientObjectId = toObjectId(patientIdStr);
+  if (!patientObjectId) {
+    return { error: 'Invalid patient ID.' };
+  }
+  if (!medicationData.name || !medicationData.dosage || !medicationData.frequency) {
+    return { error: 'Medication name, dosage, and frequency are required.' };
+  }
+
+  const newMed: Omit<RawDoctorPatientMedication, '_id'> = {
+    patientId: patientObjectId,
+    name: medicationData.name,
+    dosage: medicationData.dosage,
+    frequency: medicationData.frequency,
+    reminderTimes: medicationData.reminderTimes || [],
+    adherence: 100, // Default adherence for new medication
+    lastTaken: undefined,
+  };
+
+  try {
+    const { db } = await connectToDatabase();
+    const medicationsCollection = db.collection<RawDoctorPatientMedication>('medications');
+    const result = await medicationsCollection.insertOne(newMed as RawDoctorPatientMedication);
+
+    const insertedMed: DoctorPatientMedication = {
+      ...newMed,
+      _id: result.insertedId.toString(),
+      id: result.insertedId.toString(),
+      patientId: newMed.patientId.toString(),
+      reminderTimes: newMed.reminderTimes || [],
+    };
+    revalidatePath(`/dashboard/doctor?patientId=${patientIdStr}`);
+    revalidatePath(`/dashboard/patient`);
+    return { medication: insertedMed };
+  } catch (error: any) {
+    console.error('Error adding medication:', error);
+    if (error.message.includes('queryTxt ETIMEOUT') || error.message.includes('querySrv ENOTFOUND')) {
+        return { error: "Database connection timeout. Please check your network and MongoDB Atlas settings." };
+    }
+    return { error: 'Could not add medication. ' + error.message };
+  }
+}
+
+export async function updatePatientMedicationAction(
+  medicationIdStr: string,
+  patientIdStr: string, // For revalidation path and ensuring correct patient context
+  medicationData: Partial<{ name: string; dosage: string; frequency: string; reminderTimes: string[] }>
+): Promise<{ medication?: DoctorPatientMedication; error?: string }> {
+  const medicationObjectId = toObjectId(medicationIdStr);
+  if (!medicationObjectId) {
+    return { error: 'Invalid medication ID.' };
+  }
+
+  const updateFields: Partial<RawDoctorPatientMedication> = {};
+  if (medicationData.name) updateFields.name = medicationData.name;
+  if (medicationData.dosage) updateFields.dosage = medicationData.dosage;
+  if (medicationData.frequency) updateFields.frequency = medicationData.frequency;
+  if (medicationData.reminderTimes) updateFields.reminderTimes = medicationData.reminderTimes;
+
+
+  if (Object.keys(updateFields).length === 0) {
+    return { error: 'No fields to update.' };
+  }
+
+  try {
+    const { db } = await connectToDatabase();
+    const medicationsCollection = db.collection<RawDoctorPatientMedication>('medications');
+    const result = await medicationsCollection.findOneAndUpdate(
+      { _id: medicationObjectId },
+      { $set: updateFields },
+      { returnDocument: 'after' }
+    );
+
+    if (!result) {
+      return { error: 'Medication not found or update failed.' };
+    }
+    
+    const updatedMed: DoctorPatientMedication = {
+      ...result,
+      _id: result._id.toString(),
+      id: result._id.toString(),
+      patientId: result.patientId.toString(),
+      reminderTimes: result.reminderTimes || [],
+      lastTaken: result.lastTaken?.toISOString()
+    };
+
+    revalidatePath(`/dashboard/doctor?patientId=${patientIdStr}`);
+    revalidatePath(`/dashboard/patient`);
+    return { medication: updatedMed };
+  } catch (error: any) {
+    console.error('Error updating medication:', error);
+    if (error.message.includes('queryTxt ETIMEOUT') || error.message.includes('querySrv ENOTFOUND')) {
+        return { error: "Database connection timeout. Please check your network and MongoDB Atlas settings." };
+    }
+    return { error: 'Could not update medication. ' + error.message };
+  }
+}
+
+export async function deletePatientMedicationAction(
+  medicationIdStr: string,
+  patientIdStr: string // For revalidation path
+): Promise<{ success: boolean; error?: string }> {
+  const medicationObjectId = toObjectId(medicationIdStr);
+  if (!medicationObjectId) {
+    return { success: false, error: 'Invalid medication ID.' };
+  }
+
+  try {
+    const { db } = await connectToDatabase();
+    const medicationsCollection = db.collection<RawDoctorPatientMedication>('medications');
+    const result = await medicationsCollection.deleteOne({ _id: medicationObjectId });
+
+    if (result.deletedCount === 0) {
+      return { success: false, error: 'Medication not found or already deleted.' };
+    }
+    revalidatePath(`/dashboard/doctor?patientId=${patientIdStr}`);
+    revalidatePath(`/dashboard/patient`);
+    return { success: true };
+  } catch (error: any) {
+    console.error('Error deleting medication:', error);
+    if (error.message.includes('queryTxt ETIMEOUT') || error.message.includes('querySrv ENOTFOUND')) {
+        return { success: false, error: "Database connection timeout. Please check your network and MongoDB Atlas settings." };
+    }
+    return { success: false, error: 'Could not delete medication. ' + error.message };
   }
 }

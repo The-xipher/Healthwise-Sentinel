@@ -5,14 +5,14 @@ import * as React from 'react';
 import { useState, useEffect, useRef, useMemo, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
+import { Button, buttonVariants } from '@/components/ui/button';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Input } from '@/components/ui/input';
-import { Loader2, AlertTriangle, Users, Stethoscope, Activity, HeartPulse, Pill, MessageSquare, Send, Check, X, Info, Brain, Search, CalendarDays, Sparkles, BookMarked, Droplet, TrendingUp, ThumbsDown, FileText, Edit3 } from 'lucide-react'; // Added FileText, Edit3
+import { Loader2, AlertTriangle, Users, Stethoscope, Activity, HeartPulse, Pill, MessageSquare, Send, Check, X, Info, Brain, Search, CalendarDays, Sparkles, BookMarked, FileText, Edit3, Trash2, PlusCircle } from 'lucide-react';
 import { Textarea } from './ui/textarea';
 import { ScrollArea } from './ui/scroll-area';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
@@ -34,7 +34,22 @@ import {
   SheetTrigger,
   SheetFooter,
   SheetClose,
+  SheetDescription
 } from '@/components/ui/sheet';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import { Form, FormControl, FormDescription, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
+import { useForm, Controller } from 'react-hook-form';
+import { zodResolver } from '@hookform/resolvers/zod';
+import { z } from 'zod';
 import { summarizePatientHistory } from '@/ai/flows/summarize-patient-history';
 import { generateCarePlan } from '@/ai/flows/generate-care-plan';
 import { analyzePatientHealthTrends, type AnalyzePatientHealthTrendsOutput, type AnalyzePatientHealthTrendsInput } from '@/ai/flows/analyze-patient-health-trends';
@@ -46,8 +61,11 @@ import {
   updateSuggestionStatusAction,
   fetchDoctorAppointmentsAction,
   createAppointmentAction,
-  fetchFullPatientHealthDataAction, // New action
-  approveCarePlanAction, // New action
+  fetchFullPatientHealthDataAction,
+  approveCarePlanAction,
+  addPatientMedicationAction,
+  updatePatientMedicationAction,
+  deletePatientMedicationAction,
   type DoctorPatient,
   type DoctorPatientHealthData,
   type DoctorPatientMedication,
@@ -57,6 +75,7 @@ import {
 } from '@/app/actions/doctorActions';
 import { markMessagesAsReadAction } from '@/app/actions/chatActions';
 import { format, addDays, formatDistanceToNow, parseISO } from 'date-fns';
+import { cn } from '@/lib/utils';
 
 
 interface DoctorDashboardProps {
@@ -74,6 +93,21 @@ const formatBoldMarkdown = (text: string | null | undefined): string => {
   if (!text) return '';
   return text.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>').replace(/\n/g, '<br />');
 };
+
+const medicationFormSchema = z.object({
+  name: z.string().min(2, "Medication name must be at least 2 characters."),
+  dosage: z.string().min(1, "Dosage is required."),
+  frequency: z.string().min(1, "Frequency is required."),
+  reminderTimes: z.string().optional().refine(val => {
+    if (!val || val.trim() === "") return true; // Optional field
+    const times = val.split(',').map(t => t.trim());
+    // Basic time format check (e.g., HH:MM AM/PM or HH:MM) - can be enhanced
+    const timeRegex = /^(0?[1-9]|1[0-2]):[0-5][0-9](\s*(AM|PM))?$/i;
+    return times.every(t => timeRegex.test(t));
+  }, "Invalid time format. Use HH:MM AM/PM, comma-separated (e.g., 08:00 AM, 05:30 PM)."),
+});
+type MedicationFormValues = z.infer<typeof medicationFormSchema>;
+
 
 function DoctorDashboardContent({ doctorId, doctorName, userRole }: DoctorDashboardProps) {
   const searchParams = useSearchParams();
@@ -107,15 +141,23 @@ function DoctorDashboardContent({ doctorId, doctorName, userRole }: DoctorDashbo
   const chatScrollAreaRef = useRef<HTMLDivElement>(null);
   const [isChatOpen, setIsChatOpen] = useState(false);
 
-  // State for "View All Health Data" modal
   const [isFullHealthDataDialogOpen, setIsFullHealthDataDialogOpen] = useState(false);
   const [fullHealthData, setFullHealthData] = useState<DoctorPatientHealthData[]>([]);
   const [loadingFullHealthData, setLoadingFullHealthData] = useState(false);
 
-  // State for "Edit/Approve Care Plan" modal
   const [isCarePlanDialogOpen, setIsCarePlanDialogOpen] = useState(false);
   const [editableCarePlanText, setEditableCarePlanText] = useState('');
   const [savingCarePlan, setSavingCarePlan] = useState(false);
+
+  const [isManageMedicationsSheetOpen, setIsManageMedicationsSheetOpen] = useState(false);
+  const [editingMedication, setEditingMedication] = useState<DoctorPatientMedication | null>(null);
+  const [deletingMedication, setDeletingMedication] = useState<DoctorPatientMedication | null>(null);
+  const [isMedicationFormSubmitting, setIsMedicationFormSubmitting] = useState(false);
+
+  const medicationForm = useForm<MedicationFormValues>({
+    resolver: zodResolver(medicationFormSchema),
+    defaultValues: { name: '', dosage: '', frequency: '', reminderTimes: '' },
+  });
 
 
   useEffect(() => {
@@ -132,11 +174,13 @@ function DoctorDashboardContent({ doctorId, doctorName, userRole }: DoctorDashbo
         const appointmentsResult = await fetchDoctorAppointmentsAction(doctorId);
         if (appointmentsResult.error) {
             setError(prev => prev ? `${prev}\nAppointments: ${appointmentsResult.error}` : `Appointments: ${appointmentsResult.error}`);
+            if (appointmentsResult.error.includes("Database connection")) setDbAvailable(false);
         } else {
             setAppointments(appointmentsResult.appointments || []);
         }
     } catch (e: any) {
         setError(prev => prev ? `${prev}\nAppointments: ${e.message}` : `Appointments: ${e.message}`);
+        if (e.message.includes("Database connection")) setDbAvailable(false);
     } finally {
         setLoadingAppointments(false);
     }
@@ -150,6 +194,7 @@ function DoctorDashboardContent({ doctorId, doctorName, userRole }: DoctorDashbo
       setHistorySummary("Loading AI Summary...");
       setAiDraftCarePlan("Loading AI Care Plan Draft...");
       setTrendAnalysis(null);
+      setPatientMedications([]); // Clear previous patient's meds
 
       try {
         const result = await fetchDoctorPatientDetailsAction(selectedPatientId!, doctorId);
@@ -175,14 +220,13 @@ function DoctorDashboardContent({ doctorId, doctorName, userRole }: DoctorDashbo
           setPatientMedications(result.medications || []);
           setAiSuggestions(result.aiSuggestions || []);
           setChatMessages(result.chatMessages || []);
-          
-          // Set editable care plan text when patient data is loaded
+
           setEditableCarePlanText(result.patient?.approvedCarePlanText || '');
 
 
           if (result.patient) {
             const currentChatId = getChatId(doctorId, selectedPatientId!);
-            await markMessagesAsReadAction(currentChatId, doctorId);
+            if (currentChatId) await markMessagesAsReadAction(currentChatId, doctorId);
 
             setLoadingSummary(true);
             try {
@@ -199,7 +243,6 @@ function DoctorDashboardContent({ doctorId, doctorName, userRole }: DoctorDashbo
               setLoadingSummary(false);
             }
 
-            // Only generate AI draft if no approved plan exists
             if (!result.patient.approvedCarePlanText) {
               setLoadingAiDraftCarePlan(true);
               try {
@@ -212,7 +255,7 @@ function DoctorDashboardContent({ doctorId, doctorName, userRole }: DoctorDashbo
                     currentMedications: currentMedsString
                   });
                   setAiDraftCarePlan(carePlanResult.carePlan);
-                  if (!editableCarePlanText) setEditableCarePlanText(carePlanResult.carePlan); // Pre-fill for editing if no approved plan
+                  if (!editableCarePlanText) setEditableCarePlanText(carePlanResult.carePlan);
               } catch (aiError: any) {
                 console.error("AI Care Plan Error:", aiError);
                 const errorMsg = aiError.message?.includes("NOT_FOUND") || aiError.message?.includes("API key") || aiError.message?.includes("model") ? "Model not found or API key issue." : "Service error.";
@@ -221,8 +264,8 @@ function DoctorDashboardContent({ doctorId, doctorName, userRole }: DoctorDashbo
                 setLoadingAiDraftCarePlan(false);
               }
             } else {
-                setAiDraftCarePlan(null); // Clear AI draft if approved plan exists
-                setEditableCarePlanText(result.patient.approvedCarePlanText); // Ensure editable text is the approved one
+                setAiDraftCarePlan(null);
+                setEditableCarePlanText(result.patient.approvedCarePlanText);
             }
 
 
@@ -250,6 +293,7 @@ function DoctorDashboardContent({ doctorId, doctorName, userRole }: DoctorDashbo
         setHistorySummary("Error fetching patient data for AI summary.");
         setAiDraftCarePlan("Error fetching patient data for AI care plan draft.");
         setTrendAnalysis({ isTrendConcerning: false, trendSummary: "Error fetching patient data for trend analysis.", suggestedActionForDoctor: null });
+        if (e.message.includes("Database connection")) setDbAvailable(false);
         console.error("Error fetching patient details:", e);
       } finally {
         setLoadingPatientDetails(false);
@@ -269,7 +313,7 @@ function DoctorDashboardContent({ doctorId, doctorName, userRole }: DoctorDashbo
       setError(null);
       try {
         const patientsResultPromise = fetchDoctorPatientsAction(doctorId);
-        await Promise.all([patientsResultPromise, refreshAppointments()]); 
+        await Promise.all([patientsResultPromise, refreshAppointments()]);
         const patientsResult = await patientsResultPromise;
 
 
@@ -291,14 +335,14 @@ function DoctorDashboardContent({ doctorId, doctorName, userRole }: DoctorDashbo
         setError(e.message || 'An unexpected error occurred while fetching initial doctor data.');
         setDbAvailable(false);
         setPatients([]);
-        setAppointments([]); 
+        setAppointments([]);
         console.error("Error fetching initial doctor data:", e);
       } finally {
         setLoadingPatients(false);
       }
     }
     loadInitialDoctorData();
-  }, [doctorId]); 
+  }, [doctorId]);
 
 
   useEffect(() => {
@@ -325,24 +369,24 @@ function DoctorDashboardContent({ doctorId, doctorName, userRole }: DoctorDashbo
          if (chatScrollAreaRef.current) {
             chatScrollAreaRef.current.scrollTop = chatScrollAreaRef.current.scrollHeight;
          }
-      }, 100); // Increased delay slightly
+      }, 100);
     }
   }, [chatMessages, isChatOpen]);
 
   const prepareTrendAnalysisInput = (
     patient: DoctorPatient,
-    healthData: DoctorPatientHealthData[],
-    medications: DoctorPatientMedication[]
+    healthDataList: DoctorPatientHealthData[],
+    medicationsList: DoctorPatientMedication[]
   ): AnalyzePatientHealthTrendsInput => {
-    const recentHealth = healthData.slice(-5).reverse(); 
+    const recentHealth = healthDataList.slice(-5).reverse();
     const healthSummary = recentHealth.length > 0
       ? "Recent Vitals (last " + recentHealth.length + " entries, newest first):\n" + recentHealth.map(d =>
           `- ${new Date(d.timestamp).toLocaleDateString()}: BP: ${d.heartRate && d.steps ? (Math.round(Number(d.heartRate) * 1.6 + Number(d.steps)/200)) + '/' + (Math.round(Number(d.heartRate) * 0.9 + Number(d.steps)/300)) : 'N/A'}, HR: ${d.heartRate ?? 'N/A'}bpm, Glucose: ${d.bloodGlucose ?? 'N/A'}mg/dL, Steps: ${d.steps ?? 'N/A'}`
         ).join("\n")
       : "No recent vital signs logged.";
 
-    const adherenceSummary = medications.length > 0
-      ? "Medication Adherence:\n" + medications.map(m =>
+    const adherenceSummary = medicationsList.length > 0
+      ? "Medication Adherence:\n" + medicationsList.map(m =>
           `- ${m.name} (${m.dosage}): ${m.adherence ?? 'N/A'}%`
         ).join("\n")
       : "No medications listed or adherence not tracked.";
@@ -376,7 +420,7 @@ function DoctorDashboardContent({ doctorId, doctorName, userRole }: DoctorDashbo
       return;
     }
     setSendingMessage(true);
-    const currentDoctorId = doctorId; 
+    const currentDoctorId = doctorId;
     try {
       const result = await sendChatMessageAction(currentDoctorId, doctorName, selectedPatientId, newMessage);
       if (result.error) {
@@ -456,8 +500,7 @@ function DoctorDashboardContent({ doctorId, doctorName, userRole }: DoctorDashbo
       if (result.success) {
         toast({ title: "Care Plan Approved", description: "The care plan has been updated and approved.", variant: "default" });
         setIsCarePlanDialogOpen(false);
-        // Optimistically update or refetch patient data
-        fetchPatientAllData(); // Re-fetch all data to reflect new approved plan
+        fetchPatientAllData();
       } else {
         toast({ title: "Approval Failed", description: result.error, variant: "destructive" });
       }
@@ -468,11 +511,80 @@ function DoctorDashboardContent({ doctorId, doctorName, userRole }: DoctorDashbo
     }
   };
 
+  const handleOpenManageMedicationsSheet = () => {
+    medicationForm.reset({ name: '', dosage: '', frequency: '', reminderTimes: '' });
+    setEditingMedication(null);
+    setIsManageMedicationsSheetOpen(true);
+  };
+
+  const handleEditMedication = (med: DoctorPatientMedication) => {
+    setEditingMedication(med);
+    medicationForm.reset({
+      name: med.name,
+      dosage: med.dosage,
+      frequency: med.frequency,
+      reminderTimes: (med.reminderTimes || []).join(', '),
+    });
+    // Keep sheet open if already open, or open it (handled by main button)
+  };
+  
+  const onMedicationFormSubmit = async (data: MedicationFormValues) => {
+    if (!selectedPatientId || !dbAvailable) {
+      toast({ title: "Error", description: "Patient not selected or database unavailable.", variant: "destructive"});
+      return;
+    }
+    setIsMedicationFormSubmitting(true);
+    const reminderTimesArray = data.reminderTimes ? data.reminderTimes.split(',').map(t => t.trim()).filter(t => t) : [];
+
+    try {
+      let result;
+      if (editingMedication) {
+        result = await updatePatientMedicationAction(editingMedication.id, selectedPatientId, { ...data, reminderTimes: reminderTimesArray });
+      } else {
+        result = await addPatientMedicationAction(selectedPatientId, { ...data, reminderTimes: reminderTimesArray });
+      }
+
+      if (result.error) {
+        toast({ title: editingMedication ? "Update Failed" : "Add Failed", description: result.error, variant: "destructive"});
+      } else if (result.medication) {
+        toast({ title: editingMedication ? "Medication Updated" : "Medication Added", variant: "default"});
+        fetchPatientAllData(); // Refetch all patient data to update medication list
+        medicationForm.reset({ name: '', dosage: '', frequency: '', reminderTimes: '' });
+        setEditingMedication(null);
+        // Optionally close sheet if not editing: if (!editingMedication) setIsManageMedicationsSheetOpen(false);
+      }
+    } catch (err: any) {
+      toast({ title: "Error", description: "An unexpected error occurred.", variant: "destructive"});
+    } finally {
+      setIsMedicationFormSubmitting(false);
+    }
+  };
+
+  const handleDeleteMedication = async () => {
+    if (!deletingMedication || !selectedPatientId || !dbAvailable) return;
+    setIsMedicationFormSubmitting(true); // Use same flag for loading state on delete
+    try {
+      const result = await deletePatientMedicationAction(deletingMedication.id, selectedPatientId);
+      if (result.success) {
+        toast({ title: "Medication Deleted", description: `${deletingMedication.name} has been removed.`, variant: "default"});
+        fetchPatientAllData();
+        setDeletingMedication(null);
+      } else {
+        toast({ title: "Deletion Failed", description: result.error, variant: "destructive"});
+      }
+    } catch (err: any) {
+      toast({ title: "Error", description: "An unexpected error occurred during deletion.", variant: "destructive"});
+    } finally {
+      setIsMedicationFormSubmitting(false);
+      setDeletingMedication(null);
+    }
+  };
+
 
   const formatDateOnly = (dateString: string | Date | undefined): string => {
     if (!dateString) return 'N/A';
     try {
-      return format(parseISO(dateString as string), 'PPP'); // e.g., Jun 22, 2023
+      return format(parseISO(dateString as string), 'PPP');
     } catch {
       try { return format(dateString as Date, 'PPP'); } catch { return 'Invalid Date';}
     }
@@ -481,16 +593,16 @@ function DoctorDashboardContent({ doctorId, doctorName, userRole }: DoctorDashbo
   const formatTimeOnly = (dateString: string | Date | undefined): string => {
      if (!dateString) return 'N/A';
     try {
-      return format(parseISO(dateString as string), 'p'); // e.g., 1:29 PM
+      return format(parseISO(dateString as string), 'p');
     } catch {
       try { return format(dateString as Date, 'p'); } catch { return 'Invalid Time';}
     }
   };
-  
+
   const formatFullDateTime = (dateString: string | Date | undefined): string => {
     if (!dateString) return 'N/A';
     try {
-      return format(parseISO(dateString as string), 'Pp p'); // e.g., Jun 22, 2023, 1:29 PM
+      return format(parseISO(dateString as string), 'Pp p');
     } catch {
        try { return format(dateString as Date, 'Pp p'); } catch { return 'Invalid Date/Time';}
     }
@@ -537,8 +649,8 @@ function DoctorDashboardContent({ doctorId, doctorName, userRole }: DoctorDashbo
         </Alert>
       )}
 
-      <div className="grid grid-cols-1 lg:grid-cols-4 gap-4"> 
-        <div className="lg:col-span-1 space-y-4"> 
+      <div className="grid grid-cols-1 lg:grid-cols-4 gap-4">
+        <div className="lg:col-span-1 space-y-4">
             <Card className="shadow-lg">
                 <CardHeader className="p-4 pb-2">
                 <CardTitle className="flex items-center gap-2">
@@ -640,41 +752,38 @@ function DoctorDashboardContent({ doctorId, doctorName, userRole }: DoctorDashbo
             </Card>
         </div>
 
-        {/* Patient Details Section - occupies remaining 3 columns, responsive grid inside */}
         {coreDataLoading ? (
              <div className="lg:col-span-3 grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4 content-start"> <DashboardSkeletonCentralColumns /> </div>
         ) : selectedPatientId && dbAvailable && selectedPatientData ? (
-             <div className="lg:col-span-3 grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4 content-start"> 
-                {/* Patient Info Card */}
+             <div className="lg:col-span-3 grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4 content-start">
                 <Card className="shadow-md">
-                  <CardHeader className="flex flex-row items-center gap-3 p-4 pb-2"> 
-                    <Avatar className="h-12 w-12 border-2 border-primary"> 
+                  <CardHeader className="flex flex-row items-center gap-3 p-4 pb-2">
+                    <Avatar className="h-12 w-12 border-2 border-primary">
                       <AvatarImage src={selectedPatientData?.photoURL || undefined} alt={selectedPatientData?.name} data-ai-hint="profile person"/>
-                      <AvatarFallback className="text-base">{getInitials(selectedPatientData?.name)}</AvatarFallback> 
+                      <AvatarFallback className="text-base">{getInitials(selectedPatientData?.name)}</AvatarFallback>
                     </Avatar>
                     <div>
-                      <CardTitle className="text-md">{selectedPatientData?.name}</CardTitle> 
-                      <CardDescription className="text-xs">{selectedPatientData?.email || 'No email'}</CardDescription> 
+                      <CardTitle className="text-md">{selectedPatientData?.name}</CardTitle>
+                      <CardDescription className="text-xs">{selectedPatientData?.email || 'No email'}</CardDescription>
                       {selectedPatientData?.readmissionRisk && (
-                        <Badge variant={getRiskBadgeVariant(selectedPatientData.readmissionRisk)} className="mt-1 text-xs px-1.5 py-0.5 capitalize"> 
+                        <Badge variant={getRiskBadgeVariant(selectedPatientData.readmissionRisk)} className="mt-1 text-xs px-1.5 py-0.5 capitalize">
                           {selectedPatientData.readmissionRisk} readmission risk
                         </Badge>
                       )}
                     </div>
                   </CardHeader>
-                  <CardContent className="text-xs text-muted-foreground px-4 pt-0 pb-3"> 
+                  <CardContent className="text-xs text-muted-foreground px-4 pt-0 pb-3">
                     <p>Patient ID: {selectedPatientData?.id.substring(0,8)}...</p>
                     {selectedPatientData?.lastActivity && <p>Last Activity: {formatDistanceToNow(parseISO(selectedPatientData.lastActivity as string), { addSuffix: true })}</p>}
                   </CardContent>
                 </Card>
 
-                {/* AI Patient Summary Card */}
                 <Card className="shadow-md">
-                  <CardHeader className="p-4 pb-2"> 
-                    <CardTitle className="text-sm flex items-center gap-2"><Brain className="h-4 w-4 text-primary"/>AI Patient Summary</CardTitle> 
+                  <CardHeader className="p-4 pb-2">
+                    <CardTitle className="text-sm flex items-center gap-2"><Brain className="h-4 w-4 text-primary"/>AI Patient Summary</CardTitle>
                     <CardDescription className="text-xs">Key points from history.</CardDescription>
                   </CardHeader>
-                  <CardContent className="px-4 pt-1 pb-3"> 
+                  <CardContent className="px-4 pt-1 pb-3">
                     {loadingSummary ? (
                       <div className="space-y-1.5"><Skeleton className="h-3 w-full" /><Skeleton className="h-3 w-5/6" /><Skeleton className="h-3 w-3/4" /></div>
                     ) : (
@@ -685,7 +794,6 @@ function DoctorDashboardContent({ doctorId, doctorName, userRole }: DoctorDashbo
                   </CardContent>
                 </Card>
 
-                {/* Care Plan Card */}
                 <Card className="shadow-md">
                   <CardHeader className="p-4 pb-2">
                     <CardTitle className="text-sm flex items-center gap-2">
@@ -716,62 +824,60 @@ function DoctorDashboardContent({ doctorId, doctorName, userRole }: DoctorDashbo
                 </Card>
 
 
-                {/* Recent Health Data Card */}
                 <Card className="shadow-md">
-                  <CardHeader className="p-4 pb-2"> 
-                    <CardTitle className="text-sm flex items-center gap-2"><Activity className="h-4 w-4 text-primary" /> Recent Health Data</CardTitle> 
+                  <CardHeader className="p-4 pb-2">
+                    <CardTitle className="text-sm flex items-center gap-2"><Activity className="h-4 w-4 text-primary" /> Recent Health Data</CardTitle>
                   </CardHeader>
-                  <CardContent className="px-4 pt-1 pb-2"> 
+                  <CardContent className="px-4 pt-1 pb-2">
                     {patientHealthData.length > 0 ? (
-                      <ScrollArea className="h-[180px] pr-2"> 
-                      <ul className="space-y-1.5 text-xs"> 
-                        {patientHealthData.slice(-15).reverse().map((data) => ( 
-                          <li key={data.id} className="flex justify-between items-center border-b pb-1 pt-0.5 text-xs"> 
+                      <ScrollArea className="h-[240px] pr-2">
+                      <ul className="space-y-1.5 text-xs">
+                        {patientHealthData.slice(-15).reverse().map((data) => (
+                          <li key={data.id} className="flex justify-between items-center border-b pb-1 pt-0.5 text-xs">
                             <span className="text-muted-foreground">{formatDistanceToNow(parseISO(data.timestamp as string), { addSuffix: true })}</span>
-                            <div className="flex gap-1.5"> 
+                            <div className="flex gap-1.5">
                               {data.steps !== undefined && <span className="flex items-center"><Activity className="h-3 w-3 mr-0.5" />{data.steps}</span>}
                               {data.heartRate !== undefined && <span className="flex items-center"><HeartPulse className="h-3 w-3 mr-0.5 text-red-500" />{data.heartRate} bpm</span>}
-                               {data.bloodGlucose !== undefined && <span className="flex items-center"><Droplet className="h-3 w-3 mr-0.5 text-blue-500" />{data.bloodGlucose} mg/dL</span>}
+                              {data.bloodGlucose !== undefined && <span className="flex items-center"><HeartPulse className="h-3 w-3 mr-0.5 text-blue-500" />{data.bloodGlucose} mg/dL</span>}
                             </div>
                           </li>
                         ))}
                       </ul>
                       </ScrollArea>
                     ) : (
-                      <p className="text-xs text-muted-foreground py-3 text-center">No recent health data.</p> 
+                      <p className="text-xs text-muted-foreground py-3 text-center">No recent health data.</p>
                     )}
                   </CardContent>
-                  <CardFooter className="p-3 pt-1"> 
+                  <CardFooter className="p-3 pt-1">
                     <Button variant="link" size="xs" disabled={!dbAvailable || !selectedPatientData} className="text-primary p-0 h-auto text-xs" onClick={handleViewAllHealthData}>View All Health Data</Button>
                   </CardFooter>
                 </Card>
 
-                {/* AI Health Trend Analysis Card */}
                 <Card className="shadow-md">
-                  <CardHeader className="p-4 pb-2"> 
+                  <CardHeader className="p-4 pb-2">
                     <CardTitle className="text-sm flex items-center gap-2">
                       <TrendingUp className="h-4 w-4 text-primary" /> AI Health Trend Analysis
-                    </CardTitle> 
+                    </CardTitle>
                     <CardDescription className="text-xs">Proactive analysis of data.</CardDescription>
                   </CardHeader>
-                  <CardContent className="px-4 pt-1 pb-2 min-h-[120px]"> 
+                  <CardContent className="px-4 pt-1 pb-2 min-h-[120px]">
                     {loadingTrendAnalysis ? (
                       <div className="space-y-1.5">
                         <Skeleton className="h-3 w-3/4" />
                         <Skeleton className="h-3 w-full" />
                         <Skeleton className="h-3 w-5/6" />
-                         <Skeleton className="h-7 w-1/2 mt-1.5" /> 
+                         <Skeleton className="h-7 w-1/2 mt-1.5" />
                       </div>
                     ) : trendAnalysis ? (
                       trendAnalysis.isTrendConcerning ? (
                         <div className="space-y-1.5">
-                          <Alert variant="destructive" className="p-2 text-xs"> 
+                          <Alert variant="destructive" className="p-2 text-xs">
                              <AlertTriangle className="h-3 w-3"/>
                              <AlertTitle className="text-xs font-semibold">Concerning Trend!</AlertTitle>
                              <AlertDescription className="text-xs leading-tight">{trendAnalysis.trendSummary || "A concerning trend was noted."}</AlertDescription>
                           </Alert>
                           {trendAnalysis.suggestedActionForDoctor && (
-                            <div className="mt-1 p-2 bg-amber-50 border border-amber-200 rounded-md dark:bg-amber-900/30 dark:border-amber-700"> 
+                            <div className="mt-1 p-2 bg-amber-50 border border-amber-200 rounded-md dark:bg-amber-900/30 dark:border-amber-700">
                               <p className="text-xs font-semibold text-amber-700 dark:text-amber-300">Suggested Action:</p>
                               <p className="text-xs text-amber-600 dark:text-amber-400 leading-tight">{trendAnalysis.suggestedActionForDoctor}</p>
                             </div>
@@ -779,7 +885,7 @@ function DoctorDashboardContent({ doctorId, doctorName, userRole }: DoctorDashbo
                         </div>
                       ) : (
                         <div className="flex flex-col items-center justify-center text-center h-full py-2">
-                          <ThumbsDown className="h-5 w-5 text-green-500 mb-1" /> 
+                          <Check className="h-5 w-5 text-green-500 mb-1" />
                           <p className="text-xs text-muted-foreground">{trendAnalysis.trendSummary || "No concerning health trends identified."}</p>
                         </div>
                       )
@@ -787,11 +893,11 @@ function DoctorDashboardContent({ doctorId, doctorName, userRole }: DoctorDashbo
                        dbAvailable && <p className="text-xs text-muted-foreground text-center py-3">Trend analysis not available.</p>
                     )}
                   </CardContent>
-                  <CardFooter className="p-3 pt-1"> 
+                  <CardFooter className="p-3 pt-1">
                       <Button
                           variant="outline"
                           size="xs"
-                          className="h-7 text-xs px-2" 
+                          className="h-7 text-xs px-2"
                           onClick={async () => {
                               if (!selectedPatientData || !patientHealthData || !patientMedications) return;
                               setLoadingTrendAnalysis(true);
@@ -809,30 +915,30 @@ function DoctorDashboardContent({ doctorId, doctorName, userRole }: DoctorDashbo
                           }}
                           disabled={loadingTrendAnalysis || !selectedPatientData || !dbAvailable}
                       >
-                         {loadingTrendAnalysis ? <Loader2 className="mr-1 h-3 w-3 animate-spin" /> :  <Sparkles className="mr-1 h-3 w-3"/>} 
+                         {loadingTrendAnalysis ? <Loader2 className="mr-1 h-3 w-3 animate-spin" /> :  <Sparkles className="mr-1 h-3 w-3"/>}
                           Re-analyze
                       </Button>
                   </CardFooter>
                 </Card>
 
-                {/* Medication Overview Card */}
                 <Card className="shadow-md">
-                  <CardHeader className="p-4 pb-2"> 
-                    <CardTitle className="text-sm flex items-center gap-2"><Pill className="h-4 w-4 text-primary" /> Medication Overview</CardTitle> 
+                  <CardHeader className="p-4 pb-2">
+                    <CardTitle className="text-sm flex items-center gap-2"><Pill className="h-4 w-4 text-primary" /> Medication Overview</CardTitle>
                   </CardHeader>
-                  <CardContent className="px-4 pt-1 pb-2"> 
+                  <CardContent className="px-4 pt-1 pb-2">
                     {patientMedications.length > 0 ? (
-                      <ScrollArea className="h-[180px] pr-2"> 
-                      <ul className="space-y-1.5 text-xs"> 
+                      <ScrollArea className="h-[240px] pr-2">
+                      <ul className="space-y-1.5 text-xs">
                         {patientMedications.map(med => (
-                          <li key={med.id} className="border-b pb-1.5"> 
-                            <div className="flex justify-between items-center mb-0.5"> 
-                              <span className="font-medium text-xs">{med.name} <span className="text-xs text-muted-foreground">({med.dosage})</span></span> 
-                              <Badge variant={med.adherence && med.adherence >= 90 ? 'default' : med.adherence && med.adherence >= 70 ? 'secondary' : 'destructive'} className="text-xs px-1.5 py-0.5"> 
+                          <li key={med.id} className="border-b pb-1.5">
+                            <div className="flex justify-between items-center mb-0.5">
+                              <span className="font-medium text-xs">{med.name} <span className="text-xs text-muted-foreground">({med.dosage})</span></span>
+                              <Badge variant={med.adherence && med.adherence >= 90 ? 'default' : med.adherence && med.adherence >= 70 ? 'secondary' : 'destructive'} className="text-xs px-1.5 py-0.5">
                                 {med.adherence !== undefined ? `${med.adherence}% adherence` : 'N/A'}
                               </Badge>
                             </div>
                             <p className="text-xs text-muted-foreground">{med.frequency}</p>
+                             {med.reminderTimes && med.reminderTimes.length > 0 && <p className="text-xs text-muted-foreground">Reminders: {med.reminderTimes.join(', ')}</p>}
                           </li>
                         ))}
                       </ul>
@@ -841,30 +947,29 @@ function DoctorDashboardContent({ doctorId, doctorName, userRole }: DoctorDashbo
                       <p className="text-xs text-muted-foreground py-3 text-center">No medications assigned.</p>
                     )}
                   </CardContent>
-                  <CardFooter className="p-3 pt-1"> 
-                    <Button variant="link" size="xs" disabled={!dbAvailable} className="text-primary p-0 h-auto text-xs" onClick={() => toast({title: "Manage Medications", description: "Medication management for " + (selectedPatientData?.name || 'this patient') + " - Feature is planned for a future update."})}>Manage Medications</Button>
+                  <CardFooter className="p-3 pt-1">
+                    <Button variant="outline" size="xs" disabled={!dbAvailable || !selectedPatientId} className="text-primary p-0 h-auto text-xs" onClick={handleOpenManageMedicationsSheet}>Manage Medications</Button>
                   </CardFooter>
                 </Card>
 
-                {/* AI Suggested Interventions Card */}
-                 <Card className="shadow-md md:col-span-3 xl:col-span-3"> 
-                  <CardHeader className="p-4 pb-2"> 
-                    <CardTitle className="text-sm flex items-center gap-2"><Info className="h-4 w-4 text-primary" /> AI Suggested Interventions</CardTitle> 
+                 <Card className="shadow-md md:col-span-3 xl:col-span-3">
+                  <CardHeader className="p-4 pb-2">
+                    <CardTitle className="text-sm flex items-center gap-2"><Info className="h-4 w-4 text-primary" /> AI Suggested Interventions</CardTitle>
                     <CardDescription className="text-xs">Review and act on AI-driven suggestions.</CardDescription>
                   </CardHeader>
-                  <CardContent className="px-4 pt-1 pb-2"> 
+                  <CardContent className="px-4 pt-1 pb-2">
                     {(loadingPatientDetails && !aiSuggestions.length) ? (
                       <div className="flex items-center justify-center p-3"><Loader2 className="h-5 w-5 animate-spin text-primary" /></div>
                     ) : aiSuggestions.length > 0 ? (
-                      <ScrollArea className="h-[150px] pr-2"> 
-                        <ul className="space-y-1.5"> 
+                      <ScrollArea className="h-[150px] pr-2">
+                        <ul className="space-y-1.5">
                           {aiSuggestions.map(suggestion => (
-                            <li key={suggestion.id} className="p-2 border rounded-md bg-card hover:shadow-sm transition-shadow space-y-1"> 
+                            <li key={suggestion.id} className="p-2 border rounded-md bg-card hover:shadow-sm transition-shadow space-y-1">
                               <p className="text-xs" dangerouslySetInnerHTML={{ __html: formatBoldMarkdown(suggestion.suggestionText) }} />
                               <div className="flex justify-between items-center">
                                 <span className="text-xs text-muted-foreground">{formatDistanceToNow(parseISO(suggestion.timestamp as string), { addSuffix: true })}</span>
                                 {suggestion.status === 'pending' ? (
-                                  <div className="flex gap-1"> 
+                                  <div className="flex gap-1">
                                     <Button size="xs" variant="outline" className="h-6 px-1.5 py-0.5 text-xs border-green-500 text-green-700 hover:bg-green-50 hover:text-green-800 dark:border-green-600 dark:text-green-400 dark:hover:bg-green-700 dark:hover:text-green-200" onClick={() => handleSuggestionAction(suggestion.id, 'approved')} disabled={!dbAvailable}>
                                       <Check className="h-3 w-3 mr-0.5" /> Approve
                                     </Button>
@@ -873,7 +978,7 @@ function DoctorDashboardContent({ doctorId, doctorName, userRole }: DoctorDashbo
                                     </Button>
                                   </div>
                                 ) : (
-                                  <Badge variant={suggestion.status === 'approved' ? 'default' : 'destructive'} className="text-xs capitalize px-1.5 py-0.5"> 
+                                  <Badge variant={suggestion.status === 'approved' ? 'default' : 'destructive'} className="text-xs capitalize px-1.5 py-0.5">
                                     {suggestion.status}
                                   </Badge>
                                 )}
@@ -973,7 +1078,7 @@ function DoctorDashboardContent({ doctorId, doctorName, userRole }: DoctorDashbo
             </DialogDescription>
           </DialogHeader>
           <div className="py-4 space-y-2">
-            <label htmlFor="carePlanTextarea" className="text-sm font-medium">Care Plan Text:</label>
+            <Label htmlFor="carePlanTextarea" className="text-sm font-medium">Care Plan Text:</Label>
             <Textarea
               id="carePlanTextarea"
               value={editableCarePlanText}
@@ -994,6 +1099,136 @@ function DoctorDashboardContent({ doctorId, doctorName, userRole }: DoctorDashbo
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Manage Medications Sheet */}
+      <Sheet open={isManageMedicationsSheetOpen} onOpenChange={setIsManageMedicationsSheetOpen}>
+        <SheetContent className="sm:max-w-lg w-[90vw] overflow-y-auto">
+          <SheetHeader>
+            <SheetTitle>Manage Medications for {selectedPatientData?.name || 'Patient'}</SheetTitle>
+            <SheetDescription>Add, edit, or remove medications prescribed to this patient.</SheetDescription>
+          </SheetHeader>
+          <div className="py-6 space-y-6">
+            {/* Medication Form */}
+            <Form {...medicationForm}>
+              <form onSubmit={medicationForm.handleSubmit(onMedicationFormSubmit)} className="space-y-4 border p-4 rounded-lg shadow-sm">
+                <h3 className="text-lg font-medium">{editingMedication ? 'Edit Medication' : 'Add New Medication'}</h3>
+                <FormField
+                  control={medicationForm.control}
+                  name="name"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Name*</FormLabel>
+                      <FormControl><Input placeholder="e.g., Lisinopril" {...field} /></FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <FormField
+                  control={medicationForm.control}
+                  name="dosage"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Dosage*</FormLabel>
+                      <FormControl><Input placeholder="e.g., 10mg Tablet" {...field} /></FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <FormField
+                  control={medicationForm.control}
+                  name="frequency"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Frequency*</FormLabel>
+                      <FormControl><Input placeholder="e.g., Once daily" {...field} /></FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <FormField
+                  control={medicationForm.control}
+                  name="reminderTimes"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Reminder Times (Optional)</FormLabel>
+                      <FormControl><Input placeholder="e.g., 08:00 AM, 05:00 PM" {...field} /></FormControl>
+                      <FormDescription>Comma-separated. E.g., 08:00 AM, 07:30 PM</FormDescription>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <div className="flex justify-end gap-2">
+                  {editingMedication && (
+                    <Button type="button" variant="outline" onClick={() => { setEditingMedication(null); medicationForm.reset({name: '', dosage: '', frequency: '', reminderTimes: ''}); }} disabled={isMedicationFormSubmitting}>
+                      Cancel Edit
+                    </Button>
+                  )}
+                  <Button type="submit" disabled={isMedicationFormSubmitting}>
+                    {isMedicationFormSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                    {editingMedication ? 'Save Changes' : 'Add Medication'}
+                  </Button>
+                </div>
+              </form>
+            </Form>
+
+            {/* Existing Medications List */}
+            <div className="space-y-3">
+              <h3 className="text-lg font-medium mt-6">Current Medications</h3>
+              {patientMedications.length > 0 ? (
+                <ScrollArea className="h-[250px] pr-2 border rounded-md p-2">
+                  {patientMedications.map((med) => (
+                    <div key={med.id} className="p-3 border-b flex justify-between items-start">
+                      <div>
+                        <p className="font-semibold">{med.name}</p>
+                        <p className="text-sm text-muted-foreground">{med.dosage} - {med.frequency}</p>
+                        {med.reminderTimes && med.reminderTimes.length > 0 && <p className="text-xs text-muted-foreground">Reminders: {med.reminderTimes.join(', ')}</p>}
+                      </div>
+                      <div className="flex gap-1 shrink-0">
+                        <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => handleEditMedication(med)} title="Edit">
+                          <Edit3 className="h-4 w-4" />
+                        </Button>
+                        <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive hover:text-destructive" onClick={() => setDeletingMedication(med)} title="Delete">
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    </div>
+                  ))}
+                </ScrollArea>
+              ) : (
+                <p className="text-sm text-muted-foreground text-center">No medications currently assigned.</p>
+              )}
+            </div>
+          </div>
+          <SheetFooter className="mt-auto">
+            <SheetClose asChild>
+              <Button type="button" variant="outline">Close</Button>
+            </SheetClose>
+          </SheetFooter>
+        </SheetContent>
+      </Sheet>
+
+      {/* Delete Medication Confirmation Dialog */}
+      <AlertDialog open={!!deletingMedication} onOpenChange={() => setDeletingMedication(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Confirm Deletion</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to delete the medication "{deletingMedication?.name}"? This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleDeleteMedication}
+              disabled={isMedicationFormSubmitting}
+              className={buttonVariants({ variant: "destructive" })}
+            >
+              {isMedicationFormSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
 
       {selectedPatientId && selectedPatientData && dbAvailable && (
@@ -1085,13 +1320,13 @@ function DoctorDashboardPageSkeleton({ message }: { message?: string }) {
           {message}
         </div>
       )}
-      <div className="w-full max-w-7xl p-6 space-y-6 bg-card rounded-lg shadow-md"> 
-        <Skeleton className="h-9 w-1/3 mb-3" /> 
+      <div className="w-full max-w-7xl p-6 space-y-6 bg-card rounded-lg shadow-md">
+        <Skeleton className="h-9 w-1/3 mb-3" />
 
-        <div className="grid grid-cols-1 lg:grid-cols-4 gap-4"> 
-            <div className="lg:col-span-1 space-y-4"> 
-                <Skeleton className="h-32 rounded-lg" /> 
-                <Skeleton className="h-48 rounded-lg" /> 
+        <div className="grid grid-cols-1 lg:grid-cols-4 gap-4">
+            <div className="lg:col-span-1 space-y-4">
+                <Skeleton className="h-32 rounded-lg" />
+                <Skeleton className="h-48 rounded-lg" />
             </div>
             <DashboardSkeletonCentralColumns />
         </div>
@@ -1103,14 +1338,14 @@ function DoctorDashboardPageSkeleton({ message }: { message?: string }) {
 function DashboardSkeletonCentralColumns() {
   return (
     <>
-      <div className="lg:col-span-3 grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4 content-start"> 
-        <Skeleton className="h-24 rounded-lg" />  
-        <Skeleton className="h-24 rounded-lg" />  
-        <Skeleton className="h-32 rounded-lg" /> {/* Care Plan Card */}
-        <Skeleton className="h-40 rounded-lg" /> {/* Health Data Card */}
-        <Skeleton className="h-32 rounded-lg" />  {/* Trend Analysis Card */}
-        <Skeleton className="h-40 rounded-lg" />  {/* Medications Card */}
-        <Skeleton className="h-36 rounded-lg md:col-span-3 xl:col-span-3" /> {/* AI Suggestions */}
+      <div className="lg:col-span-3 grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4 content-start">
+        <Skeleton className="h-24 rounded-lg" />
+        <Skeleton className="h-24 rounded-lg" />
+        <Skeleton className="h-32 rounded-lg" />
+        <Skeleton className="h-40 rounded-lg" />
+        <Skeleton className="h-32 rounded-lg" />
+        <Skeleton className="h-40 rounded-lg" />
+        <Skeleton className="h-36 rounded-lg md:col-span-3 xl:col-span-3" />
       </div>
     </>
   );
