@@ -40,6 +40,7 @@ import {
   type PatientAISuggestion,
 } from '@/app/actions/patientActions';
 import { markMessagesAsReadAction } from '@/app/actions/chatActions';
+import { format, formatDistanceToNow } from 'date-fns';
 
 
 const symptomFormSchema = z.object({
@@ -76,7 +77,7 @@ export default function PatientDashboard({ userId, userRole }: PatientDashboardP
   const [medications, setMedications] = useState<PatientMedication[]>([]);
   const [symptomReports, setSymptomReports] = useState<PatientSymptomReport[]>([]);
   const [chatMessages, setChatMessages] = useState<PatientChatMessage[]>([]);
-  const [patientSuggestions, setPatientSuggestions] = useState<PatientAISuggestion[]>([]);
+  const [patientSuggestions, setPatientSuggestions] = useState<PatientAISuggestion[]>([]); // Renamed from approvedAISuggestions
   const [loadingPatientSuggestions, setLoadingPatientSuggestions] = useState(true);
 
   const [assignedDoctorId, setAssignedDoctorId] = useState<string | null>(null);
@@ -136,7 +137,7 @@ export default function PatientDashboard({ userId, userRole }: PatientDashboardP
           setMedications(mainDataResult.medications || []);
           setSymptomReports(mainDataResult.symptomReports || []);
           setChatMessages(mainDataResult.chatMessages || []);
-          setPatientSuggestions(mainDataResult.patientSuggestions || []);
+          setPatientSuggestions(mainDataResult.patientSuggestions || []); // Updated
           setAssignedDoctorId(mainDataResult.assignedDoctorId || null);
           setAssignedDoctorName(mainDataResult.assignedDoctorName || null);
           setPatientDisplayName(mainDataResult.patientDisplayName || "Patient");
@@ -166,7 +167,7 @@ export default function PatientDashboard({ userId, userRole }: PatientDashboardP
 
   useEffect(() => {
     if (isChatOpen && chatScrollAreaRef.current) {
-      setTimeout(() => { // Ensure content is rendered before scrolling
+      setTimeout(() => { 
          if (chatScrollAreaRef.current) {
             chatScrollAreaRef.current.scrollTop = chatScrollAreaRef.current.scrollHeight;
          }
@@ -233,7 +234,7 @@ export default function PatientDashboard({ userId, userRole }: PatientDashboardP
           action: <CheckCircle className="text-green-600 dark:text-green-400" />,
         });
         form.reset();
-        // After submitting, re-fetch patient data to get any new pending suggestions
+        
         const updatedData = await fetchPatientDashboardDataAction(userId);
         if (updatedData.patientSuggestions) {
           setPatientSuggestions(updatedData.patientSuggestions);
@@ -268,7 +269,6 @@ export default function PatientDashboard({ userId, userRole }: PatientDashboardP
       } else if (result.message) {
         setChatMessages(prev => [...prev, result.message!]);
         setNewMessage('');
-        // toast({ title: "Message Sent", variant: "default" }); // Can be too noisy
       }
     } catch (err: any) {
       console.error("Error sending patient message:", err);
@@ -291,7 +291,7 @@ export default function PatientDashboard({ userId, userRole }: PatientDashboardP
 
   const formatDateOnly = (timestamp: Date | string | undefined): string => {
     if (!timestamp) return 'N/A';
-    return new Date(timestamp).toLocaleDateString();
+    return format(new Date(timestamp), 'PPP');
   };
 
   const getSeverityIcon = (severity: 'mild' | 'moderate' | 'severe') => {
@@ -329,7 +329,7 @@ export default function PatientDashboard({ userId, userRole }: PatientDashboardP
          </Alert>
        )}
 
-      {(loadingInterventions || suggestedInterventions !== null) && (
+      {(loadingInterventions || suggestedInterventions !== null) && dbAvailable && (
         <Card className="bg-blue-50 border-blue-200 shadow-md hover:shadow-lg transition-shadow dark:bg-blue-900 dark:border-blue-700">
           <CardHeader>
             <CardTitle className="flex items-center gap-2 text-blue-800 dark:text-blue-200">
@@ -367,7 +367,7 @@ export default function PatientDashboard({ userId, userRole }: PatientDashboardP
             </div>
              <div className="space-y-6">
                 <Skeleton className="h-64 rounded-lg" /> {/* Medications */}
-                <Skeleton className="h-64 rounded-lg" /> {/* AI Tips */}
+                <Skeleton className="h-64 rounded-lg" /> {/* AI Tips / Recommendations */}
             </div>
           </div>
         </div>
@@ -408,7 +408,7 @@ export default function PatientDashboard({ userId, userRole }: PatientDashboardP
             </div>
 
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                <div className="space-y-6">
+                <div className="space-y-6"> {/* Left Column */}
                     <Card className="shadow-md">
                         <CardHeader>
                         <CardTitle>Recent Health Trends</CardTitle>
@@ -545,7 +545,7 @@ export default function PatientDashboard({ userId, userRole }: PatientDashboardP
                         </CardContent>
                     </Card>
                 </div>
-                <div className="space-y-6">
+                <div className="space-y-6"> {/* Right Column */}
                     <Card className="shadow-md">
                         <CardHeader>
                         <CardTitle className="flex items-center gap-2">
@@ -577,7 +577,7 @@ export default function PatientDashboard({ userId, userRole }: PatientDashboardP
                     <Card className="shadow-md">
                         <CardHeader>
                         <CardTitle className="flex items-center gap-2 text-green-700 dark:text-green-300">
-                            <Lightbulb className="h-5 w-5"/> Recommendations &amp; AI Tips
+                            <Lightbulb className="h-5 w-5"/> Recommendations & AI Tips
                         </CardTitle>
                         <CardDescription>Advice and suggestions for your well-being.</CardDescription>
                         </CardHeader>
@@ -604,7 +604,7 @@ export default function PatientDashboard({ userId, userRole }: PatientDashboardP
                                             <p className={`text-sm ${suggestion.status === 'approved' ? 'text-green-700 dark:text-green-300' : 'text-blue-600 dark:text-blue-400'}`}
                                             dangerouslySetInnerHTML={{ __html: formatBoldMarkdown(suggestion.suggestionText) }} />
                                             <p className="text-xs text-muted-foreground mt-1">
-                                                {suggestion.status === 'approved' ? `Approved on: ${formatDateOnly(suggestion.timestamp)}` : `Suggested on: ${formatDateOnly(suggestion.timestamp)}`}
+                                                {suggestion.status === 'approved' ? `Approved: ${formatDistanceToNow(new Date(suggestion.timestamp), { addSuffix: true })}` : `Suggested: ${formatDistanceToNow(new Date(suggestion.timestamp), { addSuffix: true })}`}
                                             </p>
                                         </div>
                                     </div>
@@ -656,7 +656,7 @@ export default function PatientDashboard({ userId, userRole }: PatientDashboardP
                       <div className={`p-3 rounded-xl max-w-[80%] shadow-sm ${msg.senderId === userId ? 'bg-primary text-primary-foreground' : 'bg-card text-card-foreground border'}`}>
                         <p className="text-sm">{msg.text}</p>
                         <p className={`text-xs mt-1 ${msg.senderId === userId ? 'text-primary-foreground/70 text-right' : 'text-muted-foreground text-left'}`}>
-                          {msg.senderName} - {formatDateForDisplay(msg.timestamp)} {msg.isRead === false && msg.senderId !== userId ? '(Unread)' : ''}
+                          {msg.senderName} - {formatDistanceToNow(new Date(msg.timestamp), { addSuffix: true })} {msg.isRead === false && msg.senderId !== userId ? '(Unread)' : ''}
                         </p>
                       </div>
                     </div>
@@ -696,4 +696,3 @@ export default function PatientDashboard({ userId, userRole }: PatientDashboardP
     </div>
   );
 }
-
