@@ -1,7 +1,9 @@
+# Healthwise Hub
 
-# HealthWise Hub
+## Overview
+Healthwise Sentinel is a connected care platform designed to enhance proactive healthcare management through AI-driven insights and efficient communication between patients, doctors, and administrators. Built with modern web technologies, the platform ensures a seamless user experience tailored to the needs of each role.
 
-This is a Next.js application designed for post-discharge patient care management using AI-driven insights.
+---
 
 ## Getting Started
 
@@ -20,9 +22,8 @@ This is a Next.js application designed for post-discharge patient care managemen
 
         ```dotenv
         # MongoDB Connection URI
-        # Replace 'your_mongodb_password' with your actual MongoDB Atlas password for the 'amithxipher' user.
-        # Example: MONGODB_URI=mongodb+srv://amithxipher:Password@55555@health.bqy9gqs.mongodb.net/?appName=Health
-        MONGODB_URI=mongodb+srv://amithxipher:Password%4055555@health.bqy9gqs.mongodb.net/?appName=Health
+        # Replace with you mongodb URI
+        MONGODB_URI=[ Your mongodb uri here ]
         # Optional: Specify a database name, or it defaults to 'healthwisehub'
         MONGODB_DB_NAME=healthwisehub_db
 
@@ -79,42 +80,154 @@ This is a Next.js application designed for post-discharge patient care managemen
     npm run genkit:watch
     ```
 
+## Features
 
-## Key Features
+### I. Core System & User Management
 
-*   **Patient Dashboard:** View health trends, medication adherence, report symptoms, chat with doctor.
-*   **Doctor Dashboard:** Manage assigned patients, view summaries, monitor health data, review AI suggestions, chat with patients, view appointments.
-*   **Admin Dashboard:** User management (view, add new users with email notifications), system audit logs (simulated).
-*   **AI Integration (Genkit):**
-    *   Summarize patient history.
-    *   Generate suggested interventions based on patient data.
-    *   Generate initial care plans.
-*   **MongoDB:** Data persistence for users, health data, medications, etc.
-*   **Email Notifications (Brevo):** Welcome emails for new users.
-*   **Firebase (Potentially for Auth):** User authentication (currently custom, Firebase can be re-enabled).
+#### User Roles & Authentication
+- **Three Distinct Roles**: Patient, Doctor, and Admin, each with tailored dashboards and permissions.
+- **Secure Login**: Custom email/password authentication system.
+- **Forced Password Change**: New users created by an admin must change their temporary password on first login.
+- **Session Management**: Cookie-based sessions.
+- **Logout Functionality**.
+- **Profile Management**: Users can view and edit their profile information (display name, contact email, emergency contact details, and role-specific info).
 
-## Project Structure
+#### Landing Page
+- An introductory page for the application, highlighting its purpose and key features.
 
-*   `src/app/`: Next.js App Router pages and layouts.
-*   `src/components/`: React components, including UI elements (`ui/`) and feature-specific components (dashboards).
-*   `src/lib/`: Utility functions, including Firebase setup (`firebase.ts`), MongoDB setup (`mongodb.ts`), database seeding (`seed-db.ts`), and email service (`email.ts`).
-*   `src/hooks/`: Custom React hooks (`useToast`, `useMobile`).
-*   `src/ai/`: Genkit AI flows and configuration.
-*   `public/`: Static assets.
+#### Navigation & UI
+- **Responsive Sidebar**: Main navigation, dynamically adjusting based on user role.
+- **Header**: Displays app logo, user avatar, and a notification system.
+- **Modern UI**: Built with Next.js, React, ShadCN UI components, and Tailwind CSS.
+- **Pop-up Chat Interface**: For patient-doctor communication, accessible via a floating button.
+- **Toaster Notifications**: For feedback on actions (e.g., success/error messages).
 
-## Technologies Used
+---
 
-*   Next.js (App Router)
-*   React
-*   TypeScript
-*   Tailwind CSS
-*   Shadcn/ui
-*   MongoDB (via `mongodb` driver)
-*   Brevo (for SMTP email)
-*   Nodemailer
-*   Genkit (for AI features)
-*   Recharts (for charts)
-*   Zod (for schema validation)
-*   Faker.js (for mock data generation)
-*   tsx (for running TS scripts like seeding)
+### II. Patient-Specific Features
+
+#### Patient Dashboard
+- Overview of key health metrics (steps, heart rate, blood glucose - simulated).
+- Chart displaying recent health trends.
+
+#### Symptom Reporting
+- Form to report symptoms with manual severity selection (mild, moderate, severe) and description.
+- Submitted reports trigger AI analysis and alerts.
+
+#### Medication Management (Patient View)
+- View prescribed medication list with dosage, frequency, and reminder times.
+- **"Mark as Taken" Button**: Allows patients to indicate they've taken a specific dose, updating lastTaken timestamp.
+- Visual medication reminders displayed in the header notification dropdown if a scheduled dose for the day is missed.
+
+#### AI-Generated & Doctor-Approved Recommendations
+- View AI-generated self-care tips (related to mild symptom reports) with a disclaimer "Awaiting Doctor Review."
+- View doctor-approved recommendations (which could be general interventions or approved self-care tips).
+
+#### Communication
+- Chat with their assigned doctor through the pop-up chat interface.
+
+---
+
+### III. Doctor-Specific Features
+
+#### Doctor Dashboard
+- View a list of assigned patients, searchable by name, with visual risk badges.
+
+#### Detailed Patient View (on selecting a patient)
+- **Patient Information Card**: Basic details and risk level.
+- **AI Patient History Summary**: Quick overview.
+- **AI Draft Care Plan**: Initial care plan generated by AI (can be edited/approved).
+- **Approved Care Plan Display**: Shows the current doctor-approved care plan, who approved it, and when.
+- **Care Plan Management**: Ability to edit and approve care plans.
+- **Recent Health Data**: List of recent vital signs and activity.
+- **Full Health Data View**: Dialog to view a more extensive history of health data.
+- **Medication Overview**: View patient's medications, adherence percentages (mocked), and lastTaken status.
+
+#### Medication Management
+- Add new medications for a patient (name, dosage, frequency, reminder times).
+- Edit existing medications.
+- Delete medications (with confirmation).
+
+#### AI Health Trend Analysis
+- Proactively analyzes patient data for concerning trends, provides a summary, and suggests actions for the doctor.
+
+#### AI Suggested Interventions Review
+- View AI-generated suggestions (including self-care tips from patients) and approve or reject them.
+
+#### Appointments
+- View a schedule of upcoming appointments.
+
+#### Communication
+- Chat with the selected patient through the pop-up chat interface.
+- Receive "System Alerts" and "System Info" messages regarding patient-reported symptoms and AI analysis.
+
+---
+
+### IV. Admin-Specific Features
+
+#### Admin Dashboard
+
+#### User Management
+- View a table of all system users (patients, doctors, admins).
+- **Add New Users**: Form to create new patient, doctor, or admin accounts. Includes fields for role-specific details (e.g., specialty for doctors, emergency contacts for patients).
+- **Edit Existing Users**: Modify details like display name, contact email, and role-specific information.
+- **Delete Users**: Remove user accounts (with confirmation).
+
+#### System Alert Simulation
+- Ability to simulate a critical health alert for any patient to test the alerting workflow (emergency email, doctor notification).
+
+#### System Audit Logs
+- Simulated display of recent system activity.
+
+---
+
+### V. AI-Driven Features (Integrated Across Roles)
+
+#### Symptom Severity Analysis
+- Analyzes patient-reported symptoms, their risk profile, and latest vitals.
+- Determines an objective severity level and provides justification.
+- Recommends if a critical alert is needed.
+- Suggests follow-up actions:
+  - Self-care tips for patients (for mild AI-determined severity), saved as 'pending' suggestions.
+  - Specific questions for doctors to ask patients (for moderate AI-determined severity), sent as info to the doctor.
+
+#### AI Health Trend Analysis (for Doctors)
+- Identifies concerning patterns in patient health data, medication adherence, and risk profile.
+- Provides a summary of the trend and a suggested actionable step for the doctor.
+
+#### Patient History Summarization (for Doctors)
+
+#### Care Plan Generation (AI Draft for Doctors)
+
+#### General Intervention Suggestions (for Doctors)
+
+---
+
+### VI. Notification & Alerting System
+
+#### Header Notifications
+- Bell icon with a badge indicating the count of unread messages and important alerts.
+- Dropdown displays a list of unread messages, system alerts (critical/info), and medication reminders.
+- Notifications link to the relevant dashboard/patient view.
+
+#### Email Alerts
+- Automated email sent to a patient's emergencyContactEmail when they (or an admin simulating for them) report severe symptoms or if the AI analysis deems the situation critical.
+
+#### Doctor Notifications
+- "System Alert" or "System Info" messages appear in the doctor's chat queue and notification dropdown for critical patient events, new symptom reports, and AI insights.
+
+---
+
+## Media
+
+### Demo Video
+[Placeholder for Demo Video]
+
+### Architecture Diagram
+[Placeholder for Architecture Image]
+
+---
+
+## Goal
+Showcase a connected care loop involving AI, a patient, a doctor, and an admin, highlighting proactive care and efficiency.
 
