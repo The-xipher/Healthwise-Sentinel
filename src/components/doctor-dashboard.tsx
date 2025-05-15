@@ -12,7 +12,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Input } from '@/components/ui/input';
-import { Loader2, AlertTriangle, Users, Stethoscope, Activity, HeartPulse, Pill, MessageSquare, Send, Check, X, Info, Brain, Search, CalendarDays, Sparkles, BookMarked, FileText, Edit3, Trash2, PlusCircle } from 'lucide-react';
+import { Label } from '@/components/ui/label'; // Added Label import
+import { Loader2, AlertTriangle, Users, Stethoscope, Activity, HeartPulse, Pill, MessageSquare, Send, Check, X, Info, Brain, Search, CalendarDays, Sparkles, BookMarked, FileText, Edit3, Trash2, PlusCircle, ThumbsDown, Droplet, TrendingUp } from 'lucide-react';
 import { Textarea } from './ui/textarea';
 import { ScrollArea } from './ui/scroll-area';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
@@ -194,7 +195,7 @@ function DoctorDashboardContent({ doctorId, doctorName, userRole }: DoctorDashbo
       setHistorySummary("Loading AI Summary...");
       setAiDraftCarePlan("Loading AI Care Plan Draft...");
       setTrendAnalysis(null);
-      setPatientMedications([]); // Clear previous patient's meds
+      setPatientMedications([]); 
 
       try {
         const result = await fetchDoctorPatientDetailsAction(selectedPatientId!, doctorId);
@@ -361,7 +362,7 @@ function DoctorDashboardContent({ doctorId, doctorName, userRole }: DoctorDashbo
       return;
     }
     fetchPatientAllData();
-  }, [selectedPatientId, doctorId, doctorName, toast]);
+  }, [selectedPatientId, doctorId, doctorName, toast]); // Removed fetchPatientAllData from dep array as it's stable
 
   useEffect(() => {
     if (isChatOpen && chatScrollAreaRef.current) {
@@ -525,7 +526,6 @@ function DoctorDashboardContent({ doctorId, doctorName, userRole }: DoctorDashbo
       frequency: med.frequency,
       reminderTimes: (med.reminderTimes || []).join(', '),
     });
-    // Keep sheet open if already open, or open it (handled by main button)
   };
   
   const onMedicationFormSubmit = async (data: MedicationFormValues) => {
@@ -548,10 +548,9 @@ function DoctorDashboardContent({ doctorId, doctorName, userRole }: DoctorDashbo
         toast({ title: editingMedication ? "Update Failed" : "Add Failed", description: result.error, variant: "destructive"});
       } else if (result.medication) {
         toast({ title: editingMedication ? "Medication Updated" : "Medication Added", variant: "default"});
-        fetchPatientAllData(); // Refetch all patient data to update medication list
+        fetchPatientAllData(); 
         medicationForm.reset({ name: '', dosage: '', frequency: '', reminderTimes: '' });
         setEditingMedication(null);
-        // Optionally close sheet if not editing: if (!editingMedication) setIsManageMedicationsSheetOpen(false);
       }
     } catch (err: any) {
       toast({ title: "Error", description: "An unexpected error occurred.", variant: "destructive"});
@@ -562,7 +561,7 @@ function DoctorDashboardContent({ doctorId, doctorName, userRole }: DoctorDashbo
 
   const handleDeleteMedication = async () => {
     if (!deletingMedication || !selectedPatientId || !dbAvailable) return;
-    setIsMedicationFormSubmitting(true); // Use same flag for loading state on delete
+    setIsMedicationFormSubmitting(true); 
     try {
       const result = await deletePatientMedicationAction(deletingMedication.id, selectedPatientId);
       if (result.success) {
@@ -649,16 +648,16 @@ function DoctorDashboardContent({ doctorId, doctorName, userRole }: DoctorDashbo
         </Alert>
       )}
 
-      <div className="grid grid-cols-1 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 content-start">
         <div className="lg:col-span-1 space-y-4">
             <Card className="shadow-lg">
-                <CardHeader className="p-4 pb-2">
-                <CardTitle className="flex items-center gap-2">
-                    <Users className="h-5 w-5" /> Patient List
+                <CardHeader className="py-3 px-4">
+                <CardTitle className="flex items-center gap-2 text-lg">
+                    <Users className="h-5 w-5 text-primary" /> Patient List
                 </CardTitle>
                 <CardDescription className="text-xs">Search and select a patient.</CardDescription>
                 </CardHeader>
-                <CardContent className="p-4 pt-2">
+                <CardContent className="px-4 pt-2 pb-3">
                 <div className="relative mb-4">
                     <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                     <Input
@@ -684,7 +683,7 @@ function DoctorDashboardContent({ doctorId, doctorName, userRole }: DoctorDashbo
                     <SelectContent>
                         {filteredPatients.length > 0 ? (
                         filteredPatients.map((patient) => {
-                            const patientName = patient.name || 'Unknown Patient';
+                            const patientName = patient.name;
                             return (
                             <SelectItem key={patient.id} value={patient.id}>
                                 <div className="flex items-center justify-between w-full gap-3">
@@ -753,9 +752,9 @@ function DoctorDashboardContent({ doctorId, doctorName, userRole }: DoctorDashbo
         </div>
 
         {coreDataLoading ? (
-             <div className="lg:col-span-3 grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4 content-start"> <DashboardSkeletonCentralColumns /> </div>
+             <div className="lg:col-span-2 grid grid-cols-1 md:grid-cols-2 gap-4 content-start"> <DashboardSkeletonCentralColumns /> </div>
         ) : selectedPatientId && dbAvailable && selectedPatientData ? (
-             <div className="lg:col-span-3 grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4 content-start">
+             <div className="lg:col-span-2 grid grid-cols-1 md:grid-cols-2 gap-4 content-start">
                 <Card className="shadow-md">
                   <CardHeader className="flex flex-row items-center gap-3 p-4 pb-2">
                     <Avatar className="h-12 w-12 border-2 border-primary">
@@ -838,7 +837,7 @@ function DoctorDashboardContent({ doctorId, doctorName, userRole }: DoctorDashbo
                             <div className="flex gap-1.5">
                               {data.steps !== undefined && <span className="flex items-center"><Activity className="h-3 w-3 mr-0.5" />{data.steps}</span>}
                               {data.heartRate !== undefined && <span className="flex items-center"><HeartPulse className="h-3 w-3 mr-0.5 text-red-500" />{data.heartRate} bpm</span>}
-                              {data.bloodGlucose !== undefined && <span className="flex items-center"><HeartPulse className="h-3 w-3 mr-0.5 text-blue-500" />{data.bloodGlucose} mg/dL</span>}
+                              {data.bloodGlucose !== undefined && <span className="flex items-center"><Droplet className="h-3 w-3 mr-0.5 text-blue-500" />{data.bloodGlucose} mg/dL</span>}
                             </div>
                           </li>
                         ))}
@@ -885,7 +884,7 @@ function DoctorDashboardContent({ doctorId, doctorName, userRole }: DoctorDashbo
                         </div>
                       ) : (
                         <div className="flex flex-col items-center justify-center text-center h-full py-2">
-                          <Check className="h-5 w-5 text-green-500 mb-1" />
+                          <ThumbsDown className="h-5 w-5 text-green-500 mb-1" />
                           <p className="text-xs text-muted-foreground">{trendAnalysis.trendSummary || "No concerning health trends identified."}</p>
                         </div>
                       )
@@ -948,11 +947,13 @@ function DoctorDashboardContent({ doctorId, doctorName, userRole }: DoctorDashbo
                     )}
                   </CardContent>
                   <CardFooter className="p-3 pt-1">
-                    <Button variant="outline" size="xs" disabled={!dbAvailable || !selectedPatientId} className="text-primary p-0 h-auto text-xs" onClick={handleOpenManageMedicationsSheet}>Manage Medications</Button>
+                    <Button variant="outline" size="xs" disabled={!dbAvailable || !selectedPatientId} className="h-7 text-xs px-2" onClick={handleOpenManageMedicationsSheet}>
+                      <Edit3 className="mr-1 h-3 w-3" /> Manage Medications
+                    </Button>
                   </CardFooter>
                 </Card>
 
-                 <Card className="shadow-md md:col-span-3 xl:col-span-3">
+                 <Card className="shadow-md md:col-span-2">
                   <CardHeader className="p-4 pb-2">
                     <CardTitle className="text-sm flex items-center gap-2"><Info className="h-4 w-4 text-primary" /> AI Suggested Interventions</CardTitle>
                     <CardDescription className="text-xs">Review and act on AI-driven suggestions.</CardDescription>
@@ -994,7 +995,7 @@ function DoctorDashboardContent({ doctorId, doctorName, userRole }: DoctorDashbo
                 </Card>
             </div>
         ) : selectedPatientId && !coreDataLoading && dbAvailable ? (
-             <div className="lg:col-span-3">
+             <div className="lg:col-span-2">
                 <Alert variant="default" className="bg-orange-50 border-orange-200 text-orange-800 dark:bg-orange-900 dark:border-orange-700 dark:text-orange-200 h-full flex flex-col justify-center items-center">
                     <AlertTriangle className="h-6 w-6 text-orange-600 dark:text-orange-400 mb-2" />
                     <AlertTitle className="text-lg">Patient Data Not Found</AlertTitle>
@@ -1002,7 +1003,7 @@ function DoctorDashboardContent({ doctorId, doctorName, userRole }: DoctorDashbo
                 </Alert>
             </div>
         ) : !selectedPatientId && dbAvailable && !loadingPatients && (
-            <div className="lg:col-span-3">
+            <div className="lg:col-span-2">
                 <Card className="shadow-md h-full flex items-center justify-center">
                     <CardContent className="pt-6">
                         <p className="text-center text-muted-foreground text-lg">
@@ -1013,7 +1014,7 @@ function DoctorDashboardContent({ doctorId, doctorName, userRole }: DoctorDashbo
             </div>
         )}
         {!selectedPatientId && !dbAvailable && !loadingPatients && (
-            <div className="lg:col-span-3">
+            <div className="lg:col-span-2">
                 <Card className="shadow-md h-full flex items-center justify-center">
                 <CardContent className="pt-6">
                     <p className="text-center text-muted-foreground text-lg">Patient selection unavailable. Database connection may be down.</p>
@@ -1257,7 +1258,8 @@ function DoctorDashboardContent({ doctorId, doctorName, userRole }: DoctorDashbo
                     ) : chatMessages.length > 0 ? (
                     <div className="space-y-4">
                         {chatMessages.map(msg => {
-                            const isDoctorMessage = msg.senderId === doctorId;
+                            const currentDoctorId = doctorId;
+                            const isDoctorMessage = msg.senderId === currentDoctorId;
                             return (
                             <div key={msg.id} className={`flex ${isDoctorMessage ? 'justify-end' : 'justify-start'}`}>
                                 <div className={`p-3 rounded-xl max-w-[80%] shadow-sm ${isDoctorMessage ? 'bg-primary text-primary-foreground' : 'bg-card text-card-foreground border'}`}>
@@ -1323,7 +1325,7 @@ function DoctorDashboardPageSkeleton({ message }: { message?: string }) {
       <div className="w-full max-w-7xl p-6 space-y-6 bg-card rounded-lg shadow-md">
         <Skeleton className="h-9 w-1/3 mb-3" />
 
-        <div className="grid grid-cols-1 lg:grid-cols-4 gap-4">
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
             <div className="lg:col-span-1 space-y-4">
                 <Skeleton className="h-32 rounded-lg" />
                 <Skeleton className="h-48 rounded-lg" />
@@ -1338,15 +1340,16 @@ function DoctorDashboardPageSkeleton({ message }: { message?: string }) {
 function DashboardSkeletonCentralColumns() {
   return (
     <>
-      <div className="lg:col-span-3 grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4 content-start">
-        <Skeleton className="h-24 rounded-lg" />
-        <Skeleton className="h-24 rounded-lg" />
+      <div className="lg:col-span-2 grid grid-cols-1 md:grid-cols-2 gap-4 content-start">
+        <Skeleton className="h-28 rounded-lg" />
+        <Skeleton className="h-28 rounded-lg" />
         <Skeleton className="h-32 rounded-lg" />
         <Skeleton className="h-40 rounded-lg" />
         <Skeleton className="h-32 rounded-lg" />
         <Skeleton className="h-40 rounded-lg" />
-        <Skeleton className="h-36 rounded-lg md:col-span-3 xl:col-span-3" />
+        <Skeleton className="h-36 rounded-lg md:col-span-2" />
       </div>
     </>
   );
 }
+
