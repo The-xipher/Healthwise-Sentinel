@@ -9,7 +9,7 @@ import type { Appointment as ApptInterface, RawAppointment as RawApptInterface }
 // Define interfaces for mock data
 interface User {
   _id: ObjectId;
-  email: string;
+  email: string; // Contact email
   displayName: string;
   photoURL: string;
   role: 'patient' | 'doctor' | 'admin';
@@ -19,6 +19,7 @@ interface User {
   readmissionRisk?: 'low' | 'medium' | 'high'; // For patients
   medicalHistory?: string; // For patients
   emergencyContactNumber?: string; // For patients
+  emergencyContactEmail?: string; // For patients
   lastActivity?: Date;
   creationTime: Date;
   lastSignInTime: Date;
@@ -31,6 +32,7 @@ interface Credential {
   passwordSalt?: string;
   passwordHash?: string;
   passwordPlainText: string;
+  requiresPasswordChange?: boolean; // New field
 }
 
 interface HealthData {
@@ -134,7 +136,7 @@ export async function seedDatabase(): Promise<{ success: boolean; message: strin
     // --- Admins ---
     const adminUser: User = {
       _id: adminUserObjectId1,
-      email: 'admin.user@healthwise.com', // For display/contact
+      email: 'admin.contact@healthwise.com', // For display/contact
       displayName: 'Admin User',
       photoURL: `https://placehold.co/100x100.png?text=AU`, dataAIHint: 'profile admin',
       role: 'admin',
@@ -148,13 +150,14 @@ export async function seedDatabase(): Promise<{ success: boolean; message: strin
       userId: adminUser._id,
       email: 'admin@healthwise.com', // Login email
       passwordPlainText: DEFAULT_PASSWORD,
+      requiresPasswordChange: false,
     });
 
     // --- Doctors ---
     const doctorsForAssignment: User[] = [];
     const doctor1: User = {
       _id: doctorUserObjectId1,
-      email: 'evelyn.reed.md@healthwise.com',
+      email: 'evelyn.reed.contact@healthwise.com',
       displayName: 'Dr. Evelyn Reed',
       photoURL: `https://placehold.co/100x100.png?text=ER`, dataAIHint: 'profile doctor',
       role: 'doctor',
@@ -170,11 +173,12 @@ export async function seedDatabase(): Promise<{ success: boolean; message: strin
       userId: doctor1._id,
       email: 'dr.reed@healthwise.com', // Login email
       passwordPlainText: DEFAULT_PASSWORD,
+      requiresPasswordChange: false,
     });
 
     const doctor2: User = {
         _id: doctorUserObjectId2,
-        email: `ben.carter.md@healthwise.com`,
+        email: `ben.carter.contact@healthwise.com`,
         displayName: `Dr. Ben Carter`,
         photoURL: `https://placehold.co/100x100.png?text=BC`, dataAIHint: 'profile doctor',
         role: 'doctor',
@@ -190,6 +194,7 @@ export async function seedDatabase(): Promise<{ success: boolean; message: strin
       userId: doctor2._id,
       email: `dr.carter@healthwise.com`, // Login email
       passwordPlainText: DEFAULT_PASSWORD,
+      requiresPasswordChange: false,
     });
 
     // --- Patients ---
@@ -198,9 +203,11 @@ export async function seedDatabase(): Promise<{ success: boolean; message: strin
         _id: patientUserObjectId1,
         displayName: 'Ethan Carter',
         loginEmail: 'ethan.carter@healthwise.com',
+        contactEmail: 'ethan.contact@healthwise.com',
         assignedDoctorIndex: 0, // Dr. Reed
         medicalHistory: "History of hypertension. Underwent cardiac catheterization 6 months ago. Allergic to penicillin.",
         emergencyContactNumber: '555-0101',
+        emergencyContactEmail: 'ethan.emergency@example.com',
         photoInitial: "EC",
         readmissionRisk: 'high' as 'low' | 'medium' | 'high',
       },
@@ -208,9 +215,11 @@ export async function seedDatabase(): Promise<{ success: boolean; message: strin
         _id: patientUserObjectId2,
         displayName: 'Olivia Rodriguez',
         loginEmail: 'olivia.rodriguez@healthwise.com',
+        contactEmail: 'olivia.contact@healthwise.com',
         assignedDoctorIndex: 1, // Dr. Carter
         medicalHistory: "Diagnosed with Asthma, type 2 Diabetes. Previous hospitalization for asthma exacerbation.",
         emergencyContactNumber: '555-0102',
+        emergencyContactEmail: 'olivia.emergency@example.com',
         photoInitial: "OR",
         readmissionRisk: 'medium' as 'low' | 'medium' | 'high',
       },
@@ -218,9 +227,11 @@ export async function seedDatabase(): Promise<{ success: boolean; message: strin
         _id: patientUserObjectId3,
         displayName: 'Liam Chen',
         loginEmail: 'liam.chen@healthwise.com',
+        contactEmail: 'liam.contact@healthwise.com',
         assignedDoctorIndex: 0, // Dr. Reed
         medicalHistory: "Recovering from a mild heart attack (MI). Prescribed beta-blockers and statins. No known allergies.",
         emergencyContactNumber: '555-0103',
+        // No emergency email for this one
         photoInitial: "LC",
         readmissionRisk: 'high' as 'low' | 'medium' | 'high',
       },
@@ -228,9 +239,11 @@ export async function seedDatabase(): Promise<{ success: boolean; message: strin
         _id: patientUserObjectId4,
         displayName: 'Sophia Patel',
         loginEmail: 'sophia.patel@healthwise.com',
+        contactEmail: 'sophia.contact@healthwise.com',
         assignedDoctorIndex: 1, // Dr. Carter
         medicalHistory: "Chronic Obstructive Pulmonary Disease (COPD). Uses an inhaler daily. History of smoking.",
         emergencyContactNumber: '555-0104',
+        emergencyContactEmail: 'sophia.emergency@example.com',
         photoInitial: "SP",
         readmissionRisk: 'medium' as 'low' | 'medium' | 'high',
       },
@@ -238,9 +251,10 @@ export async function seedDatabase(): Promise<{ success: boolean; message: strin
         _id: patientUserObjectId5,
         displayName: 'Noah Williams',
         loginEmail: 'noah.williams@healthwise.com',
+        contactEmail: 'noah.contact@healthwise.com',
         assignedDoctorIndex: 0, // Dr. Reed
         medicalHistory: "Atrial fibrillation. On anticoagulants. Follow-up appointment scheduled for next month.",
-        // No emergency contact for this one to test display logic
+        // No emergency contact number or email for this one to test display logic
         photoInitial: "NW",
         readmissionRisk: 'low' as 'low' | 'medium' | 'high',
       },
@@ -251,7 +265,7 @@ export async function seedDatabase(): Promise<{ success: boolean; message: strin
 
       const patient: User = {
         _id: pData._id,
-        email: pData.loginEmail.replace('@', '.contact@'),
+        email: pData.contactEmail, // Store contact email in users collection
         displayName: pData.displayName,
         photoURL: `https://placehold.co/100x100.png?text=${pData.photoInitial}`, dataAIHint: 'profile patient',
         role: 'patient',
@@ -260,6 +274,7 @@ export async function seedDatabase(): Promise<{ success: boolean; message: strin
         readmissionRisk: pData.readmissionRisk,
         medicalHistory: pData.medicalHistory,
         emergencyContactNumber: pData.emergencyContactNumber,
+        emergencyContactEmail: pData.emergencyContactEmail,
         creationTime: faker.date.past({ years: 1 }),
         lastSignInTime: faker.date.recent({ days: Math.floor(Math.random() * 7) + 1 }),
         lastActivity: faker.date.recent({ days: Math.floor(Math.random() * 3) + 1 }),
@@ -268,8 +283,9 @@ export async function seedDatabase(): Promise<{ success: boolean; message: strin
       credentialsToInsert.push({
         _id: new ObjectId(),
         userId: patient._id,
-        email: pData.loginEmail,
+        email: pData.loginEmail, // Login email in credentials
         passwordPlainText: DEFAULT_PASSWORD,
+        requiresPasswordChange: false, // Set to false for seeded users, true for admin-created ones
       });
 
       // Health Data (more varied)
@@ -471,4 +487,3 @@ if (require.main === module) {
     }
   })();
 }
-

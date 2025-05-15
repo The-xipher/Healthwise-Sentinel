@@ -10,8 +10,8 @@ import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
-import { Users, Activity, ShieldCheck, AlertTriangle, UserPlus, Loader2 } from 'lucide-react';
-import { fetchAdminDashboardData, createUserAction, type AdminUser } from '@/app/actions/adminActions';
+import { Users, Activity, ShieldCheck, AlertTriangle, UserPlus, Loader2, Trash2, Edit3 } from 'lucide-react';
+import { fetchAdminDashboardData, createUserAction, type AdminUser, deleteUserAction } from '@/app/actions/adminActions';
 import {
   Dialog,
   DialogContent,
@@ -22,6 +22,17 @@ import {
   DialogTrigger,
   DialogClose,
 } from "@/components/ui/dialog";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog"
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -30,7 +41,8 @@ import { useForm, Controller } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { Textarea } from './ui/textarea';
-import { cn } from "@/lib/utils"
+import { cn } from "@/lib/utils";
+
 
 interface AuditLog {
   id: string;
@@ -42,16 +54,19 @@ interface AuditLog {
 }
 
 interface AdminDashboardProps {
-  adminUserId: string; // Logged-in admin's ID
+  adminUserId: string; 
 }
 
 const addUserSchema = z.object({
   displayName: z.string().min(3, "Display name must be at least 3 characters."),
-  email: z.string().email("Invalid email address."),
+  loginEmail: z.string().email("Invalid login email address."),
+  contactEmail: z.string().email("Invalid contact email address.").optional().or(z.literal('')),
   role: z.enum(['patient', 'doctor', 'admin'], { required_error: "Role is required." }),
-  specialty: z.string().optional(), // Optional, can be made required for doctors later
-  assignedDoctorId: z.string().optional(), // Optional for patients
-  medicalHistory: z.string().optional(), // Optional for patients
+  specialty: z.string().optional(), 
+  assignedDoctorId: z.string().optional(),
+  medicalHistory: z.string().optional(),
+  emergencyContactNumber: z.string().optional(),
+  emergencyContactEmail: z.string().email("Invalid emergency contact email.").optional().or(z.literal('')),
 });
 
 type AddUserFormValues = z.infer<typeof addUserSchema>;
@@ -65,12 +80,15 @@ export default function AdminDashboard({ adminUserId }: AdminDashboardProps) {
   const [dbAvailable, setDbAvailable] = useState<boolean>(true);
   const [isAddUserDialogOpen, setIsAddUserDialogOpen] = useState(false);
   const [addingUser, setAddingUser] = useState(false);
+  const [userToDelete, setUserToDelete] = useState<AdminUser | null>(null);
   const { toast } = useToast();
 
   const { register, handleSubmit, control, formState: { errors }, reset, watch } = useForm<AddUserFormValues>({
     resolver: zodResolver(addUserSchema),
     defaultValues: {
       role: undefined,
+      contactEmail: '',
+      emergencyContactEmail: ''
     }
   });
   const selectedRole = watch("role");
@@ -121,11 +139,16 @@ export default function AdminDashboard({ adminUserId }: AdminDashboardProps) {
     setAddingUser(true);
     const formData = new FormData();
     formData.append('displayName', data.displayName);
-    formData.append('email', data.email);
+    formData.append('loginEmail', data.loginEmail);
+    if(data.contactEmail) formData.append('contactEmail', data.contactEmail);
     formData.append('role', data.role);
     if (data.role === 'doctor' && data.specialty) formData.append('specialty', data.specialty);
-    if (data.role === 'patient' && data.assignedDoctorId) formData.append('assignedDoctorId', data.assignedDoctorId);
-    if (data.role === 'patient' && data.medicalHistory) formData.append('medicalHistory', data.medicalHistory);
+    if (data.role === 'patient') {
+        if (data.assignedDoctorId) formData.append('assignedDoctorId', data.assignedDoctorId);
+        if (data.medicalHistory) formData.append('medicalHistory', data.medicalHistory);
+        if (data.emergencyContactNumber) formData.append('emergencyContactNumber', data.emergencyContactNumber);
+        if (data.emergencyContactEmail) formData.append('emergencyContactEmail', data.emergencyContactEmail);
+    }
 
 
     try {
@@ -146,6 +169,26 @@ export default function AdminDashboard({ adminUserId }: AdminDashboardProps) {
       setAddingUser(false);
     }
   };
+
+  const handleDeleteUser = async () => {
+    if (!userToDelete) return;
+    setLoadingUsers(true); // Reuse for general loading state
+    try {
+      const result = await deleteUserAction(userToDelete.id);
+      if (result.success) {
+        toast({ title: "User Deleted", description: result.message, variant: "default" });
+        setUsers(prevUsers => prevUsers.filter(user => user.id !== userToDelete.id));
+      } else {
+        toast({ title: "Deletion Failed", description: result.message || result.error, variant: "destructive" });
+      }
+    } catch (err: any) {
+      toast({ title: "Error", description: "An unexpected error occurred during deletion: " + err.message, variant: "destructive" });
+    } finally {
+      setUserToDelete(null);
+      setLoadingUsers(false);
+    }
+  };
+
 
   const getInitials = (name: string | null | undefined): string => {
     if (!name) return '?';
@@ -185,7 +228,7 @@ export default function AdminDashboard({ adminUserId }: AdminDashboardProps) {
               <UserPlus className="mr-2 h-4 w-4" /> Add New User
             </Button>
           </DialogTrigger>
-          <DialogContent className="sm:max-w-[525px]">
+          <DialogContent className="sm:max-w-[525px] max-h-[90vh] overflow-y-auto">
             <DialogHeader>
               <DialogTitle>Add New User</DialogTitle>
               <DialogDescription>
@@ -194,17 +237,22 @@ export default function AdminDashboard({ adminUserId }: AdminDashboardProps) {
             </DialogHeader>
             <form onSubmit={handleSubmit(onAddUserSubmit)} className="grid gap-4 py-4">
               <div className="grid grid-cols-4 items-center gap-4">
-                <Label htmlFor="displayName" className="text-right">Display Name</Label>
+                <Label htmlFor="displayName" className="text-right">Display Name*</Label>
                 <Input id="displayName" {...register("displayName")} className="col-span-3" />
                 {errors.displayName && <p className="col-span-4 text-xs text-destructive text-right">{errors.displayName.message}</p>}
               </div>
               <div className="grid grid-cols-4 items-center gap-4">
-                <Label htmlFor="email" className="text-right">Login Email</Label>
-                <Input id="email" type="email" {...register("email")} className="col-span-3" />
-                 {errors.email && <p className="col-span-4 text-xs text-destructive text-right">{errors.email.message}</p>}
+                <Label htmlFor="loginEmail" className="text-right">Login Email*</Label>
+                <Input id="loginEmail" type="email" {...register("loginEmail")} className="col-span-3" />
+                 {errors.loginEmail && <p className="col-span-4 text-xs text-destructive text-right">{errors.loginEmail.message}</p>}
               </div>
               <div className="grid grid-cols-4 items-center gap-4">
-                <Label htmlFor="role" className="text-right">Role</Label>
+                <Label htmlFor="contactEmail" className="text-right">Contact Email</Label>
+                <Input id="contactEmail" type="email" {...register("contactEmail")} className="col-span-3" placeholder="Optional, defaults to login email"/>
+                 {errors.contactEmail && <p className="col-span-4 text-xs text-destructive text-right">{errors.contactEmail.message}</p>}
+              </div>
+              <div className="grid grid-cols-4 items-center gap-4">
+                <Label htmlFor="role" className="text-right">Role*</Label>
                 <Controller
                   name="role"
                   control={control}
@@ -259,6 +307,16 @@ export default function AdminDashboard({ adminUserId }: AdminDashboardProps) {
                      <Textarea id="medicalHistory" {...register("medicalHistory")} className="col-span-3" placeholder="Brief medical history (optional)"/>
                      {errors.medicalHistory && <p className="col-span-4 text-xs text-destructive text-right">{errors.medicalHistory.message}</p>}
                   </div>
+                  <div className="grid grid-cols-4 items-center gap-4">
+                    <Label htmlFor="emergencyContactNumber" className="text-right">Emergency Phone</Label>
+                    <Input id="emergencyContactNumber" {...register("emergencyContactNumber")} className="col-span-3" placeholder="Optional"/>
+                    {errors.emergencyContactNumber && <p className="col-span-4 text-xs text-destructive text-right">{errors.emergencyContactNumber.message}</p>}
+                  </div>
+                  <div className="grid grid-cols-4 items-center gap-4">
+                    <Label htmlFor="emergencyContactEmail" className="text-right">Emergency Email</Label>
+                    <Input id="emergencyContactEmail" type="email" {...register("emergencyContactEmail")} className="col-span-3" placeholder="Optional"/>
+                    {errors.emergencyContactEmail && <p className="col-span-4 text-xs text-destructive text-right">{errors.emergencyContactEmail.message}</p>}
+                  </div>
                 </>
               )}
 
@@ -306,21 +364,24 @@ export default function AdminDashboard({ adminUserId }: AdminDashboardProps) {
             <TableHeader>
               <TableRow>
                 <TableHead>User</TableHead>
-                <TableHead>Email</TableHead>
+                <TableHead>Login Email</TableHead>
                 <TableHead>Role</TableHead>
                 <TableHead>Created On</TableHead>
-                <TableHead>Actions</TableHead>
+                <TableHead className="text-right">Actions</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
-              {loadingUsers ? (
+              {loadingUsers && !userToDelete ? ( // Show skeleton only if not in deletion confirmation
                 Array.from({ length: 5 }).map((_, index) => (
                   <TableRow key={index}>
                     <TableCell><Skeleton className="h-10 w-32" /></TableCell>
                     <TableCell><Skeleton className="h-4 w-48" /></TableCell>
                     <TableCell><Skeleton className="h-6 w-20 rounded-full" /></TableCell>
                     <TableCell><Skeleton className="h-4 w-24" /></TableCell>
-                    <TableCell><Skeleton className="h-8 w-16" /></TableCell>
+                    <TableCell className="text-right space-x-2">
+                        <Skeleton className="h-8 w-16 inline-block" />
+                        <Skeleton className="h-8 w-16 inline-block" />
+                    </TableCell>
                   </TableRow>
                 ))
               ) : dbAvailable && users.length > 0 ? (
@@ -335,17 +396,29 @@ export default function AdminDashboard({ adminUserId }: AdminDashboardProps) {
                         <span className="font-medium">{u.displayName || 'N/A'}</span>
                       </div>
                     </TableCell>
-                    <TableCell>{u.email || 'N/A'}</TableCell>
+                    <TableCell>{u.loginEmail || u.email || 'N/A'}</TableCell> {/* Show login email if available, fallback to contact email */}
                     <TableCell>
                       <Badge variant={u.role === 'admin' ? 'destructive' : u.role === 'doctor' ? 'secondary' : 'outline'} className="capitalize">
                         {u.role || 'N/A'}
                       </Badge>
                     </TableCell>
                     <TableCell>{formatDate(u.creationTime) || 'N/A'}</TableCell>
-                    <TableCell>
-                      <Button variant="link" size="sm" className="p-0 h-auto" disabled={!dbAvailable}>
-                        Edit
+                    <TableCell className="text-right space-x-1">
+                      <Button variant="ghost" size="icon" className="h-8 w-8" disabled={!dbAvailable} title="Edit User (Not implemented)">
+                        <Edit3 className="h-4 w-4" />
                       </Button>
+                      <AlertDialogTrigger asChild>
+                         <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-8 w-8 text-destructive hover:text-destructive hover:bg-destructive/10"
+                            disabled={!dbAvailable || u.id === adminUserId} // Prevent admin from deleting themselves easily
+                            onClick={() => setUserToDelete(u)}
+                            title={u.id === adminUserId ? "Cannot delete self" : "Delete User"}
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                      </AlertDialogTrigger>
                     </TableCell>
                   </TableRow>
                 ))
@@ -360,6 +433,30 @@ export default function AdminDashboard({ adminUserId }: AdminDashboardProps) {
           </Table>
         </CardContent>
       </Card>
+
+      <AlertDialog open={!!userToDelete} onOpenChange={(open) => !open && setUserToDelete(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This action cannot be undone. This will permanently delete the user account 
+              for <span className="font-semibold">{userToDelete?.displayName} ({userToDelete?.role})</span> and all associated data.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={() => setUserToDelete(null)}>Cancel</AlertDialogCancel>
+            <AlertDialogAction 
+              onClick={handleDeleteUser} 
+              className={buttonVariants({variant: "destructive"})}
+              disabled={loadingUsers}
+            >
+              {loadingUsers ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+              Yes, delete user
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
 
       <Card>
         <CardHeader>

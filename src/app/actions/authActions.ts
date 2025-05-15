@@ -11,23 +11,23 @@ export interface UserSession {
   userId: string;
   role: 'patient' | 'doctor' | 'admin';
   displayName: string;
-  email: string;
+  email: string; // Login email
+  requiresPasswordChange?: boolean; // Added for forced password change
 }
 
-// This is a simplified User type from DB user collection. Adjust as needed.
 interface UserProfile {
   _id: ObjectId;
   displayName: string;
   role: 'patient' | 'doctor' | 'admin';
-  email: string;
-  // other fields if necessary for the session
+  email: string; // Contact email from users collection
 }
 
 interface Credential {
   _id: ObjectId;
   userId: ObjectId;
-  email: string;
-  passwordPlainText: string; // In a real app, this would be a hashed password
+  email: string; // Login email
+  passwordPlainText: string; 
+  requiresPasswordChange?: boolean; // Added
 }
 
 export async function loginAction(formData: FormData): Promise<{ success: boolean; message: string; }> {
@@ -47,8 +47,6 @@ export async function loginAction(formData: FormData): Promise<{ success: boolea
       return { success: false, message: 'Invalid email or password.' };
     }
 
-    // IMPORTANT: This is plain text password comparison, ONLY for mock/demo purposes.
-    // In a real application, use bcrypt or a similar library to compare hashed passwords.
     if (credential.passwordPlainText !== password) {
       return { success: false, message: 'Invalid email or password.' };
     }
@@ -57,7 +55,6 @@ export async function loginAction(formData: FormData): Promise<{ success: boolea
     const userProfile = await usersCollection.findOne({ _id: new ObjectId(credential.userId) });
 
     if (!userProfile) {
-      // This case should ideally not happen if DB is consistent
       return { success: false, message: 'User profile not found for the provided credentials.' };
     }
 
@@ -65,7 +62,8 @@ export async function loginAction(formData: FormData): Promise<{ success: boolea
       userId: userProfile._id.toString(),
       role: userProfile.role,
       displayName: userProfile.displayName,
-      email: userProfile.email,
+      email: credential.email, // Use login email for session
+      requiresPasswordChange: credential.requiresPasswordChange || false,
     };
 
     cookies().set(SESSION_COOKIE_NAME, JSON.stringify(sessionData), {
@@ -76,20 +74,18 @@ export async function loginAction(formData: FormData): Promise<{ success: boolea
       sameSite: 'lax',
     });
 
-    // Server-side redirect to the generic dashboard page.
-    // /dashboard page will then handle role-specific redirection.
+    // // TODO: Implement forced password change logic here
+    // if (sessionData.requiresPasswordChange) {
+    //   redirect('/auth/change-password'); // Implement this page and logic
+    // }
+
     redirect('/dashboard'); 
-    // Note: redirect() throws a NEXT_REDIRECT error, so code below it won't execute.
-    // The function signature implies a return, but redirecting makes it effectively not return a value in the success path.
-    // For error paths, it still returns.
 
   } catch (error: any) {
-    // If error is NEXT_REDIRECT, rethrow it to let Next.js handle it.
     if (error.digest?.startsWith('NEXT_REDIRECT')) {
       throw error;
     }
     console.error('Login error in action:', error);
-    // Handle specific MongoDB connection errors if necessary
     if (error.message.includes('queryTxt ETIMEOUT') || error.message.includes('querySrv ENOTFOUND') || error.message.includes('connect ETIMEDOUT')) {
         return { success: false, message: "Database connection timeout. Please check your network and MongoDB Atlas settings."};
     }
@@ -99,9 +95,6 @@ export async function loginAction(formData: FormData): Promise<{ success: boolea
 
 export async function logoutAction() {
   cookies().delete(SESSION_COOKIE_NAME);
-  // This action is primarily called by the API route which handles the redirect.
-  // If called directly (not typical for logout), a redirect here might be needed,
-  // but standard practice is for the caller (form/API route) to handle navigation.
   redirect('/login'); 
 }
 
@@ -114,8 +107,9 @@ export async function getSession(): Promise<UserSession | null> {
     return JSON.parse(sessionCookie.value) as UserSession;
   } catch (error) {
     console.error('Error parsing session cookie:', error);
-    // Optionally delete the malformed cookie
-    // cookies().delete(SESSION_COOKIE_NAME);
     return null;
   }
 }
+
+// TODO: Add changePasswordAction here later for forced password change
+// export async function changePasswordAction(userId: string, newPassword: string): Promise<{success: boolean, message: string}> { ... }

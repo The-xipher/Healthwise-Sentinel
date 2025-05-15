@@ -2,6 +2,7 @@
 'use server';
 
 import { connectToDatabase, toObjectId, ObjectId } from '@/lib/mongodb';
+import { sendEmail } from '@/lib/email'; // Import the sendEmail function
 
 
 export interface PatientHealthData {
@@ -69,10 +70,10 @@ export interface PatientChatMessage {
   senderName: string;
   receiverId: string;
   text: string;
-  timestamp: string; // Dates should be stringified
+  timestamp: string; 
   isRead?: boolean;
 }
-interface RawPatientChatMessage { // DB representation
+interface RawPatientChatMessage { 
   _id: ObjectId;
   chatId: string;
   senderId: string;
@@ -83,13 +84,13 @@ interface RawPatientChatMessage { // DB representation
   isRead?: boolean;
 }
 
-interface PatientUserForAlerts { // For fetching patient details including assigned doctor and emergency contact
+interface PatientUserForAlerts { 
     _id: ObjectId;
     displayName: string;
     assignedDoctorId?: string;
-    assignedDoctorName?: string; // For direct use in alert messages
+    assignedDoctorName?: string; 
     emergencyContactNumber?: string;
-    // other fields if needed
+    emergencyContactEmail?: string; // Added for email alerts
 }
 
 export interface PatientApprovedAISuggestion {
@@ -97,15 +98,15 @@ export interface PatientApprovedAISuggestion {
   id: string;
   patientId: string;
   suggestionText: string;
-  timestamp: string; // ISO string from Date
+  timestamp: string; 
 }
 
 interface RawPatientApprovedAISuggestion {
   _id: ObjectId;
-  patientId: ObjectId; // Should match the patientId being queried
+  patientId: ObjectId; 
   suggestionText: string;
   timestamp: Date;
-  status: 'approved'; // We will query for this status
+  status: 'approved'; 
 }
 
 
@@ -133,7 +134,6 @@ export async function fetchPatientDashboardDataAction(patientIdStr: string): Pro
   try {
     const { db } = await connectToDatabase();
 
-    // Fetch patient profile to get assigned doctor info
     const usersCollection = db.collection<PatientUserForAlerts>('users'); 
     const patientProfile = await usersCollection.findOne({ _id: patientObjectId });
 
@@ -196,7 +196,7 @@ export async function fetchPatientDashboardDataAction(patientIdStr: string): Pro
     const rawApprovedSuggestions = await approvedAISuggestionsCollection
       .find({ patientId: patientObjectId, status: 'approved' })
       .sort({ timestamp: -1 })
-      .limit(5) // Get latest 5 approved suggestions
+      .limit(5) 
       .toArray();
     const approvedAISuggestions: PatientApprovedAISuggestion[] = rawApprovedSuggestions.map(s => ({
       _id: s._id.toString(),
@@ -259,17 +259,41 @@ export async function submitSymptomReportAction(
     };
 
     if (severity === 'severe') {
-      // Fetch patient details for alert
       const usersCollection = db.collection<PatientUserForAlerts>('users');
       const patient = await usersCollection.findOne({ _id: patientObjectId });
 
       if (patient) {
         console.log(`PATIENT ACTION: SEVERE SYMPTOM REPORTED FOR ${patient.displayName} (ID: ${patientIdStr})`);
+        
+        // Simulated SMS to emergency number
         if (patient.emergencyContactNumber) {
           console.log(`PATIENT ACTION: SIMULATED URGENT SMS to ${patient.emergencyContactNumber}: Patient ${patient.displayName} reported severe symptoms: "${description}". Please check on them.`);
         } else {
           console.log(`PATIENT ACTION: Patient ${patient.displayName} does not have an emergency contact number listed.`);
         }
+        
+        // Send email to emergency contact email if available
+        if (patient.emergencyContactEmail) {
+          const emailSubject = `URGENT Health Alert: ${patient.displayName}`;
+          const emailText = `This is an urgent health alert regarding ${patient.displayName}.\n\nThey have reported severe symptoms: "${description}".\n\nPlease check on them immediately and consider contacting their doctor or emergency services if necessary.\n\n- HealthWise Hub System`;
+          const emailHtml = `<p>This is an urgent health alert regarding <strong>${patient.displayName}</strong>.</p><p>They have reported severe symptoms: "<strong>${description}</strong>".</p><p>Please check on them immediately and consider contacting their doctor or emergency services if necessary.</p><p>- HealthWise Hub System</p>`;
+          
+          const emailResult = await sendEmail({
+            to: patient.emergencyContactEmail,
+            subject: emailSubject,
+            text: emailText,
+            html: emailHtml,
+          });
+          if (emailResult.success) {
+            console.log(`PATIENT ACTION: Sent severe symptom alert email to ${patient.emergencyContactEmail}`);
+          } else {
+            console.warn(`PATIENT ACTION: Failed to send severe symptom alert email to ${patient.emergencyContactEmail}: ${emailResult.error}`);
+          }
+        } else {
+            console.log(`PATIENT ACTION: Patient ${patient.displayName} does not have an emergency contact email listed.`);
+        }
+
+        // Log for simulated emergency services call
         console.error(`PATIENT ACTION: CRITICAL HEALTH ALERT: Patient ${patient.displayName} reported severe symptoms: "${description}". Assess for immediate emergency services. Doctor ${patient.assignedDoctorName || patient.assignedDoctorId} also alerted.`);
 
         // Send a "System Alert" message to the doctor via chat system
@@ -278,8 +302,8 @@ export async function submitSymptomReportAction(
           const alertChatId = getChatId(patientIdStr, patient.assignedDoctorId);
           const alertMessage: Omit<RawPatientChatMessage, '_id'> = {
             chatId: alertChatId,
-            senderId: patientIdStr, // System alerts will "originate" from the patient for routing to doctor
-            senderName: 'System Alert', // Special sender name to identify alerts
+            senderId: patientIdStr, 
+            senderName: 'System Alert', 
             receiverId: patient.assignedDoctorId,
             text: `URGENT: Patient ${patient.displayName} reported SEVERE SYMPTOM: "${description}". Please review immediately.`,
             timestamp: new Date(),
@@ -344,7 +368,6 @@ export async function sendPatientChatMessageAction(
   }
 }
 
-// New action to fetch approved AI suggestions for a patient
 export async function fetchPatientApprovedSuggestionsAction(patientIdStr: string): Promise<{
   suggestions?: PatientApprovedAISuggestion[],
   error?: string
@@ -359,8 +382,8 @@ export async function fetchPatientApprovedSuggestionsAction(patientIdStr: string
     const suggestionsCollection = db.collection<RawPatientApprovedAISuggestion>('aiSuggestions');
     const rawSuggestions = await suggestionsCollection
       .find({ patientId: patientObjectId, status: 'approved' })
-      .sort({ timestamp: -1 }) // Get newest first
-      .limit(5) // Limit to latest 5, or adjust as needed
+      .sort({ timestamp: -1 }) 
+      .limit(5) 
       .toArray();
 
     const suggestions: PatientApprovedAISuggestion[] = rawSuggestions.map(s => ({
