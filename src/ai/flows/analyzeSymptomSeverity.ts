@@ -2,7 +2,8 @@
 'use server';
 /**
  * @fileOverview Analyzes patient-reported symptoms along with their risk profile and vitals
- * to determine an objective severity level and recommend if a critical alert is needed.
+ * to determine an objective severity level, recommend if a critical alert is needed,
+ * and suggest follow-up actions for mild or moderate cases.
  *
  * - analyzeSymptomSeverity - Function to call the AI flow.
  * - AnalyzeSymptomSeverityInput - Input type for the flow.
@@ -25,6 +26,7 @@ const AnalyzeSymptomSeverityOutputSchema = z.object({
   aiDeterminedSeverity: z.enum(['mild', 'moderate', 'severe']).describe('The severity level determined by the AI analysis.'),
   justification: z.string().describe('The AI\'s reasoning for the determined severity level, highlighting key factors from symptoms, risk profile, and vitals.'),
   isCriticalAlertRecommended: z.boolean().describe('Whether the AI recommends triggering a critical alert based on its assessment (e.g., for emergency services, urgent doctor review).'),
+  suggestedFollowUp: z.string().nullable().describe('A suggested follow-up action or question. If AI severity is mild, this could be a self-care tip for the patient. If moderate, it could be a question for the doctor to ask the patient for clarification. Null if severe or no specific suggestion.'),
 });
 export type AnalyzeSymptomSeverityOutput = z.infer<typeof AnalyzeSymptomSeverityOutputSchema>;
 
@@ -36,7 +38,7 @@ const prompt = ai.definePrompt({
   name: 'analyzeSymptomSeverityPrompt',
   input: {schema: AnalyzeSymptomSeverityInputSchema},
   output: {schema: AnalyzeSymptomSeverityOutputSchema},
-  prompt: `You are an AI clinical decision support assistant. Your role is to analyze patient-reported symptoms in conjunction with their risk profile and latest vital signs to determine an objective severity level.
+  prompt: `You are an AI clinical decision support assistant. Your role is to analyze patient-reported symptoms in conjunction with their risk profile and latest vital signs to determine an objective severity level and suggest next steps.
 
 Patient ID: {{{patientId}}}
 Symptom Description Reported by Patient: "{{{symptomDescription}}}"
@@ -53,6 +55,10 @@ Based on your analysis:
 1.  Determine the objective severity: 'mild', 'moderate', or 'severe'. This may differ from the patient's self-assessment.
 2.  Provide a concise justification for your determined severity, mentioning specific symptoms, risks, or vital signs that influenced your decision.
 3.  Recommend whether a critical alert is necessary (isCriticalAlertRecommended: true/false). A critical alert implies potential need for immediate medical intervention or emergency services. Recommend a critical alert if the determined severity is 'severe' or if specific combinations of symptoms, risks, and vitals suggest an urgent situation even if overall severity might seem moderate. For example, chest pain in a high-risk cardiac patient, even if described as 'moderate' by the patient, might warrant a critical alert.
+4.  Provide a 'suggestedFollowUp':
+    *   If your AI-determined severity is 'mild', provide a brief, general self-care tip relevant to the symptoms that could be relayed to the patient (e.g., "Ensure adequate hydration and rest. Monitor symptoms.").
+    *   If your AI-determined severity is 'moderate', provide a concise, specific question the doctor could ask the patient for further clarification (e.g., "Can you describe when the dizziness is most prominent?").
+    *   If your AI-determined severity is 'severe' or if a critical alert is recommended, set 'suggestedFollowUp' to null, as immediate action is prioritized.
 
 Prioritize patient safety. If in doubt, err on the side of caution by recommending a critical alert if there's a significant concern.
 If the patient self-selected 'severe', your AI determined severity should also be 'severe' and critical alert recommended should be true, unless there is overwhelming evidence in the description, risk profile, and vitals that this is a gross misjudgment by the patient (which is rare).
@@ -77,7 +83,12 @@ const analyzeSymptomSeverityFlow = ai.defineFlow(
         aiDeterminedSeverity: patientSelectedSevere ? 'severe' : 'moderate',
         justification: patientSelectedSevere ? 'AI output error; defaulting based on patient manual severe selection.' : 'AI output error; defaulting to moderate. Manual review advised.',
         isCriticalAlertRecommended: patientSelectedSevere,
+        suggestedFollowUp: null, // No suggestion on AI error
       };
+    }
+    // Ensure suggestedFollowUp is null if severity is severe, as per prompt instructions.
+    if (output.aiDeterminedSeverity === 'severe' || output.isCriticalAlertRecommended) {
+        output.suggestedFollowUp = null;
     }
     return output;
   }

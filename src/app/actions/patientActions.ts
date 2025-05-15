@@ -3,7 +3,7 @@
 
 import { connectToDatabase, toObjectId, ObjectId } from '@/lib/mongodb';
 import { sendSevereSymptomAlertEmail } from '@/lib/email'; // Using the more specific function
-import { analyzeSymptomSeverity, type AnalyzeSymptomSeverityInput } from '@/ai/flows/analyzeSymptomSeverity'; // Import the new AI flow
+import { analyzeSymptomSeverity, type AnalyzeSymptomSeverityInput, type AnalyzeSymptomSeverityOutput } from '@/ai/flows/analyzeSymptomSeverity'; // Import the new AI flow
 
 export interface PatientHealthData {
   _id: string;
@@ -95,8 +95,8 @@ interface PatientUserForAlerts {
     assignedDoctorName?: string; 
     emergencyContactNumber?: string;
     emergencyContactEmail?: string;
-    medicalHistory?: string; // Added for AI context
-    readmissionRisk?: 'low' | 'medium' | 'high'; // Added for AI context
+    medicalHistory?: string; 
+    readmissionRisk?: 'low' | 'medium' | 'high'; 
 }
 
 export interface PatientApprovedAISuggestion {
@@ -296,7 +296,7 @@ export async function submitSymptomReportAction(
             manuallySelectedSeverity,
         };
         aiAssessment = await analyzeSymptomSeverity(aiInput);
-        console.log(`AI Symptom Assessment for Patient ${patientIdStr}:`, aiAssessment);
+        console.log(`AI Symptom Assessment for Patient ${patientIdStr}:`, JSON.stringify(aiAssessment, null, 2));
 
         if (aiAssessment.aiDeterminedSeverity === 'severe' || aiAssessment.isCriticalAlertRecommended) {
             triggerCriticalAlert = true;
@@ -304,24 +304,29 @@ export async function submitSymptomReportAction(
     } catch (aiError: any) {
         console.error(`AI symptom analysis failed for patient ${patientIdStr}:`, aiError);
         // If AI fails, we still rely on manual severity for alerting.
-        // No change to triggerCriticalAlert here unless manuallySelectedSeverity was 'severe'.
     }
     
     if (triggerCriticalAlert) {
         console.log(`PATIENT ACTION: CRITICAL ALERT TRIGGERED for ${patient.displayName} (ID: ${patientIdStr}) based on manual selection or AI assessment.`);
         
+        let alertBaseDescription = `Patient ${patient.displayName} reported symptoms: "${description}". Patient-selected severity: ${manuallySelectedSeverity}.`;
+        if (aiAssessment) {
+            alertBaseDescription += `\nAI Assessment: Severity - ${aiAssessment.aiDeterminedSeverity}, Justification - ${aiAssessment.justification}, Critical Alert Recommended - ${aiAssessment.isCriticalAlertRecommended ? 'Yes' : 'No'}.`;
+        } else {
+            alertBaseDescription += `\nAI Assessment: Could not be performed or failed.`;
+        }
+        
         if (patient.emergencyContactNumber) {
-          console.log(`PATIENT ACTION: SIMULATED URGENT SMS to ${patient.emergencyContactNumber}: Patient ${patient.displayName} reported symptoms requiring urgent attention: "${description}". AI Justification (if any): ${aiAssessment?.justification || 'N/A'}. Please check on them.`);
+          console.log(`PATIENT ACTION: SIMULATED URGENT SMS to ${patient.emergencyContactNumber}: ${alertBaseDescription} Please check on them.`);
         } else {
           console.log(`PATIENT ACTION: Patient ${patient.displayName} does not have an emergency contact number listed.`);
         }
         
         if (patient.emergencyContactEmail && patient.displayName) {
-          const emailAlertDescription = `Patient ${patient.displayName} reported symptoms: "${description}". AI Assessment: ${aiAssessment?.aiDeterminedSeverity || 'N/A'}. Justification: ${aiAssessment?.justification || 'N/A'}. Critical Alert Recommended by AI: ${aiAssessment?.isCriticalAlertRecommended ? 'Yes' : 'No'}.`;
           const emailResult = await sendSevereSymptomAlertEmail(
             patient.emergencyContactEmail,
             patient.displayName,
-            emailAlertDescription // Pass the combined description
+            alertBaseDescription 
           );
 
           if (emailResult.success) {
@@ -333,25 +338,67 @@ export async function submitSymptomReportAction(
             console.log(`PATIENT ACTION: Patient ${patient.displayName} does not have an emergency contact email listed for alerts.`);
         }
 
-        console.error(`PATIENT ACTION: CRITICAL HEALTH ALERT: Patient ${patient.displayName}. Symptoms: "${description}". AI Severity: ${aiAssessment?.aiDeterminedSeverity || 'N/A'}. AI Critical Alert Recommended: ${aiAssessment?.isCriticalAlertRecommended ? 'Yes' : 'No'}. Assess for immediate emergency services. Doctor ${patient.assignedDoctorName || patient.assignedDoctorId} also alerted.`);
+        console.error(`PATIENT ACTION: CRITICAL HEALTH ALERT LOG: ${alertBaseDescription}. Assess for immediate emergency services. Doctor ${patient.assignedDoctorName || patient.assignedDoctorId} also alerted.`);
 
         if (patient.assignedDoctorId) {
           const chatCollection = db.collection<RawPatientChatMessage>('chatMessages');
           const alertChatId = getChatId(patientIdStr, patient.assignedDoctorId);
-          const alertMessageText = `URGENT: Patient ${patient.displayName} reported symptoms: "${description}". Manually Selected Severity: ${manuallySelectedSeverity}. AI Determined Severity: ${aiAssessment?.aiDeterminedSeverity || 'N/A'}. AI Justification: ${aiAssessment?.justification || 'N/A'}. Critical Alert Recommended by AI: ${aiAssessment?.isCriticalAlertRecommended ? 'Yes' : 'No'}. Please review immediately.`;
+          let doctorAlertMessage = `URGENT: Patient ${patient.displayName} reported: "${description}" (Patient severity: ${manuallySelectedSeverity}).`;
+          if (aiAssessment) {
+            doctorAlertMessage += `\nAI determined severity: ${aiAssessment.aiDeterminedSeverity}. Justification: ${aiAssessment.justification}.`;
+            if (aiAssessment.isCriticalAlertRecommended) doctorAlertMessage += ` CRITICAL ALERT RECOMMENDED.`;
+            if (aiAssessment.suggestedFollowUp) {
+                if (aiAssessment.aiDeterminedSeverity === 'mild') {
+                    doctorAlertMessage += `\nAI suggests patient be advised: "${aiAssessment.suggestedFollowUp}"`;
+                } else if (aiAssessment.aiDeterminedSeverity === 'moderate') {
+                     doctorAlertMessage += `\nAI suggests asking patient: "${aiAssessment.suggestedFollowUp}"`;
+                }
+            }
+          } else {
+             doctorAlertMessage += `\nAI assessment failed or was not performed.`;
+          }
+          doctorAlertMessage += `\nPlease review immediately.`;
+
           const alertMessage: Omit<RawPatientChatMessage, '_id'> = {
             chatId: alertChatId,
             senderId: patientIdStr, 
             senderName: 'System Alert', 
             receiverId: patient.assignedDoctorId,
-            text: alertMessageText,
+            text: doctorAlertMessage,
             timestamp: new Date(),
             isRead: false,
           };
           await chatCollection.insertOne(alertMessage as RawPatientChatMessage);
           console.log(`PATIENT ACTION: System Alert message sent to doctor ${patient.assignedDoctorId} for patient ${patientIdStr}.`);
         }
+    } else if (aiAssessment?.suggestedFollowUp) {
+        // Handle non-critical follow-up suggestions (e.g., for mild/moderate cases without critical alert)
+        if (patient.assignedDoctorId) {
+            const chatCollection = db.collection<RawPatientChatMessage>('chatMessages');
+            const alertChatId = getChatId(patientIdStr, patient.assignedDoctorId);
+            let doctorInfoMessage = `INFO: Patient ${patient.displayName} reported: "${description}" (Patient severity: ${manuallySelectedSeverity}).`;
+            doctorInfoMessage += `\nAI determined severity: ${aiAssessment.aiDeterminedSeverity}. Justification: ${aiAssessment.justification}.`;
+            if (aiAssessment.aiDeterminedSeverity === 'mild') {
+                doctorInfoMessage += `\nAI self-care tip suggested: "${aiAssessment.suggestedFollowUp}"`;
+            } else if (aiAssessment.aiDeterminedSeverity === 'moderate') {
+                doctorInfoMessage += `\nAI suggests asking patient: "${aiAssessment.suggestedFollowUp}"`;
+            }
+             doctorInfoMessage += `\nPlease review.`;
+
+            const infoMessage: Omit<RawPatientChatMessage, '_id'> = {
+                chatId: alertChatId,
+                senderId: patientIdStr,
+                senderName: 'System Info', // Differentiate from critical alerts
+                receiverId: patient.assignedDoctorId,
+                text: doctorInfoMessage,
+                timestamp: new Date(),
+                isRead: false,
+            };
+            await chatCollection.insertOne(infoMessage as RawPatientChatMessage);
+            console.log(`PATIENT ACTION: System Info message sent to doctor ${patient.assignedDoctorId} for patient ${patientIdStr} with AI follow-up suggestion.`);
+        }
     }
+
 
     return { report: insertedReport, aiAssessment };
   } catch (err: any) {
