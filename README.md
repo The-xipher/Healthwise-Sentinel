@@ -221,10 +221,12 @@ Healthwise Sentinel is a connected care platform designed to enhance proactive h
 ## Media
 
 ### Demo Video
-[Placeholder for Demo Video]
+<video src="Demo/Demo.mp4" controls width="600">
+  Your browser does not support the video tag.
+</video>
 
 ### Architecture Diagram
-[Placeholder for Architecture Image]
+<img src="Demo/Architecture.png" alt="Architecture Diagram" width="600" />
 
 ---
 

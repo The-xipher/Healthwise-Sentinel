@@ -1,0 +1,55 @@
+1
+00:00:00,000 --> 00:00:13,000
+The application begins with a landing page that introduces its purpose and features. Users can log in to access their respective dashboards tailored for admin, doctor, or patient roles.
+
+2
+00:00:14,000 --> 00:00:23,000
+Admins can add new users by filling out a form. Once created, the system sends an email with temporary credentials to the new user.
+
+3
+00:00:23,000 --> 00:00:34,000
+Admins have the ability to trigger emergency alerts for patients. This simulates critical health scenarios and tests the alerting workflow.
+
+4
+00:00:34,000 --> 00:00:37,000
+Admins can edit user details, such as display name, contact email, and role-specific information, directly from the admin dashboard.
+
+5
+00:00:38,000 --> 00:00:54,000
+When a patient logs in for the first time, they are prompted to set a new password, ensuring secure access to their account.
+
+6
+00:00:54,000 --> 00:01:08,000
+The patient dashboard provides an overview of health metrics, a profile page for managing personal details, and access to other patient-specific features.
+
+7
+00:01:08,000 --> 00:01:29,000
+The doctor dashboard displays a list of assigned patients, their risk levels, and tools for managing care plans, medications, and health data.
+
+8
+00:01:29,000 --> 00:01:36,000
+Doctors can review and approve AI-generated care plans, ensuring they align with the patient’s needs.
+
+9
+00:01:36,000 --> 00:01:53,000
+The medication management tab allows doctors to add, edit, or delete medications for their patients, ensuring accurate treatment plans.
+
+10
+00:01:53,000 --> 00:02:08,000
+The messaging tab enables doctors to communicate with their patients. This feature supports real-time chat for better interaction.
+
+11
+00:02:08,000 --> 00:02:42,000
+Doctors can suggest medications and monitor adherence. Notifications alert patients about missed doses, ensuring timely medication intake.
+
+12
+00:02:42,000 --> 00:02:50,000
+Patients receive test messages and notifications from their doctors, keeping them informed about their health and treatment.
+
+13
+00:02:51,000 --> 00:04:10,000
+Patients can report symptoms categorized as mild, moderate, or severe. The system analyzes these reports, sends emergency emails for severe cases, and intelligently handles moderate conditions.
+
+14
+00:04:11,000 --> 00:04:20,000
+AI analyzes health trends to provide insights and actionable recommendations for doctors, enhancing patient care.
