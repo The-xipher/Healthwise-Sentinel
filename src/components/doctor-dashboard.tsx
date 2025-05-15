@@ -12,12 +12,12 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Input } from '@/components/ui/input';
-import { Loader2, AlertTriangle, Users, Stethoscope, Activity, HeartPulse, Pill, MessageSquare, Send, Check, X, Info, Brain, Search, CalendarDays, Sparkles, BookMarked, TrendingUp, ThumbsDown } from 'lucide-react'; // Added TrendingUp, ThumbsDown
+import { Loader2, AlertTriangle, Users, Stethoscope, Activity, HeartPulse, Pill, MessageSquare, Send, Check, X, Info, Brain, Search, CalendarDays, Sparkles, BookMarked, TrendingUp, ThumbsDown, Droplet } from 'lucide-react'; // Added Droplet
 import { Textarea } from './ui/textarea';
 import { ScrollArea } from './ui/scroll-area';
 import { summarizePatientHistory } from '@/ai/flows/summarize-patient-history';
 import { generateCarePlan } from '@/ai/flows/generate-care-plan';
-import { analyzePatientHealthTrends, type AnalyzePatientHealthTrendsOutput, type AnalyzePatientHealthTrendsInput } from '@/ai/flows/analyze-patient-health-trends'; // Added
+import { analyzePatientHealthTrends, type AnalyzePatientHealthTrendsOutput, type AnalyzePatientHealthTrendsInput } from '@/ai/flows/analyze-patient-health-trends';
 import { useToast } from '@/hooks/use-toast';
 import {
   fetchDoctorPatientsAction,
@@ -66,8 +66,8 @@ function DoctorDashboardContent({ doctorId, doctorName, userRole }: DoctorDashbo
   const [appointments, setAppointments] = useState<Appointment[]>([]);
   const [loadingAppointments, setLoadingAppointments] = useState<boolean>(true);
 
-  const [trendAnalysis, setTrendAnalysis] = useState<AnalyzePatientHealthTrendsOutput | null>(null); // New state for trend analysis
-  const [loadingTrendAnalysis, setLoadingTrendAnalysis] = useState<boolean>(false); // New loading state
+  const [trendAnalysis, setTrendAnalysis] = useState<AnalyzePatientHealthTrendsOutput | null>(null);
+  const [loadingTrendAnalysis, setLoadingTrendAnalysis] = useState<boolean>(false);
 
 
   const [loadingPatients, setLoadingPatients] = useState<boolean>(true);
@@ -193,14 +193,14 @@ function DoctorDashboardContent({ doctorId, doctorName, userRole }: DoctorDashbo
       setHistorySummary(null);
       setCarePlan(null);
       setLoadingPatientDetails(false);
-      setTrendAnalysis(null); // Clear trend analysis
+      setTrendAnalysis(null); 
       setLoadingTrendAnalysis(false);
       return;
     }
 
     async function fetchPatientAllData() {
       setLoadingPatientDetails(true);
-      setLoadingTrendAnalysis(true); // Start loading trend analysis
+      setLoadingTrendAnalysis(true); 
       setHistorySummary("Loading AI Summary...");
       setCarePlan("Loading AI Care Plan...");
       setTrendAnalysis(null);
@@ -269,7 +269,6 @@ function DoctorDashboardContent({ doctorId, doctorName, userRole }: DoctorDashbo
               setLoadingCarePlan(false);
             }
 
-            // New: Fetch AI Trend Analysis
             if (result.patient && result.healthData && result.medications) {
               const trendInput = prepareTrendAnalysisInput(result.patient, result.healthData, result.medications);
               try {
@@ -299,7 +298,7 @@ function DoctorDashboardContent({ doctorId, doctorName, userRole }: DoctorDashbo
     }
 
     fetchPatientAllData();
-  }, [selectedPatientId, doctorId, doctorName, toast]);
+  }, [selectedPatientId, doctorId, doctorName, toast]); // Added doctorName, toast
 
   useEffect(() => {
     if (chatScrollAreaRef.current) {
@@ -668,7 +667,7 @@ function DoctorDashboardContent({ doctorId, doctorName, userRole }: DoctorDashbo
                       </div>
                     ) : (
                       <div className="flex flex-col items-center justify-center text-center h-full">
-                        <ThumbsDown className="h-8 w-8 text-green-500 mb-2" />
+                        <ThumbsDown className="h-8 w-8 text-green-500 mb-2" /> {/* Changed from ThumbsUp */}
                         <p className="text-sm text-muted-foreground">{trendAnalysis.trendSummary || "No concerning health trends identified at this time."}</p>
                       </div>
                     )
@@ -687,9 +686,10 @@ function DoctorDashboardContent({ doctorId, doctorName, userRole }: DoctorDashbo
                             try {
                                 const trendOutput = await analyzePatientHealthTrends(trendInput);
                                 setTrendAnalysis(trendOutput);
-                            } catch (aiError) {
+                            } catch (aiError: any) {
                                 console.error("AI Trend Analysis Error:", aiError);
-                                setTrendAnalysis({ isTrendConcerning: false, trendSummary: "Could not re-run AI trend analysis. Service error.", suggestedActionForDoctor: null });
+                                const errorMsg = aiError.message?.includes("NOT_FOUND") || aiError.message?.includes("API key") || aiError.message?.includes("model") ? "Model not found or API key issue." : "Service error.";
+                                setTrendAnalysis({ isTrendConcerning: false, trendSummary: "Could not re-run AI trend analysis. " + errorMsg, suggestedActionForDoctor: null });
                             } finally {
                                 setLoadingTrendAnalysis(false);
                             }
@@ -885,8 +885,8 @@ function DoctorDashboardPageSkeleton({ message }: { message?: string }) {
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
             <div className="lg:col-span-1 space-y-6">
-                <Skeleton className="h-48 rounded-lg" /> {/* Patient Management Card Skeleton */}
-                <Skeleton className="h-64 rounded-lg" /> {/* Appointments Card Skeleton */}
+                <Skeleton className="h-48 rounded-lg" /> 
+                <Skeleton className="h-64 rounded-lg" /> 
             </div>
             <DashboardSkeletonCentralColumn />
         </div>
@@ -923,7 +923,7 @@ function DashboardSkeletonCentralColumn() {
           <CardContent className="space-y-2"><Skeleton className="h-4 w-full" /><Skeleton className="h-4 w-full" /><Skeleton className="h-4 w-5/6" /></CardContent>
           <CardFooter><Skeleton className="h-8 w-24" /></CardFooter>
         </Card>
-         <Card className="shadow-md"> {/* Health Data Skeleton */}
+         <Card className="shadow-md"> 
           <CardHeader><Skeleton className="h-6 w-4/5" /></CardHeader>
           <CardContent className="space-y-2.5"><Skeleton className="h-5 w-full" /><Skeleton className="h-5 w-full" /><Skeleton className="h-5 w-full" /></CardContent>
           <CardFooter><Skeleton className="h-6 w-28" /></CardFooter>
@@ -931,21 +931,21 @@ function DashboardSkeletonCentralColumn() {
       </div>
 
       <div className="lg:col-span-1 space-y-6">
-        <Card className="shadow-md"> {/* Trend Analysis Skeleton */}
+        <Card className="shadow-md"> 
             <CardHeader><Skeleton className="h-6 w-4/5" /><Skeleton className="h-3 w-full mt-1" /></CardHeader>
             <CardContent className="min-h-[150px] space-y-2"><Skeleton className="h-4 w-3/4" /><Skeleton className="h-4 w-full" /><Skeleton className="h-4 w-5/6" /><Skeleton className="h-8 w-1/2 mt-2" /></CardContent>
             <CardFooter><Skeleton className="h-8 w-32" /></CardFooter>
         </Card>
-        <Card className="shadow-md"> {/* Medications Skeleton */}
+        <Card className="shadow-md"> 
           <CardHeader><Skeleton className="h-6 w-4/5" /></CardHeader>
           <CardContent className="space-y-3"><Skeleton className="h-8 w-full" /><Skeleton className="h-8 w-full" /></CardContent>
           <CardFooter><Skeleton className="h-6 w-32" /></CardFooter>
         </Card>
-        <Card className="shadow-md"> {/* AI Suggestions Skeleton */}
+        <Card className="shadow-md"> 
           <CardHeader><Skeleton className="h-6 w-4/5" /><Skeleton className="h-3 w-full mt-1" /></CardHeader>
           <CardContent><Skeleton className="h-24 w-full" /></CardContent>
         </Card>
-         <Card className="flex-grow flex flex-col shadow-md min-h-[400px]"> {/* Chat Skeleton */}
+         <Card className="flex-grow flex flex-col shadow-md min-h-[400px]"> 
           <CardHeader><Skeleton className="h-6 w-3/5" /></CardHeader>
           <CardContent className="flex-grow p-2"><Skeleton className="h-full w-full rounded-md" /></CardContent>
           <CardFooter className="p-2"><Skeleton className="h-10 w-full" /></CardFooter>
@@ -958,4 +958,5 @@ function DashboardSkeletonCentralColumn() {
     
 
     
+
 
