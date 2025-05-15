@@ -10,7 +10,7 @@ import { Progress } from '@/components/ui/progress';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts';
-import { Activity, AlertTriangle, Droplet, HeartPulse, Pill, Smile, Frown, Meh, Loader2, Info, CheckCircle, MessageSquare, Send, Lightbulb, BookMarked, AlarmClock } from 'lucide-react';
+import { Activity, AlertTriangle, Droplet, HeartPulse, Pill, Smile, Frown, Meh, Loader2, Info, CheckCircle, MessageSquare, Send, Lightbulb, BookMarked, AlarmClock, CheckSquare } from 'lucide-react';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useForm } from 'react-hook-form';
 import { z } from 'zod';
@@ -33,6 +33,7 @@ import {
   fetchPatientDashboardDataAction,
   submitSymptomReportAction,
   sendPatientChatMessageAction,
+  markMedicationTakenAction, // Added import
   type PatientHealthData,
   type PatientMedication,
   type PatientSymptomReport,
@@ -40,7 +41,7 @@ import {
   type PatientAISuggestion,
 } from '@/app/actions/patientActions';
 import { markMessagesAsReadAction } from '@/app/actions/chatActions';
-import { format, formatDistanceToNow } from 'date-fns';
+import { format, formatDistanceToNow, isToday, parseISO } from 'date-fns';
 
 
 const symptomFormSchema = z.object({
@@ -96,6 +97,7 @@ export default function PatientDashboard({ userId, userRole }: PatientDashboardP
   const [sendingMessage, setSendingMessage] = useState<boolean>(false);
   const chatScrollAreaRef = useRef<HTMLDivElement>(null);
   const [isChatOpen, setIsChatOpen] = useState(false);
+  const [markingMedicationId, setMarkingMedicationId] = useState<string | null>(null);
 
 
   const form = useForm<SymptomFormValues>({
@@ -190,7 +192,7 @@ export default function PatientDashboard({ userId, userRole }: PatientDashboardP
     try {
       const latestHealth = currentHealthData.length > 0 ? currentHealthData[currentHealthData.length - 1] : {} as PatientHealthData;
       const healthSummary = `Latest Health: Steps: ${latestHealth.steps ?? 'N/A'}, HR: ${latestHealth.heartRate ?? 'N/A'}, Glucose: ${latestHealth.bloodGlucose ?? 'N/A'}. `;
-      const medicationsSummary = currentMedications.map(m => `${m.name} (${m.dosage}, ${m.frequency}, Adherence: ${m.adherence ?? 'N/A'}%)`).join('; ') || "No medications listed.";
+      const medicationsSummary = currentMedications.map(m => `${m.name} (${m.dosage}, ${m.frequency}, Adherence: ${m.adherence ?? 'N/A'}%, Last taken: ${m.lastTaken ? formatDistanceToNow(parseISO(m.lastTaken), { addSuffix: true }) : 'Not recorded'})`).join('; ') || "No medications listed.";
       const symptomsSummaryText = currentSymptomReports.map(s => `${s.severity}: ${s.description}`).join(' | ') || "No recent symptoms reported.";
 
       const input = {
@@ -278,6 +280,41 @@ export default function PatientDashboard({ userId, userRole }: PatientDashboardP
     }
   };
 
+  const handleMarkMedicationTaken = async (medicationId: string) => {
+    if (!dbAvailable) {
+      toast({ title: "Error", description: "Cannot update medication. Database connection inactive.", variant: "destructive" });
+      return;
+    }
+    setMarkingMedicationId(medicationId);
+    try {
+      const result = await markMedicationTakenAction(userId, medicationId);
+      if (result.success && result.updatedMedication) {
+        setMedications(prevMeds => 
+          prevMeds.map(med => med.id === medicationId ? result.updatedMedication! : med)
+        );
+        toast({
+          title: "Medication Updated",
+          description: `${result.updatedMedication.name} marked as taken.`,
+          variant: "default",
+        });
+      } else {
+        toast({
+          title: "Update Failed",
+          description: result.error || "Could not mark medication as taken.",
+          variant: "destructive",
+        });
+      }
+    } catch (err: any) {
+      toast({
+        title: "Update Error",
+        description: "An unexpected error occurred.",
+        variant: "destructive",
+      });
+    } finally {
+      setMarkingMedicationId(null);
+    }
+  };
+
 
   const formatTimestampForChart = (timestamp: Date | string | undefined): string => {
     if (!timestamp) return 'N/A';
@@ -286,7 +323,11 @@ export default function PatientDashboard({ userId, userRole }: PatientDashboardP
 
   const formatDateForDisplay = (timestamp: Date | string | undefined): string => {
     if (!timestamp) return 'N/A';
-    return new Date(timestamp).toLocaleString();
+    const date = parseISO(timestamp as string);
+    if (isToday(date)) {
+      return `Today at ${format(date, 'p')}`;
+    }
+    return format(date, 'Pp');
   };
 
   const formatDateOnly = (timestamp: Date | string | undefined): string => {
@@ -526,13 +567,13 @@ export default function PatientDashboard({ userId, userRole }: PatientDashboardP
                         )}
                         <div className="mt-6 space-y-3">
                             <h4 className="text-sm font-medium text-muted-foreground">Recent Reports:</h4>
-                            <ScrollArea className="h-40 mt-4 pr-2">
+                            <ScrollArea className="h-32 mt-4 pr-2">
                               {symptomReports.length > 0 ? (
                               symptomReports.map(report => (
                                   <div key={report.id!} className="text-xs p-2 border rounded-md bg-muted/50 dark:bg-muted/20 flex items-start gap-2 mb-2">
                                   {getSeverityIcon(report.severity)}
                                   <div>
-                                      <span className="font-semibold capitalize">{report.severity}</span> on {formatDateForDisplay(report.timestamp)}:
+                                      <span className="font-semibold capitalize">{report.severity}</span> on {formatDateOnly(report.timestamp)}:
                                       <p className="text-muted-foreground">{report.description}</p>
                                   </div>
                                   </div>
@@ -557,25 +598,53 @@ export default function PatientDashboard({ userId, userRole }: PatientDashboardP
                         </CardHeader>
                         <CardContent className="space-y-4">
                         {medications.length > 0 ? (
-                            <ScrollArea className="h-[180px] pr-2">
-                                {medications.map((med) => (
-                                <div key={med.id!} className="space-y-1 mb-3">
-                                    <div className="flex justify-between items-center">
-                                    <span className="font-medium">{med.name} ({med.dosage}, {med.frequency})</span>
-                                    <Badge variant={med.adherence && med.adherence >= 90 ? 'default' : med.adherence && med.adherence >= 70 ? 'secondary' : 'destructive'}>
-                                        {med.adherence !== undefined ? `${med.adherence}%` : 'N/A'}
-                                    </Badge>
+                            <ScrollArea className="h-[240px] pr-2">
+                                {medications.map((med) => {
+                                  const medTakenToday = med.lastTaken && isToday(parseISO(med.lastTaken));
+                                  return (
+                                    <div key={med.id!} className="space-y-1.5 mb-4 p-3 border rounded-md bg-card hover:shadow-sm transition-shadow">
+                                        <div className="flex justify-between items-start">
+                                            <div>
+                                                <span className="font-medium">{med.name}</span>
+                                                <p className="text-xs text-muted-foreground">{med.dosage}, {med.frequency}</p>
+                                            </div>
+                                            <Badge variant={med.adherence && med.adherence >= 90 ? 'default' : med.adherence && med.adherence >= 70 ? 'secondary' : 'destructive'}>
+                                                {med.adherence !== undefined ? `${med.adherence}%` : 'N/A'}
+                                            </Badge>
+                                        </div>
+                                        <Progress value={med.adherence} className="h-2 my-1" aria-label={`${med.name} adherence ${med.adherence}%`} />
+                                        
+                                        {med.reminderTimes && med.reminderTimes.length > 0 && (
+                                          <div className="flex items-center text-xs text-muted-foreground">
+                                            <AlarmClock className="h-3.5 w-3.5 mr-1.5" />
+                                            Reminders: {med.reminderTimes.join(', ')}
+                                          </div>
+                                        )}
+                                        <div className="flex justify-between items-center mt-2">
+                                            <p className="text-xs text-muted-foreground">
+                                                {med.lastTaken 
+                                                    ? (medTakenToday 
+                                                        ? <span className="text-green-600 dark:text-green-400 font-medium flex items-center"><CheckCircle className="h-3.5 w-3.5 mr-1"/>Taken {formatDateForDisplay(med.lastTaken)}</span>
+                                                        : `Last taken: ${formatDateForDisplay(med.lastTaken)}`)
+                                                    : 'Not taken yet.'
+                                                }
+                                            </p>
+                                            {userRole === 'patient' && (
+                                                <Button
+                                                    size="sm"
+                                                    variant="outline"
+                                                    className="h-7 px-2 py-1 text-xs"
+                                                    onClick={() => handleMarkMedicationTaken(med.id)}
+                                                    disabled={markingMedicationId === med.id || !dbAvailable || medTakenToday}
+                                                >
+                                                    {markingMedicationId === med.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <CheckSquare className="h-3.5 w-3.5 mr-1"/>}
+                                                    {medTakenToday ? 'Taken Today' : 'Mark as Taken'}
+                                                </Button>
+                                            )}
+                                        </div>
                                     </div>
-                                    <Progress value={med.adherence} className="h-2" aria-label={`${med.name} adherence ${med.adherence}%`} />
-                                    {med.lastTaken && <p className="text-xs text-muted-foreground">Last taken: {formatDateForDisplay(med.lastTaken)}</p>}
-                                    {med.reminderTimes && med.reminderTimes.length > 0 && (
-                                      <div className="flex items-center text-xs text-muted-foreground mt-1">
-                                        <AlarmClock className="h-3.5 w-3.5 mr-1.5" />
-                                        Reminders: {med.reminderTimes.join(', ')}
-                                      </div>
-                                    )}
-                                </div>
-                                ))}
+                                );
+                            })}
                             </ScrollArea>
                         ) : (
                             <p className="text-sm text-muted-foreground">
@@ -609,12 +678,15 @@ export default function PatientDashboard({ userId, userRole }: PatientDashboardP
                                         {suggestion.status === 'approved' ? <BookMarked className="h-5 w-5 text-green-600 dark:text-green-400 shrink-0 mt-0.5"/> : <Lightbulb className="h-5 w-5 text-blue-500 dark:text-blue-400 shrink-0 mt-0.5"/>}
                                         <div>
                                             <p className={`text-sm font-medium ${suggestion.status === 'approved' ? 'text-green-800 dark:text-green-200' : 'text-blue-700 dark:text-blue-300'}`}>
-                                                {suggestion.status === 'approved' ? "Doctor's Recommendation:" : "AI Tip (Awaiting Doctor Review):"}
+                                                {suggestion.status === 'approved' ? "Doctor's Recommendation:" : "AI Tip:"}
                                             </p>
                                             <p className={`text-sm ${suggestion.status === 'approved' ? 'text-green-700 dark:text-green-300' : 'text-blue-600 dark:text-blue-400'}`}
                                             dangerouslySetInnerHTML={{ __html: formatBoldMarkdown(suggestion.suggestionText) }} />
+                                             {suggestion.status === 'pending' && suggestion.source === 'symptom_analysis_mild' && (
+                                                <p className="text-xs text-amber-600 dark:text-amber-400 mt-1">(This tip is AI-generated based on your recent symptom report and is awaiting review by your doctor.)</p>
+                                            )}
                                             <p className="text-xs text-muted-foreground mt-1">
-                                                {suggestion.status === 'approved' ? `Approved: ${formatDistanceToNow(new Date(suggestion.timestamp), { addSuffix: true })}` : `Suggested: ${formatDistanceToNow(new Date(suggestion.timestamp), { addSuffix: true })}`}
+                                                {suggestion.status === 'approved' ? `Approved: ${formatDistanceToNow(parseISO(suggestion.timestamp), { addSuffix: true })}` : `Suggested: ${formatDistanceToNow(parseISO(suggestion.timestamp), { addSuffix: true })}`}
                                             </p>
                                         </div>
                                     </div>
@@ -666,7 +738,7 @@ export default function PatientDashboard({ userId, userRole }: PatientDashboardP
                       <div className={`p-3 rounded-xl max-w-[80%] shadow-sm ${msg.senderId === userId ? 'bg-primary text-primary-foreground' : 'bg-card text-card-foreground border'}`}>
                         <p className="text-sm">{msg.text}</p>
                         <p className={`text-xs mt-1 ${msg.senderId === userId ? 'text-primary-foreground/70 text-right' : 'text-muted-foreground text-left'}`}>
-                          {msg.senderName} - {formatDistanceToNow(new Date(msg.timestamp), { addSuffix: true })} {msg.isRead === false && msg.senderId !== userId ? '(Unread)' : ''}
+                          {msg.senderName} - {formatDistanceToNow(parseISO(msg.timestamp), { addSuffix: true })} {msg.isRead === false && msg.senderId !== userId ? '(Unread)' : ''}
                         </p>
                       </div>
                     </div>
@@ -706,5 +778,3 @@ export default function PatientDashboard({ userId, userRole }: PatientDashboardP
     </div>
   );
 }
-
-    

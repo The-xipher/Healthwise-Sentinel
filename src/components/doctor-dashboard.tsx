@@ -12,7 +12,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Input } from '@/components/ui/input';
-import { Loader2, AlertTriangle, Users, Stethoscope, Activity, HeartPulse, Pill, MessageSquare, Send, Check, X, Info, Brain, Search, CalendarDays, Sparkles, BookMarked, TrendingUp, ThumbsDown, Droplet } from 'lucide-react';
+import { Loader2, AlertTriangle, Users, Stethoscope, Activity, HeartPulse, Pill, MessageSquare, Send, Check, X, Info, Brain, Search, CalendarDays, Sparkles, BookMarked, Droplet } from 'lucide-react';
 import { Textarea } from './ui/textarea';
 import { ScrollArea } from './ui/scroll-area';
 import {
@@ -43,7 +43,7 @@ import {
   type Appointment
 } from '@/app/actions/doctorActions';
 import { markMessagesAsReadAction } from '@/app/actions/chatActions';
-import { format, addDays, formatDistanceToNow } from 'date-fns';
+import { format, addDays, formatDistanceToNow, parseISO } from 'date-fns';
 
 
 interface DoctorDashboardProps {
@@ -93,6 +93,7 @@ function DoctorDashboardContent({ doctorId, doctorName, userRole }: DoctorDashbo
   const [dbAvailable, setDbAvailable] = useState<boolean>(true);
   const chatScrollAreaRef = useRef<HTMLDivElement>(null);
   const [isChatOpen, setIsChatOpen] = useState(false);
+  const [bookingAppointment, setBookingAppointment] = useState(false); // Added for AI appointment booking
 
 
   useEffect(() => {
@@ -132,7 +133,9 @@ function DoctorDashboardContent({ doctorId, doctorName, userRole }: DoctorDashbo
       setError(null);
       try {
         const patientsResultPromise = fetchDoctorPatientsAction(doctorId);
-        await Promise.all([patientsResultPromise, refreshAppointments()]);
+        // Refresh appointments is now called inside patientsResultPromise resolution or here if needed independently.
+        // For simplicity, keeping it separate for now, but can be combined.
+        await Promise.all([patientsResultPromise, refreshAppointments()]); 
         const patientsResult = await patientsResultPromise;
 
 
@@ -216,7 +219,7 @@ function DoctorDashboardContent({ doctorId, doctorName, userRole }: DoctorDashbo
 
 
       try {
-        const result = await fetchDoctorPatientDetailsAction(selectedPatientId, doctorId);
+        const result = await fetchDoctorPatientDetailsAction(selectedPatientId!, doctorId); // Added non-null assertion for selectedPatientId
         if (result.error) {
           setError(prev => prev ? `${prev}\nPatient Details: ${result.error}` : `Patient Details: ${result.error}`);
            if (result.error.toLowerCase().includes("database connection") ||
@@ -241,13 +244,13 @@ function DoctorDashboardContent({ doctorId, doctorName, userRole }: DoctorDashbo
           setChatMessages(result.chatMessages || []);
 
           if (result.patient) {
-            const currentChatId = getChatId(doctorId, selectedPatientId);
+            const currentChatId = getChatId(doctorId, selectedPatientId!); // Added non-null assertion
             await markMessagesAsReadAction(currentChatId, doctorId);
 
             setLoadingSummary(true);
             try {
               const summaryResult = await summarizePatientHistory({
-                patientId: selectedPatientId,
+                patientId: selectedPatientId!, // Added non-null assertion
                 medicalHistory: result.patient.medicalHistory || "No detailed medical history available."
               });
               setHistorySummary(summaryResult.summary);
@@ -264,7 +267,7 @@ function DoctorDashboardContent({ doctorId, doctorName, userRole }: DoctorDashbo
                 const currentMedsString = (result.medications || []).map(m => `${m.name} (${m.dosage})`).join(', ') || "None listed";
                 const predictedRisksString = result.patient?.readmissionRisk ? `Readmission Risk: ${result.patient.readmissionRisk}` : "No specific risks predicted by system.";
                 const carePlanResult = await generateCarePlan({
-                  patientId: selectedPatientId,
+                  patientId: selectedPatientId!, // Added non-null assertion
                   predictedRisks: predictedRisksString,
                   medicalHistory: result.patient.medicalHistory || "No detailed medical history available.",
                   currentMedications: currentMedsString
@@ -383,15 +386,6 @@ function DoctorDashboardContent({ doctorId, doctorName, userRole }: DoctorDashbo
     }
   };
 
-  const formatTimestamp = (timestamp: Date | string | undefined): string => {
-    if (!timestamp) return 'N/A';
-    try {
-      return new Date(timestamp).toLocaleString();
-    } catch {
-      return String(timestamp);
-    }
-  };
-
   const formatDateOnly = (dateString: string | Date): string => {
     if (!dateString) return 'N/A';
     try {
@@ -489,21 +483,21 @@ function DoctorDashboardContent({ doctorId, doctorName, userRole }: DoctorDashbo
                             return (
                             <SelectItem key={patient.id} value={patient.id}>
                                 <div className="flex items-center justify-between w-full gap-3">
-                                <div className="flex items-center gap-2 overflow-hidden"> {/* Inner flex for avatar and name, with overflow hidden */}
-                                    <Avatar className="h-7 w-7 shrink-0">
-                                    <AvatarImage src={patient.photoURL || undefined} alt={patientName} data-ai-hint="profile person"/>
-                                    <AvatarFallback>{getInitials(patientName)}</AvatarFallback>
-                                    </Avatar>
-                                    <span className="truncate">{patientName} ({patient.id?.substring(0,6)})</span>
-                                </div>
-                                {patient.readmissionRisk && (
-                                    <Badge
-                                    variant={getRiskBadgeVariant(patient.readmissionRisk)}
-                                    className="ml-auto text-xs px-1.5 py-0.5 capitalize shrink-0"
-                                    >
-                                    {patient.readmissionRisk} risk
-                                    </Badge>
-                                )}
+                                  <div className="flex items-center gap-2 overflow-hidden"> {/* Inner flex for avatar and name, with overflow hidden */}
+                                      <Avatar className="h-7 w-7 shrink-0">
+                                      <AvatarImage src={patient.photoURL || undefined} alt={patientName} data-ai-hint="profile person"/>
+                                      <AvatarFallback>{getInitials(patientName)}</AvatarFallback>
+                                      </Avatar>
+                                      <span className="truncate">{patientName} ({patient.id?.substring(0,6)})</span>
+                                  </div>
+                                  {patient.readmissionRisk && (
+                                      <Badge
+                                      variant={getRiskBadgeVariant(patient.readmissionRisk)}
+                                      className="ml-auto text-xs px-1.5 py-0.5 capitalize shrink-0"
+                                      >
+                                      {patient.readmissionRisk} risk
+                                      </Badge>
+                                  )}
                                 </div>
                             </SelectItem>
                             );
@@ -557,7 +551,7 @@ function DoctorDashboardContent({ doctorId, doctorName, userRole }: DoctorDashbo
             <DashboardSkeletonCentralColumns />
         ) : selectedPatientId && dbAvailable && selectedPatientData ? (
              <div className="lg:col-span-3 grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4 content-start"> 
-                <Card className="shadow-md md:col-span-1 xl:col-span-1">
+                <Card className="shadow-md">
                   <CardHeader className="flex flex-row items-center gap-3 p-4 pb-2"> 
                     <Avatar className="h-12 w-12 border-2 border-primary"> 
                       <AvatarImage src={selectedPatientData?.photoURL || undefined} alt={selectedPatientData?.name} data-ai-hint="profile person"/>
@@ -575,11 +569,11 @@ function DoctorDashboardContent({ doctorId, doctorName, userRole }: DoctorDashbo
                   </CardHeader>
                   <CardContent className="text-xs text-muted-foreground px-4 pt-0 pb-3"> 
                     <p>Patient ID: {selectedPatientData?.id.substring(0,8)}...</p>
-                    {selectedPatientData?.lastActivity && <p>Last Activity: {formatDistanceToNow(new Date(selectedPatientData.lastActivity), { addSuffix: true })}</p>}
+                    {selectedPatientData?.lastActivity && <p>Last Activity: {formatDistanceToNow(parseISO(selectedPatientData.lastActivity as string), { addSuffix: true })}</p>}
                   </CardContent>
                 </Card>
 
-                <Card className="shadow-md md:col-span-1 xl:col-span-1">
+                <Card className="shadow-md">
                   <CardHeader className="p-4 pb-2"> 
                     <CardTitle className="text-sm flex items-center gap-2"><Brain className="h-4 w-4 text-primary"/>AI Patient Summary</CardTitle> 
                     <CardDescription className="text-xs">Key points from history.</CardDescription>
@@ -595,7 +589,7 @@ function DoctorDashboardContent({ doctorId, doctorName, userRole }: DoctorDashbo
                   </CardContent>
                 </Card>
 
-                <Card className="shadow-md md:col-span-1 xl:col-span-1"> {/* Adjusted span for better flow */}
+                <Card className="shadow-md">
                   <CardHeader className="p-4 pb-2"> 
                     <CardTitle className="text-sm flex items-center gap-2"><Brain className="h-4 w-4 text-primary"/>AI Generated Care Plan</CardTitle> 
                     <CardDescription className="text-xs">Initial draft based on data.</CardDescription>
@@ -616,7 +610,7 @@ function DoctorDashboardContent({ doctorId, doctorName, userRole }: DoctorDashbo
                   </CardFooter>
                 </Card>
 
-                <Card className="shadow-md md:col-span-1 xl:col-span-1">
+                <Card className="shadow-md">
                   <CardHeader className="p-4 pb-2"> 
                     <CardTitle className="text-sm flex items-center gap-2"><Activity className="h-4 w-4 text-primary" /> Recent Health Data</CardTitle> 
                   </CardHeader>
@@ -624,9 +618,9 @@ function DoctorDashboardContent({ doctorId, doctorName, userRole }: DoctorDashbo
                     {patientHealthData.length > 0 ? (
                       <ScrollArea className="h-[240px] pr-2"> 
                       <ul className="space-y-1.5 text-xs"> 
-                        {patientHealthData.slice(-15).reverse().map((data) => ( // Show last 15
+                        {patientHealthData.slice(-15).reverse().map((data) => ( 
                           <li key={data.id} className="flex justify-between items-center border-b pb-1 pt-0.5 text-xs"> 
-                            <span className="text-muted-foreground">{formatDistanceToNow(new Date(data.timestamp), { addSuffix: true })}</span>
+                            <span className="text-muted-foreground">{formatDistanceToNow(parseISO(data.timestamp), { addSuffix: true })}</span>
                             <div className="flex gap-1.5"> 
                               {data.steps !== undefined && <span className="flex items-center"><Activity className="h-3 w-3 mr-0.5" />{data.steps}</span>}
                               {data.heartRate !== undefined && <span className="flex items-center"><HeartPulse className="h-3 w-3 mr-0.5 text-red-500" />{data.heartRate} bpm</span>}
@@ -645,7 +639,7 @@ function DoctorDashboardContent({ doctorId, doctorName, userRole }: DoctorDashbo
                   </CardFooter>
                 </Card>
 
-                <Card className="shadow-md md:col-span-1 xl:col-span-1">
+                <Card className="shadow-md">
                   <CardHeader className="p-4 pb-2"> 
                     <CardTitle className="text-sm flex items-center gap-2">
                       <TrendingUp className="h-4 w-4 text-primary" /> AI Health Trend Analysis
@@ -677,7 +671,7 @@ function DoctorDashboardContent({ doctorId, doctorName, userRole }: DoctorDashbo
                         </div>
                       ) : (
                         <div className="flex flex-col items-center justify-center text-center h-full py-2">
-                          <ThumbsDown className="h-5 w-5 text-green-500 mb-1" /> 
+                          <Check className="h-5 w-5 text-green-500 mb-1" /> 
                           <p className="text-xs text-muted-foreground">{trendAnalysis.trendSummary || "No concerning health trends identified."}</p>
                         </div>
                       )
@@ -713,7 +707,7 @@ function DoctorDashboardContent({ doctorId, doctorName, userRole }: DoctorDashbo
                   </CardFooter>
                 </Card>
 
-                <Card className="shadow-md md:col-span-1 xl:col-span-1">
+                <Card className="shadow-md">
                   <CardHeader className="p-4 pb-2"> 
                     <CardTitle className="text-sm flex items-center gap-2"><Pill className="h-4 w-4 text-primary" /> Medication Overview</CardTitle> 
                   </CardHeader>
@@ -743,7 +737,7 @@ function DoctorDashboardContent({ doctorId, doctorName, userRole }: DoctorDashbo
                   </CardFooter>
                 </Card>
 
-                 <Card className="shadow-md md:col-span-3 xl:col-span-3">  {/* Changed span to take full width */}
+                 <Card className="shadow-md md:col-span-3 xl:col-span-3"> 
                   <CardHeader className="p-4 pb-2"> 
                     <CardTitle className="text-sm flex items-center gap-2"><Info className="h-4 w-4 text-primary" /> AI Suggested Interventions</CardTitle> 
                     <CardDescription className="text-xs">Review and act on AI-driven suggestions.</CardDescription>
@@ -758,7 +752,7 @@ function DoctorDashboardContent({ doctorId, doctorName, userRole }: DoctorDashbo
                             <li key={suggestion.id} className="p-2 border rounded-md bg-card hover:shadow-sm transition-shadow space-y-1"> 
                               <p className="text-xs" dangerouslySetInnerHTML={{ __html: formatBoldMarkdown(suggestion.suggestionText) }} />
                               <div className="flex justify-between items-center">
-                                <span className="text-xs text-muted-foreground">{formatDistanceToNow(new Date(suggestion.timestamp), { addSuffix: true })}</span>
+                                <span className="text-xs text-muted-foreground">{formatDistanceToNow(parseISO(suggestion.timestamp), { addSuffix: true })}</span>
                                 {suggestion.status === 'pending' ? (
                                   <div className="flex gap-1"> 
                                     <Button size="xs" variant="outline" className="h-6 px-1.5 py-0.5 text-xs border-green-500 text-green-700 hover:bg-green-50 hover:text-green-800 dark:border-green-600 dark:text-green-400 dark:hover:bg-green-700 dark:hover:text-green-200" onClick={() => handleSuggestionAction(suggestion.id, 'approved')} disabled={!dbAvailable}>
@@ -847,7 +841,7 @@ function DoctorDashboardContent({ doctorId, doctorName, userRole }: DoctorDashbo
                                 <div className={`p-3 rounded-xl max-w-[80%] shadow-sm ${isDoctorMessage ? 'bg-primary text-primary-foreground' : 'bg-card text-card-foreground border'}`}>
                                 <p className="text-sm">{msg.text}</p>
                                 <p className={`text-xs mt-1 ${isDoctorMessage ? 'text-primary-foreground/70 text-right' : 'text-muted-foreground text-left'}`}>
-                                    {msg.senderName} - {formatDistanceToNow(new Date(msg.timestamp), { addSuffix: true })} {msg.isRead === false && !isDoctorMessage ? '(Unread)' : ''}
+                                    {msg.senderName} - {formatDistanceToNow(parseISO(msg.timestamp), { addSuffix: true })} {msg.isRead === false && !isDoctorMessage ? '(Unread)' : ''}
                                 </p>
                                 </div>
                             </div>
@@ -926,12 +920,11 @@ function DashboardSkeletonCentralColumns() {
         <Skeleton className="h-28 rounded-lg" />  
         <Skeleton className="h-28 rounded-lg" />  
         <Skeleton className="h-28 rounded-lg" />  
-        <Skeleton className="h-48 rounded-lg" />  {/* Was h-44 */}
+        <Skeleton className="h-44 rounded-lg" /> 
         <Skeleton className="h-36 rounded-lg" />  
-        <Skeleton className="h-48 rounded-lg" />  {/* Was h-44 */}
+        <Skeleton className="h-44 rounded-lg" />  
         <Skeleton className="h-40 rounded-lg md:col-span-3 xl:col-span-3" /> 
       </div>
     </>
   );
 }
-

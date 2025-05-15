@@ -31,7 +31,7 @@ export interface PatientMedication {
   name: string;
   dosage: string;
   frequency: string;
-  lastTaken?: string;
+  lastTaken?: string; // ISO string
   adherence?: number;
   reminderTimes?: string[];
 }
@@ -130,7 +130,7 @@ export async function fetchPatientDashboardDataAction(patientIdStr: string): Pro
   medications?: PatientMedication[],
   symptomReports?: PatientSymptomReport[],
   chatMessages?: PatientChatMessage[],
-  patientSuggestions?: PatientAISuggestion[], // Changed name and type
+  patientSuggestions?: PatientAISuggestion[],
   assignedDoctorId?: string,
   assignedDoctorName?: string,
   patientDisplayName?: string,
@@ -213,7 +213,7 @@ export async function fetchPatientDashboardDataAction(patientIdStr: string): Pro
         ]
        })
       .sort({ timestamp: -1 })
-      .limit(10) // Fetch a bit more to see both pending and approved
+      .limit(10) 
       .toArray();
     const patientSuggestions: PatientAISuggestion[] = rawPatientSuggestions.map(s => ({
       _id: s._id.toString(),
@@ -359,7 +359,6 @@ export async function submitSymptomReportAction(
           if (aiAssessment) {
             doctorAlertMessage += `\nAI determined severity: ${aiAssessment.aiDeterminedSeverity}. Justification: ${aiAssessment.justification}.`;
             if (aiAssessment.isCriticalAlertRecommended) doctorAlertMessage += ` CRITICAL ALERT RECOMMENDED.`;
-            // Note: suggestedFollowUp for severe cases is null per AI prompt.
           } else {
              doctorAlertMessage += `\nAI assessment failed or was not performed.`;
           }
@@ -380,7 +379,6 @@ export async function submitSymptomReportAction(
     } else if (aiAssessment?.suggestedFollowUp && (aiAssessment.aiDeterminedSeverity === 'mild' || aiAssessment.aiDeterminedSeverity === 'moderate')) {
 
         if (aiAssessment.aiDeterminedSeverity === 'mild' && aiAssessment.suggestedFollowUp) {
-            // Save self-care tip as a pending AI suggestion
             const newSuggestion: Omit<RawPatientAISuggestion, '_id'> = {
                 patientId: patientObjectId,
                 suggestionText: aiAssessment.suggestedFollowUp,
@@ -397,11 +395,15 @@ export async function submitSymptomReportAction(
             const chatCollection = db.collection<RawPatientChatMessage>('chatMessages');
             const alertChatId = getChatId(patientIdStr, patient.assignedDoctorId);
             let doctorInfoMessage = `INFO: Patient ${patient.displayName} reported: "${description}" (Patient severity: ${manuallySelectedSeverity}).`;
-            doctorInfoMessage += `\nAI determined severity: ${aiAssessment.aiDeterminedSeverity}. Justification: ${aiAssessment.justification}.`;
-            if (aiAssessment.aiDeterminedSeverity === 'mild' && aiAssessment.suggestedFollowUp) { // Check suggestedFollowUp exists
-                doctorInfoMessage += `\nAI self-care tip for patient logged for your review: "${aiAssessment.suggestedFollowUp}"`;
-            } else if (aiAssessment.aiDeterminedSeverity === 'moderate' && aiAssessment.suggestedFollowUp) { // Check suggestedFollowUp exists
-                 doctorInfoMessage += `\nAI suggests asking patient: "${aiAssessment.suggestedFollowUp}"`;
+            if (aiAssessment) { // Check if aiAssessment itself is not undefined
+                doctorInfoMessage += `\nAI determined severity: ${aiAssessment.aiDeterminedSeverity}. Justification: ${aiAssessment.justification}.`;
+                if (aiAssessment.aiDeterminedSeverity === 'mild' && aiAssessment.suggestedFollowUp) {
+                    doctorInfoMessage += `\nAI self-care tip for patient logged for your review: "${aiAssessment.suggestedFollowUp}"`;
+                } else if (aiAssessment.aiDeterminedSeverity === 'moderate' && aiAssessment.suggestedFollowUp) {
+                     doctorInfoMessage += `\nAI suggests asking patient: "${aiAssessment.suggestedFollowUp}"`;
+                }
+            } else {
+                doctorInfoMessage += `\nAI assessment was not performed or failed.`;
             }
              doctorInfoMessage += `\nPlease review.`;
 
@@ -470,4 +472,53 @@ export async function sendPatientChatMessageAction(
   }
 }
 
+export async function markMedicationTakenAction(
+  patientIdStr: string,
+  medicationIdStr: string
+): Promise<{ success: boolean; error?: string; updatedMedication?: PatientMedication }> {
+  const patientObjectId = toObjectId(patientIdStr);
+  const medicationObjectId = toObjectId(medicationIdStr);
+
+  if (!patientObjectId) {
+    return { success: false, error: 'Invalid patient ID format.' };
+  }
+  if (!medicationObjectId) {
+    return { success: false, error: 'Invalid medication ID format.' };
+  }
+
+  try {
+    const { db } = await connectToDatabase();
+    const medicationsCollection = db.collection<RawPatientMedication>('medications');
+
+    const currentTime = new Date();
+
+    const result = await medicationsCollection.findOneAndUpdate(
+      { _id: medicationObjectId, patientId: patientObjectId },
+      { $set: { lastTaken: currentTime } },
+      { returnDocument: 'after' }
+    );
+
+    if (!result) {
+      return { success: false, error: 'Medication not found for this patient or update failed.' };
+    }
     
+    const updatedMedication: PatientMedication = {
+      ...result,
+      _id: result._id.toString(),
+      id: result._id.toString(),
+      patientId: result.patientId.toString(),
+      lastTaken: result.lastTaken?.toISOString(),
+    };
+    
+    // console.log(`Medication ${medicationIdStr} marked as taken for patient ${patientIdStr} at ${currentTime.toISOString()}`);
+    // Revalidation can be added here if necessary, e.g., revalidatePath(`/dashboard/patient`);
+
+    return { success: true, updatedMedication };
+  } catch (err: any) {
+    console.error('Error marking medication as taken:', err);
+    if (err.message.includes('queryTxt ETIMEOUT') || err.message.includes('querySrv ENOTFOUND')) {
+      return { success: false, error: 'Database connection timeout.' };
+    }
+    return { success: false, error: 'Could not update medication status. ' + (err.message || '') };
+  }
+}
