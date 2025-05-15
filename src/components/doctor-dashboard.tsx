@@ -12,11 +12,12 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Input } from '@/components/ui/input';
-import { Loader2, AlertTriangle, Users, Stethoscope, Activity, HeartPulse, Pill, MessageSquare, Send, Check, X, Info, Brain, Search, CalendarDays, Sparkles, BookMarked } from 'lucide-react';
+import { Loader2, AlertTriangle, Users, Stethoscope, Activity, HeartPulse, Pill, MessageSquare, Send, Check, X, Info, Brain, Search, CalendarDays, Sparkles, BookMarked, TrendingUp, ThumbsDown } from 'lucide-react'; // Added TrendingUp, ThumbsDown
 import { Textarea } from './ui/textarea';
 import { ScrollArea } from './ui/scroll-area';
 import { summarizePatientHistory } from '@/ai/flows/summarize-patient-history';
 import { generateCarePlan } from '@/ai/flows/generate-care-plan';
+import { analyzePatientHealthTrends, type AnalyzePatientHealthTrendsOutput, type AnalyzePatientHealthTrendsInput } from '@/ai/flows/analyze-patient-health-trends'; // Added
 import { useToast } from '@/hooks/use-toast';
 import {
   fetchDoctorPatientsAction,
@@ -33,7 +34,7 @@ import {
   type Appointment
 } from '@/app/actions/doctorActions';
 import { markMessagesAsReadAction } from '@/app/actions/chatActions';
-import { format, addDays } from 'date-fns';
+import { format, addDays, formatDistanceToNow } from 'date-fns';
 
 
 interface DoctorDashboardProps {
@@ -65,6 +66,9 @@ function DoctorDashboardContent({ doctorId, doctorName, userRole }: DoctorDashbo
   const [appointments, setAppointments] = useState<Appointment[]>([]);
   const [loadingAppointments, setLoadingAppointments] = useState<boolean>(true);
 
+  const [trendAnalysis, setTrendAnalysis] = useState<AnalyzePatientHealthTrendsOutput | null>(null); // New state for trend analysis
+  const [loadingTrendAnalysis, setLoadingTrendAnalysis] = useState<boolean>(false); // New loading state
+
 
   const [loadingPatients, setLoadingPatients] = useState<boolean>(true);
   const [loadingPatientDetails, setLoadingPatientDetails] = useState<boolean>(false);
@@ -80,9 +84,6 @@ function DoctorDashboardContent({ doctorId, doctorName, userRole }: DoctorDashbo
   const [dbAvailable, setDbAvailable] = useState<boolean>(true);
   const chatScrollAreaRef = useRef<HTMLDivElement>(null);
   
-  // Removed AI appointment suggestion state as per reversion request
-  // const [aiSuggestedAppointment, setAiSuggestedAppointment] = useState<SuggestAppointmentOutput | null>(null);
-  // const [loadingAiAppointmentSuggestion, setLoadingAiAppointmentSuggestion] = useState<boolean>(false);
   const [bookingAppointment, setBookingAppointment] = useState<boolean>(false);
 
 
@@ -154,6 +155,34 @@ function DoctorDashboardContent({ doctorId, doctorName, userRole }: DoctorDashbo
     loadInitialDoctorData();
   }, [doctorId, patientIdFromQuery]);
 
+  const prepareTrendAnalysisInput = (
+    patient: DoctorPatient,
+    healthData: DoctorPatientHealthData[],
+    medications: DoctorPatientMedication[]
+  ): AnalyzePatientHealthTrendsInput => {
+    const recentHealth = healthData.slice(-5).reverse(); // Last 5, newest first
+    const healthSummary = recentHealth.length > 0 
+      ? "Recent Vitals (last " + recentHealth.length + " entries, newest first):\n" + recentHealth.map(d => 
+          `- ${new Date(d.timestamp).toLocaleDateString()}: BP: ${d.heartRate && d.steps ? (Math.round(d.heartRate * 1.6 + d.steps/200)) + '/' + (Math.round(d.heartRate * 0.9 + d.steps/300)) : 'N/A'}, HR: ${d.heartRate ?? 'N/A'}bpm, Glucose: ${d.bloodGlucose ?? 'N/A'}mg/dL, Steps: ${d.steps ?? 'N/A'}`
+        ).join("\n")
+      : "No recent vital signs logged.";
+
+    const adherenceSummary = medications.length > 0
+      ? "Medication Adherence:\n" + medications.map(m => 
+          `- ${m.name} (${m.dosage}): ${m.adherence ?? 'N/A'}%`
+        ).join("\n")
+      : "No medications listed or adherence not tracked.";
+      
+    const riskProfile = `Patient Readmission Risk: ${patient.readmissionRisk || 'N/A'}. Medical History: ${patient.medicalHistory || 'Not specified.'}`;
+
+    return {
+      patientId: patient.id,
+      recentHealthDataSummary: healthSummary,
+      medicationAdherenceSummary: adherenceSummary,
+      patientRiskProfile: riskProfile,
+    };
+  };
+
   useEffect(() => {
     if (!selectedPatientId || !doctorId) {
       setSelectedPatientData(null);
@@ -164,17 +193,17 @@ function DoctorDashboardContent({ doctorId, doctorName, userRole }: DoctorDashbo
       setHistorySummary(null);
       setCarePlan(null);
       setLoadingPatientDetails(false);
-      //setAiSuggestedAppointment(null); // Reverted
-      //setLoadingAiAppointmentSuggestion(false); // Reverted
+      setTrendAnalysis(null); // Clear trend analysis
+      setLoadingTrendAnalysis(false);
       return;
     }
 
     async function fetchPatientAllData() {
       setLoadingPatientDetails(true);
+      setLoadingTrendAnalysis(true); // Start loading trend analysis
       setHistorySummary("Loading AI Summary...");
       setCarePlan("Loading AI Care Plan...");
-      //setAiSuggestedAppointment(null); // Reverted
-      //setLoadingAiAppointmentSuggestion(true); // Reverted
+      setTrendAnalysis(null);
 
 
       try {
@@ -194,6 +223,7 @@ function DoctorDashboardContent({ doctorId, doctorName, userRole }: DoctorDashbo
           setChatMessages([]);
           setHistorySummary("Could not load AI summary due to data error.");
           setCarePlan("Could not load AI care plan due to data error.");
+          setTrendAnalysis({ isTrendConcerning: false, trendSummary: "Could not perform trend analysis due to data error.", suggestedActionForDoctor: null });
         } else {
           setSelectedPatientData(result.patient || null);
           setPatientHealthData(result.healthData || []);
@@ -239,32 +269,32 @@ function DoctorDashboardContent({ doctorId, doctorName, userRole }: DoctorDashbo
               setLoadingCarePlan(false);
             }
 
-            // AI Appointment Suggestion logic removed as per reversion
-            // if (result.patient.readmissionRisk === 'high') {
-            //   try {
-            //     const apptSuggestion = await suggestAppointmentForHighRiskPatient({
-            //       patientId: result.patient.id,
-            //       patientName: result.patient.name,
-            //       patientRiskLevel: result.patient.readmissionRisk,
-            //       doctorId: doctorId,
-            //       doctorName: doctorName,
-            //     });
-            //     setAiSuggestedAppointment(apptSuggestion);
-            //   } catch (aiError: any) {
-            //     console.error("AI Appointment Suggestion Error:", aiError);
-            //     toast({ title: "AI Suggestion Error", description: "Could not get AI appointment suggestion. " + (aiError.message?.includes("NOT_FOUND") ? "Model not found or API key issue." : "Service error."), variant: "destructive" });
-            //   }
-            // }
+            // New: Fetch AI Trend Analysis
+            if (result.patient && result.healthData && result.medications) {
+              const trendInput = prepareTrendAnalysisInput(result.patient, result.healthData, result.medications);
+              try {
+                const trendOutput = await analyzePatientHealthTrends(trendInput);
+                setTrendAnalysis(trendOutput);
+              } catch (aiError: any) {
+                 console.error("AI Trend Analysis Error:", aiError);
+                 const errorMsg = aiError.message?.includes("NOT_FOUND") || aiError.message?.includes("API key") || aiError.message?.includes("model") ? "Model not found or API key issue." : "Service error.";
+                 setTrendAnalysis({ isTrendConcerning: false, trendSummary: "Could not perform AI trend analysis. " + errorMsg, suggestedActionForDoctor: null });
+              }
+            } else {
+               setTrendAnalysis({ isTrendConcerning: false, trendSummary: "Insufficient data for trend analysis.", suggestedActionForDoctor: null });
+            }
+
           }
         }
       } catch (e: any) {
         setError(e.message || "An unexpected error occurred fetching patient details.");
         setHistorySummary("Error fetching patient data for AI summary.");
         setCarePlan("Error fetching patient data for AI care plan.");
+        setTrendAnalysis({ isTrendConcerning: false, trendSummary: "Error fetching patient data for trend analysis.", suggestedActionForDoctor: null });
         console.error("Error fetching patient details:", e);
       } finally {
         setLoadingPatientDetails(false);
-        //setLoadingAiAppointmentSuggestion(false); // Reverted
+        setLoadingTrendAnalysis(false);
       }
     }
 
@@ -339,10 +369,6 @@ function DoctorDashboardContent({ doctorId, doctorName, userRole }: DoctorDashbo
     }
   };
 
-  // AI Appointment Booking logic removed as per reversion request
-  // const handleBookAISuggestedAppointment = async () => { ... }
-
-
   const formatTimestamp = (timestamp: Date | string | undefined): string => {
     if (!timestamp) return 'N/A';
     try {
@@ -402,7 +428,7 @@ function DoctorDashboardContent({ doctorId, doctorName, userRole }: DoctorDashbo
         </Alert>
       )}
 
-      {!dbAvailable && !loadingPatients && !loadingPatientDetails && !loadingAppointments && (
+      {!dbAvailable && !loadingPatients && !loadingPatientDetails && !loadingAppointments && !loadingTrendAnalysis && (
         <Alert variant="default" className="bg-yellow-50 border-yellow-200 text-yellow-800 dark:bg-yellow-900 dark:border-yellow-700 dark:text-yellow-200">
           <AlertTriangle className="h-4 w-4 text-yellow-600 dark:text-yellow-400" />
           <AlertTitle>Database Disconnected</AlertTitle>
@@ -447,7 +473,7 @@ function DoctorDashboardContent({ doctorId, doctorName, userRole }: DoctorDashbo
                     <SelectContent>
                         {filteredPatients.length > 0 ? (
                         filteredPatients.map((patient) => {
-                            const patientName = patient.name; // Name is guaranteed by action
+                            const patientName = patient.name; 
                             return (
                             <SelectItem key={patient.id} value={patient.id}>
                                 <div className="flex items-center justify-between w-full gap-3">
@@ -513,8 +539,6 @@ function DoctorDashboardContent({ doctorId, doctorName, userRole }: DoctorDashbo
                     )}
                 </CardContent>
             </Card>
-             {/* AI Appointment Suggestion Card - Removed as per reversion */}
-             {/* {selectedPatientData?.readmissionRisk === 'high' && ( ... card content ... ) } */}
         </div>
 
         {coreDataLoading ? (
@@ -591,10 +615,11 @@ function DoctorDashboardContent({ doctorId, doctorName, userRole }: DoctorDashbo
                     <ul className="space-y-2 text-sm">
                       {patientHealthData.slice(0, 7).map((data) => (
                         <li key={data.id} className="flex justify-between items-center border-b pb-1.5 pt-1">
-                          <span className="text-xs">{formatTimestamp(data.timestamp)}</span>
+                          <span className="text-xs">{formatDistanceToNow(new Date(data.timestamp), { addSuffix: true })}</span>
                           <div className="flex gap-2 text-xs text-muted-foreground">
                             {data.steps !== undefined && <span className="flex items-center"><Activity className="h-3 w-3 mr-1" />{data.steps}</span>}
                             {data.heartRate !== undefined && <span className="flex items-center"><HeartPulse className="h-3 w-3 mr-1 text-red-500" />{data.heartRate} bpm</span>}
+                             {data.bloodGlucose !== undefined && <span className="flex items-center"><Droplet className="h-3 w-3 mr-1 text-blue-500" />{data.bloodGlucose} mg/dL</span>}
                           </div>
                         </li>
                       ))}
@@ -611,6 +636,72 @@ function DoctorDashboardContent({ doctorId, doctorName, userRole }: DoctorDashbo
             </div>
 
             <div className="lg:col-span-1 space-y-6">
+               <Card className="shadow-md">
+                <CardHeader>
+                  <CardTitle className="text-lg flex items-center gap-2">
+                    <TrendingUp className="h-5 w-5 text-primary" /> AI Health Trend Analysis
+                  </CardTitle>
+                  <CardDescription className="text-xs">Proactive analysis of recent patient data.</CardDescription>
+                </CardHeader>
+                <CardContent className="min-h-[150px]">
+                  {loadingTrendAnalysis ? (
+                    <div className="space-y-2">
+                      <Skeleton className="h-4 w-3/4" />
+                      <Skeleton className="h-4 w-full" />
+                      <Skeleton className="h-4 w-5/6" />
+                       <Skeleton className="h-8 w-1/2 mt-2" />
+                    </div>
+                  ) : trendAnalysis ? (
+                    trendAnalysis.isTrendConcerning ? (
+                      <div className="space-y-2">
+                        <Alert variant="destructive">
+                           <AlertTriangle className="h-4 w-4"/>
+                           <AlertTitle>Concerning Trend Identified!</AlertTitle>
+                           <AlertDescription>{trendAnalysis.trendSummary || "A concerning trend was noted."}</AlertDescription>
+                        </Alert>
+                        {trendAnalysis.suggestedActionForDoctor && (
+                          <div className="mt-3 p-3 bg-amber-50 border border-amber-200 rounded-md dark:bg-amber-900/30 dark:border-amber-700">
+                            <p className="text-sm font-semibold text-amber-700 dark:text-amber-300">Suggested Action:</p>
+                            <p className="text-sm text-amber-600 dark:text-amber-400">{trendAnalysis.suggestedActionForDoctor}</p>
+                          </div>
+                        )}
+                      </div>
+                    ) : (
+                      <div className="flex flex-col items-center justify-center text-center h-full">
+                        <ThumbsDown className="h-8 w-8 text-green-500 mb-2" />
+                        <p className="text-sm text-muted-foreground">{trendAnalysis.trendSummary || "No concerning health trends identified at this time."}</p>
+                      </div>
+                    )
+                  ) : (
+                     dbAvailable && <p className="text-sm text-muted-foreground text-center py-4">Trend analysis not yet available for this patient.</p>
+                  )}
+                </CardContent>
+                <CardFooter>
+                    <Button 
+                        variant="outline" 
+                        size="sm" 
+                        onClick={async () => {
+                            if (!selectedPatientData || !patientHealthData || !patientMedications) return;
+                            setLoadingTrendAnalysis(true);
+                            const trendInput = prepareTrendAnalysisInput(selectedPatientData, patientHealthData, patientMedications);
+                            try {
+                                const trendOutput = await analyzePatientHealthTrends(trendInput);
+                                setTrendAnalysis(trendOutput);
+                            } catch (aiError) {
+                                console.error("AI Trend Analysis Error:", aiError);
+                                setTrendAnalysis({ isTrendConcerning: false, trendSummary: "Could not re-run AI trend analysis. Service error.", suggestedActionForDoctor: null });
+                            } finally {
+                                setLoadingTrendAnalysis(false);
+                            }
+                        }}
+                        disabled={loadingTrendAnalysis || !selectedPatientData || !dbAvailable}
+                    >
+                       {loadingTrendAnalysis ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> :  <Sparkles className="mr-2 h-4 w-4"/>}
+                        Re-analyze Trends
+                    </Button>
+                </CardFooter>
+              </Card>
+
               <Card className="shadow-md">
                 <CardHeader>
                   <CardTitle className="text-lg flex items-center gap-2"><Pill className="h-5 w-5 text-primary" /> Medication Overview</CardTitle>
@@ -656,7 +747,7 @@ function DoctorDashboardContent({ doctorId, doctorName, userRole }: DoctorDashbo
                           <li key={suggestion.id} className="p-3 border rounded-md bg-card hover:shadow-sm transition-shadow space-y-2">
                             <p className="text-sm" dangerouslySetInnerHTML={{ __html: formatBoldMarkdown(suggestion.suggestionText) }} />
                             <div className="flex justify-between items-center">
-                              <span className="text-xs text-muted-foreground">{formatTimestamp(suggestion.timestamp)}</span>
+                              <span className="text-xs text-muted-foreground">{formatDistanceToNow(new Date(suggestion.timestamp), { addSuffix: true })}</span>
                               {suggestion.status === 'pending' ? (
                                 <div className="flex gap-2">
                                   <Button size="xs" variant="outline" className="h-7 px-2 py-1 text-xs border-green-500 text-green-700 hover:bg-green-50 hover:text-green-800 dark:border-green-600 dark:text-green-400 dark:hover:bg-green-700 dark:hover:text-green-200" onClick={() => handleSuggestionAction(suggestion.id, 'approved')} disabled={!dbAvailable}>
@@ -700,7 +791,7 @@ function DoctorDashboardContent({ doctorId, doctorName, userRole }: DoctorDashbo
                                     <div className={`p-3 rounded-xl max-w-[80%] shadow-sm ${isDoctorMessage ? 'bg-primary text-primary-foreground' : 'bg-card text-card-foreground border'}`}>
                                     <p className="text-sm">{msg.text}</p>
                                     <p className={`text-xs mt-1 ${isDoctorMessage ? 'text-primary-foreground/70 text-right' : 'text-muted-foreground text-left'}`}>
-                                        {msg.senderName} - {formatTimestamp(msg.timestamp)} {msg.isRead === false && !isDoctorMessage ? '(Unread)' : ''}
+                                        {msg.senderName} - {formatDistanceToNow(new Date(msg.timestamp), { addSuffix: true })} {msg.isRead === false && !isDoctorMessage ? '(Unread)' : ''}
                                     </p>
                                     </div>
                                 </div>
@@ -832,7 +923,7 @@ function DashboardSkeletonCentralColumn() {
           <CardContent className="space-y-2"><Skeleton className="h-4 w-full" /><Skeleton className="h-4 w-full" /><Skeleton className="h-4 w-5/6" /></CardContent>
           <CardFooter><Skeleton className="h-8 w-24" /></CardFooter>
         </Card>
-        <Card className="shadow-md">
+         <Card className="shadow-md"> {/* Health Data Skeleton */}
           <CardHeader><Skeleton className="h-6 w-4/5" /></CardHeader>
           <CardContent className="space-y-2.5"><Skeleton className="h-5 w-full" /><Skeleton className="h-5 w-full" /><Skeleton className="h-5 w-full" /></CardContent>
           <CardFooter><Skeleton className="h-6 w-28" /></CardFooter>
@@ -840,16 +931,21 @@ function DashboardSkeletonCentralColumn() {
       </div>
 
       <div className="lg:col-span-1 space-y-6">
-        <Card className="shadow-md">
+        <Card className="shadow-md"> {/* Trend Analysis Skeleton */}
+            <CardHeader><Skeleton className="h-6 w-4/5" /><Skeleton className="h-3 w-full mt-1" /></CardHeader>
+            <CardContent className="min-h-[150px] space-y-2"><Skeleton className="h-4 w-3/4" /><Skeleton className="h-4 w-full" /><Skeleton className="h-4 w-5/6" /><Skeleton className="h-8 w-1/2 mt-2" /></CardContent>
+            <CardFooter><Skeleton className="h-8 w-32" /></CardFooter>
+        </Card>
+        <Card className="shadow-md"> {/* Medications Skeleton */}
           <CardHeader><Skeleton className="h-6 w-4/5" /></CardHeader>
           <CardContent className="space-y-3"><Skeleton className="h-8 w-full" /><Skeleton className="h-8 w-full" /></CardContent>
           <CardFooter><Skeleton className="h-6 w-32" /></CardFooter>
         </Card>
-        <Card className="shadow-md">
+        <Card className="shadow-md"> {/* AI Suggestions Skeleton */}
           <CardHeader><Skeleton className="h-6 w-4/5" /><Skeleton className="h-3 w-full mt-1" /></CardHeader>
           <CardContent><Skeleton className="h-24 w-full" /></CardContent>
         </Card>
-         <Card className="flex-grow flex flex-col shadow-md min-h-[400px]">
+         <Card className="flex-grow flex flex-col shadow-md min-h-[400px]"> {/* Chat Skeleton */}
           <CardHeader><Skeleton className="h-6 w-3/5" /></CardHeader>
           <CardContent className="flex-grow p-2"><Skeleton className="h-full w-full rounded-md" /></CardContent>
           <CardFooter className="p-2"><Skeleton className="h-10 w-full" /></CardFooter>
@@ -862,3 +958,4 @@ function DashboardSkeletonCentralColumn() {
     
 
     
+
