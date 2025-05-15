@@ -12,7 +12,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Input } from '@/components/ui/input';
-import { Loader2, AlertTriangle, Users, Stethoscope, Activity, HeartPulse, Pill, MessageSquare, Send, Check, X, Info, Brain, Search, CalendarDays, Sparkles, BookMarked, Droplet } from 'lucide-react';
+import { Loader2, AlertTriangle, Users, Stethoscope, Activity, HeartPulse, Pill, MessageSquare, Send, Check, X, Info, Brain, Search, CalendarDays, Sparkles, BookMarked, Droplet, TrendingUp, ThumbsDown } from 'lucide-react'; // Added TrendingUp, ThumbsDown
 import { Textarea } from './ui/textarea';
 import { ScrollArea } from './ui/scroll-area';
 import {
@@ -93,7 +93,6 @@ function DoctorDashboardContent({ doctorId, doctorName, userRole }: DoctorDashbo
   const [dbAvailable, setDbAvailable] = useState<boolean>(true);
   const chatScrollAreaRef = useRef<HTMLDivElement>(null);
   const [isChatOpen, setIsChatOpen] = useState(false);
-  const [bookingAppointment, setBookingAppointment] = useState(false); // Added for AI appointment booking
 
 
   useEffect(() => {
@@ -133,8 +132,6 @@ function DoctorDashboardContent({ doctorId, doctorName, userRole }: DoctorDashbo
       setError(null);
       try {
         const patientsResultPromise = fetchDoctorPatientsAction(doctorId);
-        // Refresh appointments is now called inside patientsResultPromise resolution or here if needed independently.
-        // For simplicity, keeping it separate for now, but can be combined.
         await Promise.all([patientsResultPromise, refreshAppointments()]); 
         const patientsResult = await patientsResultPromise;
 
@@ -219,7 +216,7 @@ function DoctorDashboardContent({ doctorId, doctorName, userRole }: DoctorDashbo
 
 
       try {
-        const result = await fetchDoctorPatientDetailsAction(selectedPatientId!, doctorId); // Added non-null assertion for selectedPatientId
+        const result = await fetchDoctorPatientDetailsAction(selectedPatientId!, doctorId); 
         if (result.error) {
           setError(prev => prev ? `${prev}\nPatient Details: ${result.error}` : `Patient Details: ${result.error}`);
            if (result.error.toLowerCase().includes("database connection") ||
@@ -244,13 +241,13 @@ function DoctorDashboardContent({ doctorId, doctorName, userRole }: DoctorDashbo
           setChatMessages(result.chatMessages || []);
 
           if (result.patient) {
-            const currentChatId = getChatId(doctorId, selectedPatientId!); // Added non-null assertion
+            const currentChatId = getChatId(doctorId, selectedPatientId!); 
             await markMessagesAsReadAction(currentChatId, doctorId);
 
             setLoadingSummary(true);
             try {
               const summaryResult = await summarizePatientHistory({
-                patientId: selectedPatientId!, // Added non-null assertion
+                patientId: selectedPatientId!, 
                 medicalHistory: result.patient.medicalHistory || "No detailed medical history available."
               });
               setHistorySummary(summaryResult.summary);
@@ -267,7 +264,7 @@ function DoctorDashboardContent({ doctorId, doctorName, userRole }: DoctorDashbo
                 const currentMedsString = (result.medications || []).map(m => `${m.name} (${m.dosage})`).join(', ') || "None listed";
                 const predictedRisksString = result.patient?.readmissionRisk ? `Readmission Risk: ${result.patient.readmissionRisk}` : "No specific risks predicted by system.";
                 const carePlanResult = await generateCarePlan({
-                  patientId: selectedPatientId!, // Added non-null assertion
+                  patientId: selectedPatientId!, 
                   predictedRisks: predictedRisksString,
                   medicalHistory: result.patient.medicalHistory || "No detailed medical history available.",
                   currentMedications: currentMedsString
@@ -389,7 +386,7 @@ function DoctorDashboardContent({ doctorId, doctorName, userRole }: DoctorDashbo
   const formatDateOnly = (dateString: string | Date): string => {
     if (!dateString) return 'N/A';
     try {
-      return format(new Date(dateString), 'PPP');
+      return format(parseISO(dateString as string), 'PPP');
     } catch {
       return 'Invalid Date';
     }
@@ -398,7 +395,7 @@ function DoctorDashboardContent({ doctorId, doctorName, userRole }: DoctorDashbo
   const formatTimeOnly = (dateString: string | Date): string => {
      if (!dateString) return 'N/A';
     try {
-      return format(new Date(dateString), 'p');
+      return format(parseISO(dateString as string), 'p');
     } catch {
       return 'Invalid Time';
     }
@@ -483,7 +480,7 @@ function DoctorDashboardContent({ doctorId, doctorName, userRole }: DoctorDashbo
                             return (
                             <SelectItem key={patient.id} value={patient.id}>
                                 <div className="flex items-center justify-between w-full gap-3">
-                                  <div className="flex items-center gap-2 overflow-hidden"> {/* Inner flex for avatar and name, with overflow hidden */}
+                                  <div className="flex items-center gap-2 overflow-hidden">
                                       <Avatar className="h-7 w-7 shrink-0">
                                       <AvatarImage src={patient.photoURL || undefined} alt={patientName} data-ai-hint="profile person"/>
                                       <AvatarFallback>{getInitials(patientName)}</AvatarFallback>
@@ -547,10 +544,12 @@ function DoctorDashboardContent({ doctorId, doctorName, userRole }: DoctorDashbo
             </Card>
         </div>
 
+        {/* Patient Details Section - occupies remaining 3 columns, responsive grid inside */}
         {coreDataLoading ? (
-            <DashboardSkeletonCentralColumns />
+             <div className="lg:col-span-3"> <DashboardSkeletonCentralColumns /> </div>
         ) : selectedPatientId && dbAvailable && selectedPatientData ? (
              <div className="lg:col-span-3 grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4 content-start"> 
+                {/* Patient Info Card */}
                 <Card className="shadow-md">
                   <CardHeader className="flex flex-row items-center gap-3 p-4 pb-2"> 
                     <Avatar className="h-12 w-12 border-2 border-primary"> 
@@ -573,6 +572,7 @@ function DoctorDashboardContent({ doctorId, doctorName, userRole }: DoctorDashbo
                   </CardContent>
                 </Card>
 
+                {/* AI Patient Summary Card */}
                 <Card className="shadow-md">
                   <CardHeader className="p-4 pb-2"> 
                     <CardTitle className="text-sm flex items-center gap-2"><Brain className="h-4 w-4 text-primary"/>AI Patient Summary</CardTitle> 
@@ -589,6 +589,7 @@ function DoctorDashboardContent({ doctorId, doctorName, userRole }: DoctorDashbo
                   </CardContent>
                 </Card>
 
+                {/* AI Generated Care Plan Card */}
                 <Card className="shadow-md">
                   <CardHeader className="p-4 pb-2"> 
                     <CardTitle className="text-sm flex items-center gap-2"><Brain className="h-4 w-4 text-primary"/>AI Generated Care Plan</CardTitle> 
@@ -610,6 +611,7 @@ function DoctorDashboardContent({ doctorId, doctorName, userRole }: DoctorDashbo
                   </CardFooter>
                 </Card>
 
+                {/* Recent Health Data Card */}
                 <Card className="shadow-md">
                   <CardHeader className="p-4 pb-2"> 
                     <CardTitle className="text-sm flex items-center gap-2"><Activity className="h-4 w-4 text-primary" /> Recent Health Data</CardTitle> 
@@ -620,7 +622,7 @@ function DoctorDashboardContent({ doctorId, doctorName, userRole }: DoctorDashbo
                       <ul className="space-y-1.5 text-xs"> 
                         {patientHealthData.slice(-15).reverse().map((data) => ( 
                           <li key={data.id} className="flex justify-between items-center border-b pb-1 pt-0.5 text-xs"> 
-                            <span className="text-muted-foreground">{formatDistanceToNow(parseISO(data.timestamp), { addSuffix: true })}</span>
+                            <span className="text-muted-foreground">{formatDistanceToNow(parseISO(data.timestamp as string), { addSuffix: true })}</span>
                             <div className="flex gap-1.5"> 
                               {data.steps !== undefined && <span className="flex items-center"><Activity className="h-3 w-3 mr-0.5" />{data.steps}</span>}
                               {data.heartRate !== undefined && <span className="flex items-center"><HeartPulse className="h-3 w-3 mr-0.5 text-red-500" />{data.heartRate} bpm</span>}
@@ -639,6 +641,7 @@ function DoctorDashboardContent({ doctorId, doctorName, userRole }: DoctorDashbo
                   </CardFooter>
                 </Card>
 
+                {/* AI Health Trend Analysis Card */}
                 <Card className="shadow-md">
                   <CardHeader className="p-4 pb-2"> 
                     <CardTitle className="text-sm flex items-center gap-2">
@@ -671,7 +674,7 @@ function DoctorDashboardContent({ doctorId, doctorName, userRole }: DoctorDashbo
                         </div>
                       ) : (
                         <div className="flex flex-col items-center justify-center text-center h-full py-2">
-                          <Check className="h-5 w-5 text-green-500 mb-1" /> 
+                          <ThumbsDown className="h-5 w-5 text-green-500 mb-1" /> 
                           <p className="text-xs text-muted-foreground">{trendAnalysis.trendSummary || "No concerning health trends identified."}</p>
                         </div>
                       )
@@ -707,6 +710,7 @@ function DoctorDashboardContent({ doctorId, doctorName, userRole }: DoctorDashbo
                   </CardFooter>
                 </Card>
 
+                {/* Medication Overview Card */}
                 <Card className="shadow-md">
                   <CardHeader className="p-4 pb-2"> 
                     <CardTitle className="text-sm flex items-center gap-2"><Pill className="h-4 w-4 text-primary" /> Medication Overview</CardTitle> 
@@ -737,6 +741,7 @@ function DoctorDashboardContent({ doctorId, doctorName, userRole }: DoctorDashbo
                   </CardFooter>
                 </Card>
 
+                {/* AI Suggested Interventions Card */}
                  <Card className="shadow-md md:col-span-3 xl:col-span-3"> 
                   <CardHeader className="p-4 pb-2"> 
                     <CardTitle className="text-sm flex items-center gap-2"><Info className="h-4 w-4 text-primary" /> AI Suggested Interventions</CardTitle> 
@@ -752,7 +757,7 @@ function DoctorDashboardContent({ doctorId, doctorName, userRole }: DoctorDashbo
                             <li key={suggestion.id} className="p-2 border rounded-md bg-card hover:shadow-sm transition-shadow space-y-1"> 
                               <p className="text-xs" dangerouslySetInnerHTML={{ __html: formatBoldMarkdown(suggestion.suggestionText) }} />
                               <div className="flex justify-between items-center">
-                                <span className="text-xs text-muted-foreground">{formatDistanceToNow(parseISO(suggestion.timestamp), { addSuffix: true })}</span>
+                                <span className="text-xs text-muted-foreground">{formatDistanceToNow(parseISO(suggestion.timestamp as string), { addSuffix: true })}</span>
                                 {suggestion.status === 'pending' ? (
                                   <div className="flex gap-1"> 
                                     <Button size="xs" variant="outline" className="h-6 px-1.5 py-0.5 text-xs border-green-500 text-green-700 hover:bg-green-50 hover:text-green-800 dark:border-green-600 dark:text-green-400 dark:hover:bg-green-700 dark:hover:text-green-200" onClick={() => handleSuggestionAction(suggestion.id, 'approved')} disabled={!dbAvailable}>
@@ -841,7 +846,7 @@ function DoctorDashboardContent({ doctorId, doctorName, userRole }: DoctorDashbo
                                 <div className={`p-3 rounded-xl max-w-[80%] shadow-sm ${isDoctorMessage ? 'bg-primary text-primary-foreground' : 'bg-card text-card-foreground border'}`}>
                                 <p className="text-sm">{msg.text}</p>
                                 <p className={`text-xs mt-1 ${isDoctorMessage ? 'text-primary-foreground/70 text-right' : 'text-muted-foreground text-left'}`}>
-                                    {msg.senderName} - {formatDistanceToNow(parseISO(msg.timestamp), { addSuffix: true })} {msg.isRead === false && !isDoctorMessage ? '(Unread)' : ''}
+                                    {msg.senderName} - {formatDistanceToNow(parseISO(msg.timestamp as string), { addSuffix: true })} {msg.isRead === false && !isDoctorMessage ? '(Unread)' : ''}
                                 </p>
                                 </div>
                             </div>
@@ -917,14 +922,15 @@ function DashboardSkeletonCentralColumns() {
   return (
     <>
       <div className="lg:col-span-3 grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4 content-start"> 
-        <Skeleton className="h-28 rounded-lg" />  
-        <Skeleton className="h-28 rounded-lg" />  
-        <Skeleton className="h-28 rounded-lg" />  
-        <Skeleton className="h-44 rounded-lg" /> 
-        <Skeleton className="h-36 rounded-lg" />  
-        <Skeleton className="h-44 rounded-lg" />  
-        <Skeleton className="h-40 rounded-lg md:col-span-3 xl:col-span-3" /> 
+        <Skeleton className="h-24 rounded-lg" />  
+        <Skeleton className="h-24 rounded-lg" />  
+        <Skeleton className="h-24 rounded-lg" />  
+        <Skeleton className="h-40 rounded-lg" /> 
+        <Skeleton className="h-32 rounded-lg" />  
+        <Skeleton className="h-40 rounded-lg" />  
+        <Skeleton className="h-36 rounded-lg md:col-span-3 xl:col-span-3" /> 
       </div>
     </>
   );
 }
+
