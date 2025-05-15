@@ -43,6 +43,23 @@ export default async function RootLayout({
     }
   }
 
+  let myDashboardPath = "/dashboard"; // Default path
+  if (session) {
+    switch (session.role) {
+      case 'patient':
+        myDashboardPath = "/dashboard/patient";
+        break;
+      case 'doctor':
+        myDashboardPath = "/dashboard/doctor";
+        break;
+      case 'admin':
+        myDashboardPath = "/dashboard/admin";
+        break;
+      default:
+        myDashboardPath = "/dashboard"; 
+    }
+  }
+
   return (
     <html lang="en">
       <body className={`${geistSans.variable} ${geistMono.variable} antialiased`}>
@@ -50,7 +67,7 @@ export default async function RootLayout({
           <Sidebar variant="inset" collapsible="icon">
              <SidebarMenu className="flex-grow p-2">
                 <SidebarMenuItem>
-                    <Link href="/dashboard" passHref legacyBehavior>
+                    <Link href={myDashboardPath} passHref legacyBehavior>
                         <SidebarMenuButton tooltip="My Dashboard">
                          <Home />
                          <span>My Dashboard</span>
@@ -58,36 +75,16 @@ export default async function RootLayout({
                     </Link>
                 </SidebarMenuItem>
 
-                {session?.role === 'patient' && (
-                  <SidebarMenuItem>
-                      <Link href="/dashboard/patient" passHref legacyBehavior>
-                          <SidebarMenuButton tooltip="Patient View">
-                           <User />
-                           <span>Patient View</span>
-                          </SidebarMenuButton>
-                      </Link>
-                  </SidebarMenuItem>
-                )}
-                {session?.role === 'doctor' && (
-                  <SidebarMenuItem>
-                      <Link href="/dashboard/doctor" passHref legacyBehavior>
-                          <SidebarMenuButton tooltip="Doctor View">
-                           <Stethoscope />
-                           <span>Doctor View</span>
-                          </SidebarMenuButton>
-                      </Link>
-                  </SidebarMenuItem>
-                )}
+                {/* 
+                  Specific role view links are now conditional.
+                  They are only shown if they offer a different perspective than "My Dashboard".
+                  For example, an admin might want to view the patient dashboard structure.
+                */}
+
+                {/* Admin can view other dashboards */}
                  {session?.role === 'admin' && (
                   <>
-                    <SidebarMenuItem>
-                        <Link href="/dashboard/admin" passHref legacyBehavior>
-                            <SidebarMenuButton tooltip="Admin View">
-                             <ShieldCheck />
-                             <span>Admin View</span>
-                            </SidebarMenuButton>
-                        </Link>
-                    </SidebarMenuItem>
+                    {/* "Admin View" is covered by "My Dashboard" for admin, so it's removed here */}
                     <SidebarMenuItem>
                         <Link href="/dashboard/patient" passHref legacyBehavior>
                             <SidebarMenuButton tooltip="View as Patient (Admin)">
@@ -106,6 +103,24 @@ export default async function RootLayout({
                     </SidebarMenuItem>
                   </>
                 )}
+
+                {/* 
+                  For non-admin users, if "My Dashboard" already points to their role-specific dashboard,
+                  the extra "Patient View" or "Doctor View" link is redundant and thus removed.
+                */}
+                
+                {/* Example: If a future role might need an explicit link different from their "My Dashboard"
+                {session?.role === 'some_other_role_that_is_not_patient_or_doctor_or_admin' && (
+                  <SidebarMenuItem>
+                      <Link href="/dashboard/some_other_role" passHref legacyBehavior>
+                          <SidebarMenuButton tooltip="Some Other View">
+                           <User /> 
+                           <span>Some Other View</span>
+                          </SidebarMenuButton>
+                      </Link>
+                  </SidebarMenuItem>
+                )}
+                */}
 
                 <SidebarMenuItem>
                     <Link href="/seed-database" passHref legacyBehavior>

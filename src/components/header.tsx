@@ -17,7 +17,7 @@ import {
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Badge } from '@/components/ui/badge';
 import { SidebarTrigger } from '@/components/ui/sidebar';
-import { Bell, LogOut, Settings, UserCircle, AlertTriangle as AlertTriangleIcon } from 'lucide-react'; // Renamed to avoid conflict
+import { Bell, LogOut, Settings, UserCircle, AlertTriangle as AlertTriangleIcon, Pill } from 'lucide-react';
 import type { UserSession } from '@/app/actions/authActions';
 import type { NotificationItem } from '@/app/actions/userActions';
 import { cn } from '@/lib/utils'; // For conditional classnames
@@ -58,7 +58,6 @@ export default function Header({ session, unreadMessagesCount, notificationItems
         </Link>
       </div>
       <div className="flex w-full items-center gap-4 md:ml-auto md:gap-2 lg:gap-4 justify-end">
-        {/* Search bar (optional) - can be added here */}
         <div className="ml-auto flex items-center gap-3">
           {session ? (
             <>
@@ -83,7 +82,15 @@ export default function Header({ session, unreadMessagesCount, notificationItems
                   {notificationItems.length > 0 ? (
                     <>
                     <ScrollArea className="h-[300px]">
-                      {notificationItems.map((item) => (
+                      {notificationItems.map((item) => {
+                        let icon = null;
+                        if (item.type === 'alert' && item.isCritical) {
+                            icon = <AlertTriangleIcon className="h-4 w-4 text-red-500 mr-2" />;
+                        } else if (item.type === 'medication_reminder') {
+                            icon = <Pill className="h-4 w-4 text-blue-500 mr-2" />;
+                        }
+
+                        return (
                         <DropdownMenuItem asChild key={item.id}>
                           <Link
                             href={item.href}
@@ -93,16 +100,17 @@ export default function Header({ session, unreadMessagesCount, notificationItems
                             )}
                           >
                             <div className="flex justify-between w-full items-center">
-                                <span className={cn("font-semibold text-sm", item.isCritical && "text-red-700 dark:text-red-300 flex items-center gap-1")}>
-                                  {item.isCritical && <AlertTriangleIcon className="h-4 w-4" />}
+                                <span className={cn("font-semibold text-sm flex items-center", item.isCritical && "text-red-700 dark:text-red-300")}>
+                                  {icon}
                                   {item.title}
                                 </span>
                                 <span className="text-xs text-muted-foreground">{new Date(item.timestamp).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span>
                             </div>
-                            <p className="text-xs text-muted-foreground truncate w-full">{item.description}</p>
+                            <p className="text-xs text-muted-foreground truncate w-full pl-6">{item.description}</p> {/* Indent description if icon is present */}
                           </Link>
                         </DropdownMenuItem>
-                      ))}
+                        );
+                      })}
                     </ScrollArea>
                      <DropdownMenuSeparator />
                      <DropdownMenuItem asChild>
@@ -168,3 +176,4 @@ export default function Header({ session, unreadMessagesCount, notificationItems
     </header>
   );
 }
+

@@ -2,7 +2,8 @@
 'use server';
 
 import { connectToDatabase, toObjectId, ObjectId } from '@/lib/mongodb';
-
+import { sendSevereSymptomAlertEmail } from '@/lib/email';
+import { analyzeSymptomSeverity, type AnalyzeSymptomSeverityInput, type AnalyzeSymptomSeverityOutput } from '@/ai/flows/analyzeSymptomSeverity';
 
 export interface PatientHealthData {
   _id: string;
@@ -30,8 +31,9 @@ export interface PatientMedication {
   name: string;
   dosage: string;
   frequency: string;
-  lastTaken?: string;
+  lastTaken?: string; // ISO string
   adherence?: number;
+  reminderTimes?: string[];
 }
 interface RawPatientMedication {
   _id: ObjectId;
@@ -41,6 +43,7 @@ interface RawPatientMedication {
   frequency: string;
   lastTaken?: Date;
   adherence?: number;
+  reminderTimes?: string[];
 }
 
 export interface PatientSymptomReport {
@@ -69,10 +72,10 @@ export interface PatientChatMessage {
   senderName: string;
   receiverId: string;
   text: string;
-  timestamp: string; // Dates should be stringified
+  timestamp: string;
   isRead?: boolean;
 }
-interface RawPatientChatMessage { // DB representation
+interface RawPatientChatMessage {
   _id: ObjectId;
   chatId: string;
   senderId: string;
@@ -83,16 +86,41 @@ interface RawPatientChatMessage { // DB representation
   isRead?: boolean;
 }
 
-interface PatientUserForAlerts { // For fetching patient details including assigned doctor and emergency contact
+interface PatientUserForAlerts {
     _id: ObjectId;
     displayName: string;
     assignedDoctorId?: string;
-    assignedDoctorName?: string; // For direct use in alert messages
+    assignedDoctorName?: string;
     emergencyContactNumber?: string;
-    // other fields if needed
+    emergencyContactEmail?: string;
+    medicalHistory?: string;
+    readmissionRisk?: 'low' | 'medium' | 'high';
 }
 
+export interface PatientAISuggestion {
+  _id: string;
+  id: string;
+  patientId: string;
+  suggestionText: string;
+  timestamp: string;
+  status: 'pending' | 'approved' | 'rejected';
+  source?: string;
+  symptomReportId?: string;
+}
+
+interface RawPatientAISuggestion {
+  _id: ObjectId;
+  patientId: ObjectId;
+  suggestionText: string;
+  timestamp: Date;
+  status: 'pending' | 'approved' | 'rejected';
+  source?: string;
+  symptomReportId?: string;
+}
+
+
 const getChatId = (id1: string, id2: string): string => {
+  if (!id1 || !id2) return "";
   return [id1, id2].sort().join('_');
 };
 
@@ -102,6 +130,7 @@ export async function fetchPatientDashboardDataAction(patientIdStr: string): Pro
   medications?: PatientMedication[],
   symptomReports?: PatientSymptomReport[],
   chatMessages?: PatientChatMessage[],
+  patientSuggestions?: PatientAISuggestion[],
   assignedDoctorId?: string,
   assignedDoctorName?: string,
   patientDisplayName?: string,
@@ -115,8 +144,7 @@ export async function fetchPatientDashboardDataAction(patientIdStr: string): Pro
   try {
     const { db } = await connectToDatabase();
 
-    // Fetch patient profile to get assigned doctor info
-    const usersCollection = db.collection<PatientUserForAlerts>('users'); // Use the more specific type
+    const usersCollection = db.collection<PatientUserForAlerts>('users');
     const patientProfile = await usersCollection.findOne({ _id: patientObjectId });
 
     if (!patientProfile) {
@@ -147,7 +175,8 @@ export async function fetchPatientDashboardDataAction(patientIdStr: string): Pro
       id: med._id.toString(),
       patientId: med.patientId.toString(),
       lastTaken: med.lastTaken?.toISOString(),
-      adherence: med.adherence ?? Math.floor(Math.random() * 41) + 60
+      adherence: med.adherence ?? Math.floor(Math.random() * 41) + 60,
+      reminderTimes: med.reminderTimes,
     }));
 
     const symptomsCollection = db.collection<RawPatientSymptomReport>('symptomReports');
@@ -174,12 +203,36 @@ export async function fetchPatientDashboardDataAction(patientIdStr: string): Pro
         }));
     }
 
+    const suggestionsCollection = db.collection<RawPatientAISuggestion>('aiSuggestions');
+    const rawPatientSuggestions = await suggestionsCollection
+      .find({
+        patientId: patientObjectId,
+        $or: [
+            { status: 'approved' },
+            { status: 'pending', source: 'symptom_analysis_mild' }
+        ]
+       })
+      .sort({ timestamp: -1 })
+      .limit(10) 
+      .toArray();
+    const patientSuggestions: PatientAISuggestion[] = rawPatientSuggestions.map(s => ({
+      _id: s._id.toString(),
+      id: s._id.toString(),
+      patientId: s.patientId.toString(),
+      suggestionText: s.suggestionText,
+      timestamp: s.timestamp.toISOString(),
+      status: s.status,
+      source: s.source,
+      symptomReportId: s.symptomReportId
+    }));
+
 
     return {
         healthData,
         medications,
         symptomReports,
         chatMessages,
+        patientSuggestions,
         assignedDoctorId,
         assignedDoctorName,
         patientDisplayName
@@ -195,9 +248,9 @@ export async function fetchPatientDashboardDataAction(patientIdStr: string): Pro
 
 export async function submitSymptomReportAction(
   patientIdStr: string,
-  severity: 'mild' | 'moderate' | 'severe',
+  manuallySelectedSeverity: 'mild' | 'moderate' | 'severe',
   description: string
-): Promise<{ report?: PatientSymptomReport, error?: string }> {
+): Promise<{ report?: PatientSymptomReport, error?: string, aiAssessment?: AnalyzeSymptomSeverityOutput }> {
 
   const patientObjectId = toObjectId(patientIdStr);
   if (!patientObjectId) {
@@ -207,7 +260,7 @@ export async function submitSymptomReportAction(
   const reportData: Omit<RawPatientSymptomReport, '_id'> = {
     patientId: patientObjectId,
     timestamp: new Date(),
-    severity,
+    severity: manuallySelectedSeverity,
     description,
     userId: patientIdStr,
   };
@@ -215,8 +268,11 @@ export async function submitSymptomReportAction(
   try {
     const { db } = await connectToDatabase();
     const symptomsCollection = db.collection<RawPatientSymptomReport>('symptomReports');
-    const result = await symptomsCollection.insertOne(reportData as RawPatientSymptomReport);
+    const usersCollection = db.collection<PatientUserForAlerts>('users');
+    const healthCollection = db.collection<RawPatientHealthData>('healthData');
+    const suggestionsCollection = db.collection<RawPatientAISuggestion>('aiSuggestions');
 
+    const result = await symptomsCollection.insertOne(reportData as RawPatientSymptomReport);
     const insertedReport: PatientSymptomReport = {
         ...reportData,
         _id: result.insertedId.toString(),
@@ -225,42 +281,147 @@ export async function submitSymptomReportAction(
         timestamp: reportData.timestamp.toISOString()
     };
 
-    if (severity === 'severe') {
-      // Fetch patient details for alert
-      const usersCollection = db.collection<PatientUserForAlerts>('users');
-      const patient = await usersCollection.findOne({ _id: patientObjectId });
+    const patient = await usersCollection.findOne({ _id: patientObjectId });
+    if (!patient) {
+        console.error(`submitSymptomReportAction: Patient ${patientIdStr} not found for AI analysis.`);
+        return { report: insertedReport, error: "Symptom reported, but patient details for AI analysis not found." };
+    }
 
-      if (patient) {
-        console.log(`PATIENT ACTION: SEVERE SYMPTOM REPORTED FOR ${patient.displayName} (ID: ${patientIdStr})`);
+    const latestHealthData = await healthCollection.findOne(
+        { patientId: patientObjectId },
+        { sort: { timestamp: -1 } }
+    );
+
+    const patientRiskProfile = `Readmission Risk: ${patient.readmissionRisk || 'N/A'}. Medical History: ${patient.medicalHistory || 'No detailed history available.'}`;
+    const latestVitalsSummary = latestHealthData ?
+        `Heart Rate: ${latestHealthData.heartRate ?? 'N/A'} bpm, Steps Today: ${latestHealthData.steps ?? 'N/A'}, Blood Glucose: ${latestHealthData.bloodGlucose ?? 'N/A'} mg/dL. Recorded at: ${latestHealthData.timestamp.toLocaleTimeString()}`
+        : "No recent vitals available.";
+
+    let aiAssessment: AnalyzeSymptomSeverityOutput | undefined;
+    let triggerCriticalAlert = manuallySelectedSeverity === 'severe';
+
+    try {
+        const aiInput: AnalyzeSymptomSeverityInput = {
+            patientId: patientIdStr,
+            symptomDescription: description,
+            patientRiskProfile,
+            latestVitals: latestVitalsSummary,
+            manuallySelectedSeverity,
+        };
+        aiAssessment = await analyzeSymptomSeverity(aiInput);
+        console.log(`AI Symptom Assessment for Patient ${patientIdStr}:`, JSON.stringify(aiAssessment, null, 2));
+
+        if (aiAssessment.aiDeterminedSeverity === 'severe' || aiAssessment.isCriticalAlertRecommended) {
+            triggerCriticalAlert = true;
+        }
+    } catch (aiError: any) {
+        console.error(`AI symptom analysis failed for patient ${patientIdStr}:`, aiError);
+    }
+
+    if (triggerCriticalAlert) {
+        console.log(`PATIENT ACTION: CRITICAL ALERT TRIGGERED for ${patient.displayName} (ID: ${patientIdStr}) based on manual selection or AI assessment.`);
+
+        let alertBaseDescription = `Patient ${patient.displayName} reported symptoms: "${description}". Patient-selected severity: ${manuallySelectedSeverity}.`;
+        if (aiAssessment) {
+            alertBaseDescription += `\nAI Assessment: Severity - ${aiAssessment.aiDeterminedSeverity}, Justification - ${aiAssessment.justification}, Critical Alert Recommended - ${aiAssessment.isCriticalAlertRecommended ? 'Yes' : 'No'}.`;
+        } else {
+            alertBaseDescription += `\nAI Assessment: Could not be performed or failed.`;
+        }
+
         if (patient.emergencyContactNumber) {
-          console.log(`PATIENT ACTION: SIMULATED URGENT SMS to ${patient.emergencyContactNumber}: Patient ${patient.displayName} reported severe symptoms: "${description}". Please check on them.`);
+          console.log(`PATIENT ACTION: SIMULATED URGENT SMS to ${patient.emergencyContactNumber}: ${alertBaseDescription} Please check on them.`);
         } else {
           console.log(`PATIENT ACTION: Patient ${patient.displayName} does not have an emergency contact number listed.`);
         }
-        console.error(`PATIENT ACTION: CRITICAL HEALTH ALERT: Patient ${patient.displayName} reported severe symptoms: "${description}". Assess for immediate emergency services. Doctor ${patient.assignedDoctorName || patient.assignedDoctorId} also alerted.`);
 
-        // Send a "System Alert" message to the doctor via chat system
+        if (patient.emergencyContactEmail && patient.displayName) {
+          const emailResult = await sendSevereSymptomAlertEmail(
+            patient.emergencyContactEmail,
+            patient.displayName,
+            alertBaseDescription
+          );
+
+          if (emailResult.success) {
+            console.log(`PATIENT ACTION: Sent severe symptom alert email to ${patient.emergencyContactEmail}`);
+          } else {
+            console.warn(`PATIENT ACTION: Failed to send severe symptom alert email to ${patient.emergencyContactEmail}: ${emailResult.error}`);
+          }
+        } else {
+            console.log(`PATIENT ACTION: Patient ${patient.displayName} does not have an emergency contact email listed for alerts.`);
+        }
+
+        console.error(`PATIENT ACTION: CRITICAL HEALTH ALERT LOG: ${alertBaseDescription}. Assess for immediate emergency services. Doctor ${patient.assignedDoctorName || patient.assignedDoctorId} also alerted.`);
+
         if (patient.assignedDoctorId) {
           const chatCollection = db.collection<RawPatientChatMessage>('chatMessages');
           const alertChatId = getChatId(patientIdStr, patient.assignedDoctorId);
+          let doctorAlertMessage = `URGENT: Patient ${patient.displayName} reported: "${description}" (Patient severity: ${manuallySelectedSeverity}).`;
+          if (aiAssessment) {
+            doctorAlertMessage += `\nAI determined severity: ${aiAssessment.aiDeterminedSeverity}. Justification: ${aiAssessment.justification}.`;
+            if (aiAssessment.isCriticalAlertRecommended) doctorAlertMessage += ` CRITICAL ALERT RECOMMENDED.`;
+          } else {
+             doctorAlertMessage += `\nAI assessment failed or was not performed.`;
+          }
+          doctorAlertMessage += `\nPlease review immediately.`;
+
           const alertMessage: Omit<RawPatientChatMessage, '_id'> = {
             chatId: alertChatId,
-            senderId: patientIdStr, // System alerts will "originate" from the patient for routing to doctor
-            senderName: 'System Alert', // Special sender name to identify alerts
+            senderId: patientIdStr,
+            senderName: 'System Alert',
             receiverId: patient.assignedDoctorId,
-            text: `URGENT: Patient ${patient.displayName} reported SEVERE SYMPTOM: "${description}". Please review immediately.`,
+            text: doctorAlertMessage,
             timestamp: new Date(),
             isRead: false,
           };
           await chatCollection.insertOne(alertMessage as RawPatientChatMessage);
           console.log(`PATIENT ACTION: System Alert message sent to doctor ${patient.assignedDoctorId} for patient ${patientIdStr}.`);
         }
-      } else {
-        console.error(`PATIENT ACTION: Could not find patient details for ${patientIdStr} to send severe symptom alerts.`);
-      }
+    } else if (aiAssessment?.suggestedFollowUp && (aiAssessment.aiDeterminedSeverity === 'mild' || aiAssessment.aiDeterminedSeverity === 'moderate')) {
+
+        if (aiAssessment.aiDeterminedSeverity === 'mild' && aiAssessment.suggestedFollowUp) {
+            const newSuggestion: Omit<RawPatientAISuggestion, '_id'> = {
+                patientId: patientObjectId,
+                suggestionText: aiAssessment.suggestedFollowUp,
+                timestamp: new Date(),
+                status: 'pending',
+                source: 'symptom_analysis_mild',
+                symptomReportId: insertedReport.id,
+            };
+            await suggestionsCollection.insertOne(newSuggestion as RawPatientAISuggestion);
+            console.log(`PATIENT ACTION: AI self-care tip for mild symptom saved as pending suggestion for patient ${patientIdStr}.`);
+        }
+
+        if (patient.assignedDoctorId) {
+            const chatCollection = db.collection<RawPatientChatMessage>('chatMessages');
+            const alertChatId = getChatId(patientIdStr, patient.assignedDoctorId);
+            let doctorInfoMessage = `INFO: Patient ${patient.displayName} reported: "${description}" (Patient severity: ${manuallySelectedSeverity}).`;
+            if (aiAssessment) { // Check if aiAssessment itself is not undefined
+                doctorInfoMessage += `\nAI determined severity: ${aiAssessment.aiDeterminedSeverity}. Justification: ${aiAssessment.justification}.`;
+                if (aiAssessment.aiDeterminedSeverity === 'mild' && aiAssessment.suggestedFollowUp) {
+                    doctorInfoMessage += `\nAI self-care tip for patient logged for your review: "${aiAssessment.suggestedFollowUp}"`;
+                } else if (aiAssessment.aiDeterminedSeverity === 'moderate' && aiAssessment.suggestedFollowUp) {
+                     doctorInfoMessage += `\nAI suggests asking patient: "${aiAssessment.suggestedFollowUp}"`;
+                }
+            } else {
+                doctorInfoMessage += `\nAI assessment was not performed or failed.`;
+            }
+             doctorInfoMessage += `\nPlease review.`;
+
+            const infoMessage: Omit<RawPatientChatMessage, '_id'> = {
+                chatId: alertChatId,
+                senderId: patientIdStr,
+                senderName: 'System Info',
+                receiverId: patient.assignedDoctorId,
+                text: doctorInfoMessage,
+                timestamp: new Date(),
+                isRead: false,
+            };
+            await chatCollection.insertOne(infoMessage as RawPatientChatMessage);
+            console.log(`PATIENT ACTION: System Info message sent to doctor ${patient.assignedDoctorId} for patient ${patientIdStr} with AI follow-up suggestion/tip.`);
+        }
     }
 
-    return { report: insertedReport };
+    return { report: insertedReport, aiAssessment };
   } catch (err: any) {
     console.error("Error submitting symptom report:", err);
     if (err.message.includes('queryTxt ETIMEOUT') || err.message.includes('querySrv ENOTFOUND')) {
@@ -308,5 +469,56 @@ export async function sendPatientChatMessageAction(
         return { error: "Database connection timeout. Please check your network and MongoDB Atlas settings." };
     }
     return { error: "Could not send message. " + (err.message || '') };
+  }
+}
+
+export async function markMedicationTakenAction(
+  patientIdStr: string,
+  medicationIdStr: string
+): Promise<{ success: boolean; error?: string; updatedMedication?: PatientMedication }> {
+  const patientObjectId = toObjectId(patientIdStr);
+  const medicationObjectId = toObjectId(medicationIdStr);
+
+  if (!patientObjectId) {
+    return { success: false, error: 'Invalid patient ID format.' };
+  }
+  if (!medicationObjectId) {
+    return { success: false, error: 'Invalid medication ID format.' };
+  }
+
+  try {
+    const { db } = await connectToDatabase();
+    const medicationsCollection = db.collection<RawPatientMedication>('medications');
+
+    const currentTime = new Date();
+
+    const result = await medicationsCollection.findOneAndUpdate(
+      { _id: medicationObjectId, patientId: patientObjectId },
+      { $set: { lastTaken: currentTime } },
+      { returnDocument: 'after' }
+    );
+
+    if (!result) {
+      return { success: false, error: 'Medication not found for this patient or update failed.' };
+    }
+    
+    const updatedMedication: PatientMedication = {
+      ...result,
+      _id: result._id.toString(),
+      id: result._id.toString(),
+      patientId: result.patientId.toString(),
+      lastTaken: result.lastTaken?.toISOString(),
+    };
+    
+    // console.log(`Medication ${medicationIdStr} marked as taken for patient ${patientIdStr} at ${currentTime.toISOString()}`);
+    // Revalidation can be added here if necessary, e.g., revalidatePath(`/dashboard/patient`);
+
+    return { success: true, updatedMedication };
+  } catch (err: any) {
+    console.error('Error marking medication as taken:', err);
+    if (err.message.includes('queryTxt ETIMEOUT') || err.message.includes('querySrv ENOTFOUND')) {
+      return { success: false, error: 'Database connection timeout.' };
+    }
+    return { success: false, error: 'Could not update medication status. ' + (err.message || '') };
   }
 }
