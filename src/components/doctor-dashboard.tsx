@@ -12,9 +12,18 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Input } from '@/components/ui/input';
-import { Loader2, AlertTriangle, Users, Stethoscope, Activity, HeartPulse, Pill, MessageSquare, Send, Check, X, Info, Brain, Search, CalendarDays, Sparkles, BookMarked, TrendingUp, ThumbsDown, Droplet } from 'lucide-react'; // Added Droplet
+import { Loader2, AlertTriangle, Users, Stethoscope, Activity, HeartPulse, Pill, MessageSquare, Send, Check, X, Info, Brain, Search, CalendarDays, Sparkles, BookMarked, TrendingUp, ThumbsDown, Droplet } from 'lucide-react';
 import { Textarea } from './ui/textarea';
 import { ScrollArea } from './ui/scroll-area';
+import {
+  Sheet,
+  SheetContent,
+  SheetHeader,
+  SheetTitle,
+  SheetTrigger,
+  SheetFooter,
+  SheetClose,
+} from '@/components/ui/sheet';
 import { summarizePatientHistory } from '@/ai/flows/summarize-patient-history';
 import { generateCarePlan } from '@/ai/flows/generate-care-plan';
 import { analyzePatientHealthTrends, type AnalyzePatientHealthTrendsOutput, type AnalyzePatientHealthTrendsInput } from '@/ai/flows/analyze-patient-health-trends';
@@ -83,7 +92,8 @@ function DoctorDashboardContent({ doctorId, doctorName, userRole }: DoctorDashbo
   const { toast } = useToast();
   const [dbAvailable, setDbAvailable] = useState<boolean>(true);
   const chatScrollAreaRef = useRef<HTMLDivElement>(null);
-  
+  const [isChatOpen, setIsChatOpen] = useState(false);
+
   const [bookingAppointment, setBookingAppointment] = useState<boolean>(false);
 
 
@@ -161,18 +171,18 @@ function DoctorDashboardContent({ doctorId, doctorName, userRole }: DoctorDashbo
     medications: DoctorPatientMedication[]
   ): AnalyzePatientHealthTrendsInput => {
     const recentHealth = healthData.slice(-5).reverse(); // Last 5, newest first
-    const healthSummary = recentHealth.length > 0 
-      ? "Recent Vitals (last " + recentHealth.length + " entries, newest first):\n" + recentHealth.map(d => 
+    const healthSummary = recentHealth.length > 0
+      ? "Recent Vitals (last " + recentHealth.length + " entries, newest first):\n" + recentHealth.map(d =>
           `- ${new Date(d.timestamp).toLocaleDateString()}: BP: ${d.heartRate && d.steps ? (Math.round(d.heartRate * 1.6 + d.steps/200)) + '/' + (Math.round(d.heartRate * 0.9 + d.steps/300)) : 'N/A'}, HR: ${d.heartRate ?? 'N/A'}bpm, Glucose: ${d.bloodGlucose ?? 'N/A'}mg/dL, Steps: ${d.steps ?? 'N/A'}`
         ).join("\n")
       : "No recent vital signs logged.";
 
     const adherenceSummary = medications.length > 0
-      ? "Medication Adherence:\n" + medications.map(m => 
+      ? "Medication Adherence:\n" + medications.map(m =>
           `- ${m.name} (${m.dosage}): ${m.adherence ?? 'N/A'}%`
         ).join("\n")
       : "No medications listed or adherence not tracked.";
-      
+
     const riskProfile = `Patient Readmission Risk: ${patient.readmissionRisk || 'N/A'}. Medical History: ${patient.medicalHistory || 'Not specified.'}`;
 
     return {
@@ -193,14 +203,15 @@ function DoctorDashboardContent({ doctorId, doctorName, userRole }: DoctorDashbo
       setHistorySummary(null);
       setCarePlan(null);
       setLoadingPatientDetails(false);
-      setTrendAnalysis(null); 
+      setTrendAnalysis(null);
       setLoadingTrendAnalysis(false);
+      setIsChatOpen(false); // Close chat when patient changes
       return;
     }
 
     async function fetchPatientAllData() {
       setLoadingPatientDetails(true);
-      setLoadingTrendAnalysis(true); 
+      setLoadingTrendAnalysis(true);
       setHistorySummary("Loading AI Summary...");
       setCarePlan("Loading AI Care Plan...");
       setTrendAnalysis(null);
@@ -298,13 +309,17 @@ function DoctorDashboardContent({ doctorId, doctorName, userRole }: DoctorDashbo
     }
 
     fetchPatientAllData();
-  }, [selectedPatientId, doctorId, doctorName, toast]); // Added doctorName, toast
+  }, [selectedPatientId, doctorId, doctorName, toast]);
 
   useEffect(() => {
-    if (chatScrollAreaRef.current) {
-      chatScrollAreaRef.current.scrollTop = chatScrollAreaRef.current.scrollHeight;
+    if (isChatOpen && chatScrollAreaRef.current) {
+       setTimeout(() => { // Ensure content is rendered before scrolling
+         if (chatScrollAreaRef.current) {
+            chatScrollAreaRef.current.scrollTop = chatScrollAreaRef.current.scrollHeight;
+         }
+      }, 0);
     }
-  }, [chatMessages]);
+  }, [chatMessages, isChatOpen]);
 
   const filteredPatients = useMemo(() => {
     if (!searchQuery) {
@@ -472,7 +487,7 @@ function DoctorDashboardContent({ doctorId, doctorName, userRole }: DoctorDashbo
                     <SelectContent>
                         {filteredPatients.length > 0 ? (
                         filteredPatients.map((patient) => {
-                            const patientName = patient.name; 
+                            const patientName = patient.name;
                             return (
                             <SelectItem key={patient.id} value={patient.id}>
                                 <div className="flex items-center justify-between w-full gap-3">
@@ -544,288 +559,238 @@ function DoctorDashboardContent({ doctorId, doctorName, userRole }: DoctorDashbo
             <DashboardSkeletonCentralColumn />
         ) : selectedPatientId && dbAvailable && selectedPatientData ? (
             <>
-            <div className="lg:col-span-1 space-y-6">
-              <Card className="shadow-md">
-                <CardHeader className="flex flex-row items-center gap-4 pb-3">
-                  <Avatar className="h-16 w-16 border-2 border-primary">
-                    <AvatarImage src={selectedPatientData?.photoURL || undefined} alt={selectedPatientData?.name} data-ai-hint="profile person"/>
-                    <AvatarFallback className="text-xl">{getInitials(selectedPatientData?.name)}</AvatarFallback>
-                  </Avatar>
-                  <div>
-                    <CardTitle className="text-xl">{selectedPatientData?.name}</CardTitle>
-                    <CardDescription className="text-sm">{selectedPatientData?.email || 'No email'}</CardDescription>
-                    {selectedPatientData?.readmissionRisk && (
-                      <Badge variant={getRiskBadgeVariant(selectedPatientData.readmissionRisk)} className="mt-2 text-xs px-2 py-0.5 capitalize">
-                        {selectedPatientData.readmissionRisk} readmission risk
-                      </Badge>
-                    )}
-                  </div>
-                </CardHeader>
-                <CardContent className="text-xs text-muted-foreground pt-0">
-                  <p>Patient ID: {selectedPatientData?.id}</p>
-                  {selectedPatientData?.lastActivity && <p>Last Activity: {formatTimestamp(selectedPatientData.lastActivity)}</p>}
-                </CardContent>
-              </Card>
-
-
-              <Card className="shadow-md">
-                <CardHeader>
-                  <CardTitle className="text-lg flex items-center gap-2"><Brain className="h-5 w-5 text-primary"/>AI Patient Summary</CardTitle>
-                  <CardDescription className="text-xs">Key points from the patient's history.</CardDescription>
-                </CardHeader>
-                <CardContent>
-                  {loadingSummary ? (
-                    <div className="space-y-2"><Skeleton className="h-4 w-full" /><Skeleton className="h-4 w-5/6" /><Skeleton className="h-4 w-3/4" /></div>
-                  ) : (
-                    <ScrollArea className="h-[120px] pr-3">
-                      <p className="text-sm text-muted-foreground" dangerouslySetInnerHTML={{ __html: formatBoldMarkdown(historySummary) }} />
-                    </ScrollArea>
-                  )}
-                </CardContent>
-              </Card>
-
-              <Card className="shadow-md">
-                <CardHeader>
-                  <CardTitle className="text-lg flex items-center gap-2"><Brain className="h-5 w-5 text-primary"/>AI Generated Care Plan</CardTitle>
-                  <CardDescription className="text-xs">Initial draft based on patient data.</CardDescription>
-                </CardHeader>
-                <CardContent>
-                  {loadingCarePlan ? (
-                    <div className="space-y-2"><Skeleton className="h-4 w-full" /><Skeleton className="h-4 w-full" /><Skeleton className="h-4 w-5/6" /></div>
-                  ) : (
-                     <ScrollArea className="h-[150px] pr-3">
-                      <p className="text-sm text-muted-foreground" dangerouslySetInnerHTML={{ __html: formatBoldMarkdown(carePlan) }} />
-                    </ScrollArea>
-                  )}
-                </CardContent>
-                <CardFooter>
-                  <Button size="sm" variant="outline" disabled={loadingCarePlan || !dbAvailable}>
-                    Edit/Approve Plan
-                  </Button>
-                </CardFooter>
-              </Card>
+            <div className="lg:col-span-2 grid grid-cols-1 md:grid-cols-2 gap-6 content-start"> {/* Changed to 2 columns and content-start */}
+              {/* Column 1 of Patient Details */}
+              <div className="space-y-6">
                 <Card className="shadow-md">
-                <CardHeader>
-                  <CardTitle className="text-lg flex items-center gap-2"><Activity className="h-5 w-5 text-primary" /> Recent Health Data</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  {patientHealthData.length > 0 ? (
-                    <ScrollArea className="h-[180px] pr-3">
-                    <ul className="space-y-2 text-sm">
-                      {patientHealthData.slice(0, 7).map((data) => (
-                        <li key={data.id} className="flex justify-between items-center border-b pb-1.5 pt-1">
-                          <span className="text-xs">{formatDistanceToNow(new Date(data.timestamp), { addSuffix: true })}</span>
-                          <div className="flex gap-2 text-xs text-muted-foreground">
-                            {data.steps !== undefined && <span className="flex items-center"><Activity className="h-3 w-3 mr-1" />{data.steps}</span>}
-                            {data.heartRate !== undefined && <span className="flex items-center"><HeartPulse className="h-3 w-3 mr-1 text-red-500" />{data.heartRate} bpm</span>}
-                             {data.bloodGlucose !== undefined && <span className="flex items-center"><Droplet className="h-3 w-3 mr-1 text-blue-500" />{data.bloodGlucose} mg/dL</span>}
-                          </div>
-                        </li>
-                      ))}
-                    </ul>
-                    </ScrollArea>
-                  ) : (
-                    <p className="text-sm text-muted-foreground py-4 text-center">No recent health data.</p>
-                  )}
-                </CardContent>
-                <CardFooter>
-                  <Button variant="link" size="sm" disabled={!dbAvailable} className="text-primary">View All Health Data</Button>
-                </CardFooter>
-              </Card>
-            </div>
-
-            <div className="lg:col-span-1 space-y-6">
-               <Card className="shadow-md">
-                <CardHeader>
-                  <CardTitle className="text-lg flex items-center gap-2">
-                    <TrendingUp className="h-5 w-5 text-primary" /> AI Health Trend Analysis
-                  </CardTitle>
-                  <CardDescription className="text-xs">Proactive analysis of recent patient data.</CardDescription>
-                </CardHeader>
-                <CardContent className="min-h-[150px]">
-                  {loadingTrendAnalysis ? (
-                    <div className="space-y-2">
-                      <Skeleton className="h-4 w-3/4" />
-                      <Skeleton className="h-4 w-full" />
-                      <Skeleton className="h-4 w-5/6" />
-                       <Skeleton className="h-8 w-1/2 mt-2" />
+                  <CardHeader className="flex flex-row items-center gap-4 pb-3">
+                    <Avatar className="h-16 w-16 border-2 border-primary">
+                      <AvatarImage src={selectedPatientData?.photoURL || undefined} alt={selectedPatientData?.name} data-ai-hint="profile person"/>
+                      <AvatarFallback className="text-xl">{getInitials(selectedPatientData?.name)}</AvatarFallback>
+                    </Avatar>
+                    <div>
+                      <CardTitle className="text-xl">{selectedPatientData?.name}</CardTitle>
+                      <CardDescription className="text-sm">{selectedPatientData?.email || 'No email'}</CardDescription>
+                      {selectedPatientData?.readmissionRisk && (
+                        <Badge variant={getRiskBadgeVariant(selectedPatientData.readmissionRisk)} className="mt-2 text-xs px-2 py-0.5 capitalize">
+                          {selectedPatientData.readmissionRisk} readmission risk
+                        </Badge>
+                      )}
                     </div>
-                  ) : trendAnalysis ? (
-                    trendAnalysis.isTrendConcerning ? (
-                      <div className="space-y-2">
-                        <Alert variant="destructive">
-                           <AlertTriangle className="h-4 w-4"/>
-                           <AlertTitle>Concerning Trend Identified!</AlertTitle>
-                           <AlertDescription>{trendAnalysis.trendSummary || "A concerning trend was noted."}</AlertDescription>
-                        </Alert>
-                        {trendAnalysis.suggestedActionForDoctor && (
-                          <div className="mt-3 p-3 bg-amber-50 border border-amber-200 rounded-md dark:bg-amber-900/30 dark:border-amber-700">
-                            <p className="text-sm font-semibold text-amber-700 dark:text-amber-300">Suggested Action:</p>
-                            <p className="text-sm text-amber-600 dark:text-amber-400">{trendAnalysis.suggestedActionForDoctor}</p>
-                          </div>
-                        )}
-                      </div>
+                  </CardHeader>
+                  <CardContent className="text-xs text-muted-foreground pt-0">
+                    <p>Patient ID: {selectedPatientData?.id}</p>
+                    {selectedPatientData?.lastActivity && <p>Last Activity: {formatTimestamp(selectedPatientData.lastActivity)}</p>}
+                  </CardContent>
+                </Card>
+
+                <Card className="shadow-md">
+                  <CardHeader>
+                    <CardTitle className="text-lg flex items-center gap-2"><Brain className="h-5 w-5 text-primary"/>AI Patient Summary</CardTitle>
+                    <CardDescription className="text-xs">Key points from the patient's history.</CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    {loadingSummary ? (
+                      <div className="space-y-2"><Skeleton className="h-4 w-full" /><Skeleton className="h-4 w-5/6" /><Skeleton className="h-4 w-3/4" /></div>
                     ) : (
-                      <div className="flex flex-col items-center justify-center text-center h-full">
-                        <ThumbsDown className="h-8 w-8 text-green-500 mb-2" /> {/* Changed from ThumbsUp */}
-                        <p className="text-sm text-muted-foreground">{trendAnalysis.trendSummary || "No concerning health trends identified at this time."}</p>
-                      </div>
-                    )
-                  ) : (
-                     dbAvailable && <p className="text-sm text-muted-foreground text-center py-4">Trend analysis not yet available for this patient.</p>
-                  )}
-                </CardContent>
-                <CardFooter>
-                    <Button 
-                        variant="outline" 
-                        size="sm" 
-                        onClick={async () => {
-                            if (!selectedPatientData || !patientHealthData || !patientMedications) return;
-                            setLoadingTrendAnalysis(true);
-                            const trendInput = prepareTrendAnalysisInput(selectedPatientData, patientHealthData, patientMedications);
-                            try {
-                                const trendOutput = await analyzePatientHealthTrends(trendInput);
-                                setTrendAnalysis(trendOutput);
-                            } catch (aiError: any) {
-                                console.error("AI Trend Analysis Error:", aiError);
-                                const errorMsg = aiError.message?.includes("NOT_FOUND") || aiError.message?.includes("API key") || aiError.message?.includes("model") ? "Model not found or API key issue." : "Service error.";
-                                setTrendAnalysis({ isTrendConcerning: false, trendSummary: "Could not re-run AI trend analysis. " + errorMsg, suggestedActionForDoctor: null });
-                            } finally {
-                                setLoadingTrendAnalysis(false);
-                            }
-                        }}
-                        disabled={loadingTrendAnalysis || !selectedPatientData || !dbAvailable}
-                    >
-                       {loadingTrendAnalysis ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> :  <Sparkles className="mr-2 h-4 w-4"/>}
-                        Re-analyze Trends
+                      <ScrollArea className="h-[120px] pr-3">
+                        <p className="text-sm text-muted-foreground" dangerouslySetInnerHTML={{ __html: formatBoldMarkdown(historySummary) }} />
+                      </ScrollArea>
+                    )}
+                  </CardContent>
+                </Card>
+
+                <Card className="shadow-md">
+                  <CardHeader>
+                    <CardTitle className="text-lg flex items-center gap-2"><Brain className="h-5 w-5 text-primary"/>AI Generated Care Plan</CardTitle>
+                    <CardDescription className="text-xs">Initial draft based on patient data.</CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    {loadingCarePlan ? (
+                      <div className="space-y-2"><Skeleton className="h-4 w-full" /><Skeleton className="h-4 w-full" /><Skeleton className="h-4 w-5/6" /></div>
+                    ) : (
+                       <ScrollArea className="h-[150px] pr-3">
+                        <p className="text-sm text-muted-foreground" dangerouslySetInnerHTML={{ __html: formatBoldMarkdown(carePlan) }} />
+                      </ScrollArea>
+                    )}
+                  </CardContent>
+                  <CardFooter>
+                    <Button size="sm" variant="outline" disabled={loadingCarePlan || !dbAvailable}>
+                      Edit/Approve Plan
                     </Button>
-                </CardFooter>
-              </Card>
+                  </CardFooter>
+                </Card>
+              </div>
 
-              <Card className="shadow-md">
-                <CardHeader>
-                  <CardTitle className="text-lg flex items-center gap-2"><Pill className="h-5 w-5 text-primary" /> Medication Overview</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  {patientMedications.length > 0 ? (
-                    <ScrollArea className="h-[180px] pr-3">
-                    <ul className="space-y-3 text-sm">
-                      {patientMedications.map(med => (
-                        <li key={med.id} className="border-b pb-2">
-                          <div className="flex justify-between items-center mb-1">
-                            <span className="font-medium">{med.name} <span className="text-xs text-muted-foreground">({med.dosage})</span></span>
-                            <Badge variant={med.adherence && med.adherence >= 90 ? 'default' : med.adherence && med.adherence >= 70 ? 'secondary' : 'destructive'} className="text-xs px-2 py-0.5">
-                              {med.adherence !== undefined ? `${med.adherence}% adherence` : 'N/A'}
-                            </Badge>
-                          </div>
-                          <p className="text-xs text-muted-foreground">{med.frequency}</p>
-                        </li>
-                      ))}
-                    </ul>
-                    </ScrollArea>
-                  ) : (
-                    <p className="text-sm text-muted-foreground py-4 text-center">No medications assigned.</p>
-                  )}
-                </CardContent>
-                <CardFooter>
-                  <Button variant="link" size="sm" disabled={!dbAvailable} className="text-primary">Manage Medications</Button>
-                </CardFooter>
-              </Card>
-
-               <Card className="shadow-md">
-                <CardHeader>
-                  <CardTitle className="text-lg flex items-center gap-2"><Info className="h-5 w-5 text-primary" /> AI Suggested Interventions</CardTitle>
-                  <CardDescription className="text-xs">Review and act on AI-driven suggestions.</CardDescription>
-                </CardHeader>
-                <CardContent>
-                  {(loadingPatientDetails && !aiSuggestions.length) ? (
-                    <div className="flex items-center justify-center p-4"><Loader2 className="h-6 w-6 animate-spin text-primary" /></div>
-                  ) : aiSuggestions.length > 0 ? (
-                    <ScrollArea className="h-[200px] pr-3">
-                      <ul className="space-y-3">
-                        {aiSuggestions.map(suggestion => (
-                          <li key={suggestion.id} className="p-3 border rounded-md bg-card hover:shadow-sm transition-shadow space-y-2">
-                            <p className="text-sm" dangerouslySetInnerHTML={{ __html: formatBoldMarkdown(suggestion.suggestionText) }} />
-                            <div className="flex justify-between items-center">
-                              <span className="text-xs text-muted-foreground">{formatDistanceToNow(new Date(suggestion.timestamp), { addSuffix: true })}</span>
-                              {suggestion.status === 'pending' ? (
-                                <div className="flex gap-2">
-                                  <Button size="xs" variant="outline" className="h-7 px-2 py-1 text-xs border-green-500 text-green-700 hover:bg-green-50 hover:text-green-800 dark:border-green-600 dark:text-green-400 dark:hover:bg-green-700 dark:hover:text-green-200" onClick={() => handleSuggestionAction(suggestion.id, 'approved')} disabled={!dbAvailable}>
-                                    <Check className="h-3 w-3 mr-1" /> Approve
-                                  </Button>
-                                  <Button size="xs" variant="outline" className="h-7 px-2 py-1 text-xs border-red-500 text-red-700 hover:bg-red-50 hover:text-red-800 dark:border-red-600 dark:text-red-400 dark:hover:bg-red-700 dark:hover:text-red-200" onClick={() => handleSuggestionAction(suggestion.id, 'rejected')} disabled={!dbAvailable}>
-                                    <X className="h-3 w-3 mr-1" /> Reject
-                                  </Button>
-                                </div>
-                              ) : (
-                                <Badge variant={suggestion.status === 'approved' ? 'default' : 'destructive'} className="text-xs capitalize px-2 py-0.5">
-                                  {suggestion.status}
-                                </Badge>
-                              )}
+              {/* Column 2 of Patient Details */}
+              <div className="space-y-6">
+                 <Card className="shadow-md">
+                  <CardHeader>
+                    <CardTitle className="text-lg flex items-center gap-2"><Activity className="h-5 w-5 text-primary" /> Recent Health Data</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    {patientHealthData.length > 0 ? (
+                      <ScrollArea className="h-[180px] pr-3">
+                      <ul className="space-y-2 text-sm">
+                        {patientHealthData.slice(0, 7).map((data) => (
+                          <li key={data.id} className="flex justify-between items-center border-b pb-1.5 pt-1">
+                            <span className="text-xs">{formatDistanceToNow(new Date(data.timestamp), { addSuffix: true })}</span>
+                            <div className="flex gap-2 text-xs text-muted-foreground">
+                              {data.steps !== undefined && <span className="flex items-center"><Activity className="h-3 w-3 mr-1" />{data.steps}</span>}
+                              {data.heartRate !== undefined && <span className="flex items-center"><HeartPulse className="h-3 w-3 mr-1 text-red-500" />{data.heartRate} bpm</span>}
+                               {data.bloodGlucose !== undefined && <span className="flex items-center"><Droplet className="h-3 w-3 mr-1 text-blue-500" />{data.bloodGlucose} mg/dL</span>}
                             </div>
                           </li>
                         ))}
                       </ul>
-                    </ScrollArea>
-                  ) : (
-                    <p className="text-sm text-muted-foreground py-4 text-center">No AI suggestions available for this patient.</p>
-                  )}
-                </CardContent>
-              </Card>
-                <Card className="lg:col-span-1 flex flex-col shadow-md">
-                    <CardHeader>
-                    <CardTitle className="text-lg flex items-center gap-2">
-                        <MessageSquare className="h-5 w-5 text-primary" /> Chat with {selectedPatientData?.name || 'Patient'}
-                    </CardTitle>
-                    </CardHeader>
-                    <CardContent className="flex-grow overflow-hidden flex flex-col p-0">
-                    <ScrollArea className="flex-grow p-4 bg-muted/20 dark:bg-muted/10" ref={chatScrollAreaRef}>
-                        {(loadingPatientDetails && !chatMessages.length) ? (
-                        <div className="flex items-center justify-center h-full"><Loader2 className="h-6 w-6 animate-spin text-primary"/></div>
-                        ) : chatMessages.length > 0 ? (
-                        <div className="space-y-4">
-                            {chatMessages.map(msg => {
-                                const isDoctorMessage = msg.senderId === doctorId; 
-                                return (
-                                <div key={msg.id} className={`flex ${isDoctorMessage ? 'justify-end' : 'justify-start'}`}>
-                                    <div className={`p-3 rounded-xl max-w-[80%] shadow-sm ${isDoctorMessage ? 'bg-primary text-primary-foreground' : 'bg-card text-card-foreground border'}`}>
-                                    <p className="text-sm">{msg.text}</p>
-                                    <p className={`text-xs mt-1 ${isDoctorMessage ? 'text-primary-foreground/70 text-right' : 'text-muted-foreground text-left'}`}>
-                                        {msg.senderName} - {formatDistanceToNow(new Date(msg.timestamp), { addSuffix: true })} {msg.isRead === false && !isDoctorMessage ? '(Unread)' : ''}
-                                    </p>
-                                    </div>
-                                </div>
-                                );
-                            })}
-                        </div>
-                        ) : (
-                        <p className="text-sm text-muted-foreground text-center h-full flex items-center justify-center">No messages in this chat yet.</p>
-                        )}
-                    </ScrollArea>
-                    </CardContent>
-                    <CardFooter className="p-4 border-t bg-card">
-                    <div className="flex w-full items-center gap-2">
-                        <Textarea
-                        placeholder="Type your message..."
-                        value={newMessage}
-                        onChange={(e) => setNewMessage(e.target.value)}
-                        className="flex-grow resize-none min-h-[40px] h-10 text-sm border-input focus:ring-primary"
-                        onKeyDown={(e) => {
-                            if (e.key === 'Enter' && !e.shiftKey) {
-                            e.preventDefault();
-                            handleSendMessage();
-                            }
-                        }}
-                        disabled={sendingMessage || !dbAvailable}
-                        rows={1}
-                        />
-                        <Button onClick={handleSendMessage} disabled={sendingMessage || !newMessage.trim() || !dbAvailable} size="icon" className="shrink-0">
-                        {sendingMessage ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
-                        <span className="sr-only">Send message</span>
-                        </Button>
-                    </div>
-                    </CardFooter>
+                      </ScrollArea>
+                    ) : (
+                      <p className="text-sm text-muted-foreground py-4 text-center">No recent health data.</p>
+                    )}
+                  </CardContent>
+                  <CardFooter>
+                    <Button variant="link" size="sm" disabled={!dbAvailable} className="text-primary">View All Health Data</Button>
+                  </CardFooter>
                 </Card>
+
+                <Card className="shadow-md">
+                  <CardHeader>
+                    <CardTitle className="text-lg flex items-center gap-2">
+                      <TrendingUp className="h-5 w-5 text-primary" /> AI Health Trend Analysis
+                    </CardTitle>
+                    <CardDescription className="text-xs">Proactive analysis of recent patient data.</CardDescription>
+                  </CardHeader>
+                  <CardContent className="min-h-[150px]">
+                    {loadingTrendAnalysis ? (
+                      <div className="space-y-2">
+                        <Skeleton className="h-4 w-3/4" />
+                        <Skeleton className="h-4 w-full" />
+                        <Skeleton className="h-4 w-5/6" />
+                         <Skeleton className="h-8 w-1/2 mt-2" />
+                      </div>
+                    ) : trendAnalysis ? (
+                      trendAnalysis.isTrendConcerning ? (
+                        <div className="space-y-2">
+                          <Alert variant="destructive">
+                             <AlertTriangle className="h-4 w-4"/>
+                             <AlertTitle>Concerning Trend Identified!</AlertTitle>
+                             <AlertDescription>{trendAnalysis.trendSummary || "A concerning trend was noted."}</AlertDescription>
+                          </Alert>
+                          {trendAnalysis.suggestedActionForDoctor && (
+                            <div className="mt-3 p-3 bg-amber-50 border border-amber-200 rounded-md dark:bg-amber-900/30 dark:border-amber-700">
+                              <p className="text-sm font-semibold text-amber-700 dark:text-amber-300">Suggested Action:</p>
+                              <p className="text-sm text-amber-600 dark:text-amber-400">{trendAnalysis.suggestedActionForDoctor}</p>
+                            </div>
+                          )}
+                        </div>
+                      ) : (
+                        <div className="flex flex-col items-center justify-center text-center h-full">
+                          <ThumbsDown className="h-8 w-8 text-green-500 mb-2" />
+                          <p className="text-sm text-muted-foreground">{trendAnalysis.trendSummary || "No concerning health trends identified at this time."}</p>
+                        </div>
+                      )
+                    ) : (
+                       dbAvailable && <p className="text-sm text-muted-foreground text-center py-4">Trend analysis not yet available for this patient.</p>
+                    )}
+                  </CardContent>
+                  <CardFooter>
+                      <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={async () => {
+                              if (!selectedPatientData || !patientHealthData || !patientMedications) return;
+                              setLoadingTrendAnalysis(true);
+                              const trendInput = prepareTrendAnalysisInput(selectedPatientData, patientHealthData, patientMedications);
+                              try {
+                                  const trendOutput = await analyzePatientHealthTrends(trendInput);
+                                  setTrendAnalysis(trendOutput);
+                              } catch (aiError: any) {
+                                  console.error("AI Trend Analysis Error:", aiError);
+                                  const errorMsg = aiError.message?.includes("NOT_FOUND") || aiError.message?.includes("API key") || aiError.message?.includes("model") ? "Model not found or API key issue." : "Service error.";
+                                  setTrendAnalysis({ isTrendConcerning: false, trendSummary: "Could not re-run AI trend analysis. " + errorMsg, suggestedActionForDoctor: null });
+                              } finally {
+                                  setLoadingTrendAnalysis(false);
+                              }
+                          }}
+                          disabled={loadingTrendAnalysis || !selectedPatientData || !dbAvailable}
+                      >
+                         {loadingTrendAnalysis ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> :  <Sparkles className="mr-2 h-4 w-4"/>}
+                          Re-analyze Trends
+                      </Button>
+                  </CardFooter>
+                </Card>
+
+                <Card className="shadow-md">
+                  <CardHeader>
+                    <CardTitle className="text-lg flex items-center gap-2"><Pill className="h-5 w-5 text-primary" /> Medication Overview</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    {patientMedications.length > 0 ? (
+                      <ScrollArea className="h-[180px] pr-3">
+                      <ul className="space-y-3 text-sm">
+                        {patientMedications.map(med => (
+                          <li key={med.id} className="border-b pb-2">
+                            <div className="flex justify-between items-center mb-1">
+                              <span className="font-medium">{med.name} <span className="text-xs text-muted-foreground">({med.dosage})</span></span>
+                              <Badge variant={med.adherence && med.adherence >= 90 ? 'default' : med.adherence && med.adherence >= 70 ? 'secondary' : 'destructive'} className="text-xs px-2 py-0.5">
+                                {med.adherence !== undefined ? `${med.adherence}% adherence` : 'N/A'}
+                              </Badge>
+                            </div>
+                            <p className="text-xs text-muted-foreground">{med.frequency}</p>
+                          </li>
+                        ))}
+                      </ul>
+                      </ScrollArea>
+                    ) : (
+                      <p className="text-sm text-muted-foreground py-4 text-center">No medications assigned.</p>
+                    )}
+                  </CardContent>
+                  <CardFooter>
+                    <Button variant="link" size="sm" disabled={!dbAvailable} className="text-primary">Manage Medications</Button>
+                  </CardFooter>
+                </Card>
+
+                 <Card className="shadow-md">
+                  <CardHeader>
+                    <CardTitle className="text-lg flex items-center gap-2"><Info className="h-5 w-5 text-primary" /> AI Suggested Interventions</CardTitle>
+                    <CardDescription className="text-xs">Review and act on AI-driven suggestions.</CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    {(loadingPatientDetails && !aiSuggestions.length) ? (
+                      <div className="flex items-center justify-center p-4"><Loader2 className="h-6 w-6 animate-spin text-primary" /></div>
+                    ) : aiSuggestions.length > 0 ? (
+                      <ScrollArea className="h-[200px] pr-3">
+                        <ul className="space-y-3">
+                          {aiSuggestions.map(suggestion => (
+                            <li key={suggestion.id} className="p-3 border rounded-md bg-card hover:shadow-sm transition-shadow space-y-2">
+                              <p className="text-sm" dangerouslySetInnerHTML={{ __html: formatBoldMarkdown(suggestion.suggestionText) }} />
+                              <div className="flex justify-between items-center">
+                                <span className="text-xs text-muted-foreground">{formatDistanceToNow(new Date(suggestion.timestamp), { addSuffix: true })}</span>
+                                {suggestion.status === 'pending' ? (
+                                  <div className="flex gap-2">
+                                    <Button size="xs" variant="outline" className="h-7 px-2 py-1 text-xs border-green-500 text-green-700 hover:bg-green-50 hover:text-green-800 dark:border-green-600 dark:text-green-400 dark:hover:bg-green-700 dark:hover:text-green-200" onClick={() => handleSuggestionAction(suggestion.id, 'approved')} disabled={!dbAvailable}>
+                                      <Check className="h-3 w-3 mr-1" /> Approve
+                                    </Button>
+                                    <Button size="xs" variant="outline" className="h-7 px-2 py-1 text-xs border-red-500 text-red-700 hover:bg-red-50 hover:text-red-800 dark:border-red-600 dark:text-red-400 dark:hover:bg-red-700 dark:hover:text-red-200" onClick={() => handleSuggestionAction(suggestion.id, 'rejected')} disabled={!dbAvailable}>
+                                      <X className="h-3 w-3 mr-1" /> Reject
+                                    </Button>
+                                  </div>
+                                ) : (
+                                  <Badge variant={suggestion.status === 'approved' ? 'default' : 'destructive'} className="text-xs capitalize px-2 py-0.5">
+                                    {suggestion.status}
+                                  </Badge>
+                                )}
+                              </div>
+                            </li>
+                          ))}
+                        </ul>
+                      </ScrollArea>
+                    ) : (
+                      <p className="text-sm text-muted-foreground py-4 text-center">No AI suggestions available for this patient.</p>
+                    )}
+                  </CardContent>
+                </Card>
+              </div>
             </div>
             </>
         ) : selectedPatientId && !coreDataLoading && dbAvailable ? (
@@ -858,6 +823,75 @@ function DoctorDashboardContent({ doctorId, doctorName, userRole }: DoctorDashbo
         )}
 
       </div>
+
+      {selectedPatientId && selectedPatientData && dbAvailable && (
+        <Sheet open={isChatOpen} onOpenChange={setIsChatOpen}>
+            <SheetTrigger asChild>
+                 <Button
+                    variant="outline"
+                    size="icon"
+                    className="fixed bottom-6 right-6 h-16 w-16 rounded-full shadow-lg z-50 bg-primary text-primary-foreground hover:bg-primary/90"
+                    aria-label="Open chat with patient"
+                    onClick={() => setIsChatOpen(true)}
+                >
+                    <MessageSquare className="h-7 w-7" />
+                </Button>
+            </SheetTrigger>
+            <SheetContent side="right" className="w-[calc(100vw-2rem)] max-w-md md:w-[400px] flex flex-col p-0">
+                <SheetHeader className="p-4 border-b">
+                    <SheetTitle className="text-lg flex items-center gap-2">
+                        <MessageSquare className="h-5 w-5 text-primary" /> Chat with {selectedPatientData?.name || 'Patient'}
+                    </SheetTitle>
+                     <SheetClose onClick={() => setIsChatOpen(false)} />
+                </SheetHeader>
+                <ScrollArea className="flex-grow p-4 bg-muted/10" ref={chatScrollAreaRef}>
+                    {(loadingPatientDetails && !chatMessages.length) ? (
+                    <div className="flex items-center justify-center h-full"><Loader2 className="h-6 w-6 animate-spin text-primary"/></div>
+                    ) : chatMessages.length > 0 ? (
+                    <div className="space-y-4">
+                        {chatMessages.map(msg => {
+                            const isDoctorMessage = msg.senderId === doctorId;
+                            return (
+                            <div key={msg.id} className={`flex ${isDoctorMessage ? 'justify-end' : 'justify-start'}`}>
+                                <div className={`p-3 rounded-xl max-w-[80%] shadow-sm ${isDoctorMessage ? 'bg-primary text-primary-foreground' : 'bg-card text-card-foreground border'}`}>
+                                <p className="text-sm">{msg.text}</p>
+                                <p className={`text-xs mt-1 ${isDoctorMessage ? 'text-primary-foreground/70 text-right' : 'text-muted-foreground text-left'}`}>
+                                    {msg.senderName} - {formatDistanceToNow(new Date(msg.timestamp), { addSuffix: true })} {msg.isRead === false && !isDoctorMessage ? '(Unread)' : ''}
+                                </p>
+                                </div>
+                            </div>
+                            );
+                        })}
+                    </div>
+                    ) : (
+                    <p className="text-sm text-muted-foreground text-center h-full flex items-center justify-center">No messages in this chat yet.</p>
+                    )}
+                </ScrollArea>
+                <SheetFooter className="p-4 border-t bg-card">
+                <div className="flex w-full items-center gap-2">
+                    <Textarea
+                    placeholder="Type your message..."
+                    value={newMessage}
+                    onChange={(e) => setNewMessage(e.target.value)}
+                    className="flex-grow resize-none min-h-[40px] h-10 text-sm border-input focus:ring-primary"
+                    onKeyDown={(e) => {
+                        if (e.key === 'Enter' && !e.shiftKey) {
+                        e.preventDefault();
+                        handleSendMessage();
+                        }
+                    }}
+                    disabled={sendingMessage || !dbAvailable}
+                    rows={1}
+                    />
+                    <Button onClick={handleSendMessage} disabled={sendingMessage || !newMessage.trim() || !dbAvailable} size="icon" className="shrink-0">
+                    {sendingMessage ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+                    <span className="sr-only">Send message</span>
+                    </Button>
+                </div>
+                </SheetFooter>
+            </SheetContent>
+        </Sheet>
+      )}
     </div>
   );
 }
@@ -885,8 +919,8 @@ function DoctorDashboardPageSkeleton({ message }: { message?: string }) {
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
             <div className="lg:col-span-1 space-y-6">
-                <Skeleton className="h-48 rounded-lg" /> 
-                <Skeleton className="h-64 rounded-lg" /> 
+                <Skeleton className="h-48 rounded-lg" />
+                <Skeleton className="h-64 rounded-lg" />
             </div>
             <DashboardSkeletonCentralColumn />
         </div>
@@ -923,7 +957,7 @@ function DashboardSkeletonCentralColumn() {
           <CardContent className="space-y-2"><Skeleton className="h-4 w-full" /><Skeleton className="h-4 w-full" /><Skeleton className="h-4 w-5/6" /></CardContent>
           <CardFooter><Skeleton className="h-8 w-24" /></CardFooter>
         </Card>
-         <Card className="shadow-md"> 
+         <Card className="shadow-md">
           <CardHeader><Skeleton className="h-6 w-4/5" /></CardHeader>
           <CardContent className="space-y-2.5"><Skeleton className="h-5 w-full" /><Skeleton className="h-5 w-full" /><Skeleton className="h-5 w-full" /></CardContent>
           <CardFooter><Skeleton className="h-6 w-28" /></CardFooter>
@@ -931,32 +965,22 @@ function DashboardSkeletonCentralColumn() {
       </div>
 
       <div className="lg:col-span-1 space-y-6">
-        <Card className="shadow-md"> 
+        <Card className="shadow-md">
             <CardHeader><Skeleton className="h-6 w-4/5" /><Skeleton className="h-3 w-full mt-1" /></CardHeader>
             <CardContent className="min-h-[150px] space-y-2"><Skeleton className="h-4 w-3/4" /><Skeleton className="h-4 w-full" /><Skeleton className="h-4 w-5/6" /><Skeleton className="h-8 w-1/2 mt-2" /></CardContent>
             <CardFooter><Skeleton className="h-8 w-32" /></CardFooter>
         </Card>
-        <Card className="shadow-md"> 
+        <Card className="shadow-md">
           <CardHeader><Skeleton className="h-6 w-4/5" /></CardHeader>
           <CardContent className="space-y-3"><Skeleton className="h-8 w-full" /><Skeleton className="h-8 w-full" /></CardContent>
           <CardFooter><Skeleton className="h-6 w-32" /></CardFooter>
         </Card>
-        <Card className="shadow-md"> 
+        <Card className="shadow-md">
           <CardHeader><Skeleton className="h-6 w-4/5" /><Skeleton className="h-3 w-full mt-1" /></CardHeader>
           <CardContent><Skeleton className="h-24 w-full" /></CardContent>
         </Card>
-         <Card className="flex-grow flex flex-col shadow-md min-h-[400px]"> 
-          <CardHeader><Skeleton className="h-6 w-3/5" /></CardHeader>
-          <CardContent className="flex-grow p-2"><Skeleton className="h-full w-full rounded-md" /></CardContent>
-          <CardFooter className="p-2"><Skeleton className="h-10 w-full" /></CardFooter>
-        </Card>
+        {/* Removed Chat Skeleton Card - it's now a pop-up sheet */}
       </div>
     </>
   );
 }
-
-    
-
-    
-
-

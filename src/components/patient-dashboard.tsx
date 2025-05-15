@@ -21,6 +21,15 @@ import { Skeleton } from './ui/skeleton';
 import { Label } from './ui/label';
 import { ScrollArea } from './ui/scroll-area';
 import {
+  Sheet,
+  SheetContent,
+  SheetHeader,
+  SheetTitle,
+  SheetTrigger,
+  SheetFooter,
+  SheetClose,
+} from '@/components/ui/sheet';
+import {
   fetchPatientDashboardDataAction,
   submitSymptomReportAction,
   sendPatientChatMessageAction,
@@ -28,7 +37,7 @@ import {
   type PatientMedication,
   type PatientSymptomReport,
   type PatientChatMessage,
-  type PatientAISuggestion, 
+  type PatientAISuggestion,
 } from '@/app/actions/patientActions';
 import { markMessagesAsReadAction } from '@/app/actions/chatActions';
 
@@ -67,8 +76,8 @@ export default function PatientDashboard({ userId, userRole }: PatientDashboardP
   const [medications, setMedications] = useState<PatientMedication[]>([]);
   const [symptomReports, setSymptomReports] = useState<PatientSymptomReport[]>([]);
   const [chatMessages, setChatMessages] = useState<PatientChatMessage[]>([]);
-  const [patientSuggestions, setPatientSuggestions] = useState<PatientAISuggestion[]>([]); // Renamed
-  const [loadingPatientSuggestions, setLoadingPatientSuggestions] = useState(true); // Renamed
+  const [patientSuggestions, setPatientSuggestions] = useState<PatientAISuggestion[]>([]);
+  const [loadingPatientSuggestions, setLoadingPatientSuggestions] = useState(true);
 
   const [assignedDoctorId, setAssignedDoctorId] = useState<string | null>(null);
   const [assignedDoctorName, setAssignedDoctorName] = useState<string | null>(null);
@@ -85,6 +94,7 @@ export default function PatientDashboard({ userId, userRole }: PatientDashboardP
   const [newMessage, setNewMessage] = useState<string>('');
   const [sendingMessage, setSendingMessage] = useState<boolean>(false);
   const chatScrollAreaRef = useRef<HTMLDivElement>(null);
+  const [isChatOpen, setIsChatOpen] = useState(false);
 
 
   const form = useForm<SymptomFormValues>({
@@ -119,14 +129,14 @@ export default function PatientDashboard({ userId, userRole }: PatientDashboardP
           setMedications([]);
           setSymptomReports([]);
           setChatMessages([]);
-          setPatientSuggestions([]); 
+          setPatientSuggestions([]);
           setSuggestedInterventions("Could not load AI suggestions due to data error.");
         } else {
           setHealthData(mainDataResult.healthData || []);
           setMedications(mainDataResult.medications || []);
           setSymptomReports(mainDataResult.symptomReports || []);
           setChatMessages(mainDataResult.chatMessages || []);
-          setPatientSuggestions(mainDataResult.patientSuggestions || []); 
+          setPatientSuggestions(mainDataResult.patientSuggestions || []);
           setAssignedDoctorId(mainDataResult.assignedDoctorId || null);
           setAssignedDoctorName(mainDataResult.assignedDoctorName || null);
           setPatientDisplayName(mainDataResult.patientDisplayName || "Patient");
@@ -148,24 +158,28 @@ export default function PatientDashboard({ userId, userRole }: PatientDashboardP
         console.error(e);
       } finally {
         setLoadingData(false);
-        setLoadingPatientSuggestions(false); 
+        setLoadingPatientSuggestions(false);
       }
     }
     loadData();
   }, [userId]);
 
   useEffect(() => {
-    if (chatScrollAreaRef.current) {
-      chatScrollAreaRef.current.scrollTop = chatScrollAreaRef.current.scrollHeight;
+    if (isChatOpen && chatScrollAreaRef.current) {
+      setTimeout(() => { // Ensure content is rendered before scrolling
+         if (chatScrollAreaRef.current) {
+            chatScrollAreaRef.current.scrollTop = chatScrollAreaRef.current.scrollHeight;
+         }
+      }, 0);
     }
-  }, [chatMessages]);
+  }, [chatMessages, isChatOpen]);
 
   const fetchInterventionsIfNeeded = async (
     currentHealthData: PatientHealthData[],
     currentMedications: PatientMedication[],
     currentSymptomReports: PatientSymptomReport[]
   ) => {
-    if (loadingInterventions || !dbAvailable) { 
+    if (loadingInterventions || !dbAvailable) {
         if (!dbAvailable) setSuggestedInterventions("AI suggestions unavailable (DB offline).");
         return;
     }
@@ -274,7 +288,7 @@ export default function PatientDashboard({ userId, userRole }: PatientDashboardP
     if (!timestamp) return 'N/A';
     return new Date(timestamp).toLocaleString();
   };
-  
+
   const formatDateOnly = (timestamp: Date | string | undefined): string => {
     if (!timestamp) return 'N/A';
     return new Date(timestamp).toLocaleDateString();
@@ -340,7 +354,7 @@ export default function PatientDashboard({ userId, userRole }: PatientDashboardP
           </CardContent>
         </Card>
       )}
-      
+
       <Card className="shadow-md">
         <CardHeader>
           <CardTitle className="flex items-center gap-2 text-green-700 dark:text-green-300">
@@ -358,9 +372,9 @@ export default function PatientDashboard({ userId, userRole }: PatientDashboardP
             <ScrollArea className="h-[150px] pr-3">
               <ul className="space-y-3">
                 {patientSuggestions.map(suggestion => (
-                  <li key={suggestion.id} 
-                      className={`p-3 border rounded-md 
-                        ${suggestion.status === 'approved' ? 'bg-green-50 dark:bg-green-900/30 border-green-200 dark:border-green-700' 
+                  <li key={suggestion.id}
+                      className={`p-3 border rounded-md
+                        ${suggestion.status === 'approved' ? 'bg-green-50 dark:bg-green-900/30 border-green-200 dark:border-green-700'
                                                             : 'bg-blue-50 dark:bg-blue-900/20 border-blue-200 dark:border-blue-700'}`}>
                     <div className="flex items-start gap-2">
                         {suggestion.status === 'approved' ? <BookMarked className="h-5 w-5 text-green-600 dark:text-green-400 shrink-0 mt-0.5"/> : <Lightbulb className="h-5 w-5 text-blue-500 dark:text-blue-400 shrink-0 mt-0.5"/>}
@@ -368,7 +382,7 @@ export default function PatientDashboard({ userId, userRole }: PatientDashboardP
                             <p className={`text-sm font-medium ${suggestion.status === 'approved' ? 'text-green-800 dark:text-green-200' : 'text-blue-700 dark:text-blue-300'}`}>
                                 {suggestion.status === 'approved' ? "Doctor's Recommendation:" : "AI Tip (Awaiting Doctor Review):"}
                             </p>
-                            <p className={`text-sm ${suggestion.status === 'approved' ? 'text-green-700 dark:text-green-300' : 'text-blue-600 dark:text-blue-400'}`} 
+                            <p className={`text-sm ${suggestion.status === 'approved' ? 'text-green-700 dark:text-green-300' : 'text-blue-600 dark:text-blue-400'}`}
                                dangerouslySetInnerHTML={{ __html: formatBoldMarkdown(suggestion.suggestionText) }} />
                             <p className="text-xs text-muted-foreground mt-1">
                                 {suggestion.status === 'approved' ? `Approved on: ${formatDateOnly(suggestion.timestamp)}` : `Suggested on: ${formatDateOnly(suggestion.timestamp)}`}
@@ -396,7 +410,6 @@ export default function PatientDashboard({ userId, userRole }: PatientDashboardP
           <Skeleton className="h-[350px] rounded-lg md:col-span-2 lg:col-span-3" />
           <Skeleton className="h-48 rounded-lg lg:col-span-2" />
           <Skeleton className="h-72 rounded-lg lg:col-span-1" />
-           <Skeleton className="h-48 rounded-lg lg:col-span-3" /> {/* Skeleton for Patient Suggestions */}
         </div>
       ) : (
         !error && dbAvailable &&
@@ -602,60 +615,76 @@ export default function PatientDashboard({ userId, userRole }: PatientDashboardP
                 </div>
                 </CardContent>
             </Card>
-
-            {userRole === 'patient' && assignedDoctorId && (
-                <Card className="flex-grow flex flex-col shadow-md">
-                    <CardHeader>
-                    <CardTitle className="text-lg flex items-center gap-2"><MessageSquare className="h-5 w-5 text-primary" /> Chat with {assignedDoctorName || 'Your Doctor'}</CardTitle>
-                    </CardHeader>
-                    <CardContent className="flex-grow overflow-hidden flex flex-col p-0">
-                    <ScrollArea className="flex-grow p-4 bg-muted/20 dark:bg-muted/10" ref={chatScrollAreaRef}>
-                        {loadingData ? (
-                        <div className="flex items-center justify-center h-full"><Loader2 className="h-6 w-6 animate-spin text-primary"/></div>
-                        ) : chatMessages.length > 0 ? (
-                        <div className="space-y-4">
-                            {chatMessages.map(msg => (
-                            <div key={msg.id} className={`flex ${msg.senderId === userId ? 'justify-end' : 'justify-start'}`}>
-                                <div className={`p-3 rounded-xl max-w-[80%] shadow-sm ${msg.senderId === userId ? 'bg-primary text-primary-foreground' : 'bg-card text-card-foreground border'}`}>
-                                <p className="text-sm">{msg.text}</p>
-                                <p className={`text-xs mt-1 ${msg.senderId === userId ? 'text-primary-foreground/70 text-right' : 'text-muted-foreground text-left'}`}>
-                                    {msg.senderName} - {formatDateForDisplay(msg.timestamp)} {msg.isRead === false && msg.senderId !== userId ? '(Unread)' : ''}
-                                </p>
-                                </div>
-                            </div>
-                            ))}
-                        </div>
-                        ) : (
-                        <p className="text-sm text-muted-foreground text-center h-full flex items-center justify-center">No messages in this chat yet.</p>
-                        )}
-                    </ScrollArea>
-                    </CardContent>
-                    <CardFooter className="p-4 border-t bg-card">
-                    <div className="flex w-full items-center gap-2">
-                        <Textarea
-                        placeholder="Type your message..."
-                        value={newMessage}
-                        onChange={(e) => setNewMessage(e.target.value)}
-                        className="flex-grow resize-none min-h-[40px] h-10 text-sm border-input focus:ring-primary"
-                        onKeyDown={(e) => {
-                            if (e.key === 'Enter' && !e.shiftKey) {
-                            e.preventDefault();
-                            handleSendPatientMessage();
-                            }
-                        }}
-                        disabled={sendingMessage || !dbAvailable || userRole === 'admin'}
-                        rows={1}
-                        />
-                        <Button onClick={handleSendPatientMessage} disabled={sendingMessage || !newMessage.trim() || !dbAvailable || userRole === 'admin'} size="icon" className="shrink-0">
-                        {sendingMessage ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
-                        <span className="sr-only">Send message</span>
-                        </Button>
-                    </div>
-                    </CardFooter>
-                </Card>
-            )}
           </div>
         </div>
+      )}
+
+      {userRole === 'patient' && assignedDoctorId && dbAvailable && (
+        <Sheet open={isChatOpen} onOpenChange={setIsChatOpen}>
+          <SheetTrigger asChild>
+            <Button
+              variant="outline"
+              size="icon"
+              className="fixed bottom-6 right-6 h-16 w-16 rounded-full shadow-lg z-50 bg-primary text-primary-foreground hover:bg-primary/90"
+              aria-label="Open chat"
+            >
+              <MessageSquare className="h-7 w-7" />
+            </Button>
+          </SheetTrigger>
+          <SheetContent side="right" className="w-[calc(100vw-2rem)] max-w-md md:w-[400px] flex flex-col p-0">
+            <SheetHeader className="p-4 border-b">
+              <SheetTitle className="flex items-center gap-2 text-lg">
+                <MessageSquare className="h-5 w-5 text-primary" /> Chat with {assignedDoctorName || 'Your Doctor'}
+              </SheetTitle>
+            </SheetHeader>
+            <ScrollArea className="flex-grow p-4 bg-muted/10" ref={chatScrollAreaRef}>
+              {loadingData && !chatMessages.length ? (
+                <div className="flex items-center justify-center h-full">
+                  <Loader2 className="h-6 w-6 animate-spin text-primary"/>
+                </div>
+              ) : chatMessages.length > 0 ? (
+                <div className="space-y-4">
+                  {chatMessages.map(msg => (
+                    <div key={msg.id} className={`flex ${msg.senderId === userId ? 'justify-end' : 'justify-start'}`}>
+                      <div className={`p-3 rounded-xl max-w-[80%] shadow-sm ${msg.senderId === userId ? 'bg-primary text-primary-foreground' : 'bg-card text-card-foreground border'}`}>
+                        <p className="text-sm">{msg.text}</p>
+                        <p className={`text-xs mt-1 ${msg.senderId === userId ? 'text-primary-foreground/70 text-right' : 'text-muted-foreground text-left'}`}>
+                          {msg.senderName} - {formatDateForDisplay(msg.timestamp)} {msg.isRead === false && msg.senderId !== userId ? '(Unread)' : ''}
+                        </p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-sm text-muted-foreground text-center h-full flex items-center justify-center">
+                  No messages in this chat yet.
+                </p>
+              )}
+            </ScrollArea>
+            <SheetFooter className="p-4 border-t bg-card">
+              <div className="flex w-full items-center gap-2">
+                <Textarea
+                  placeholder="Type your message..."
+                  value={newMessage}
+                  onChange={(e) => setNewMessage(e.target.value)}
+                  className="flex-grow resize-none min-h-[40px] h-10 text-sm border-input focus:ring-primary"
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' && !e.shiftKey) {
+                      e.preventDefault();
+                      handleSendPatientMessage();
+                    }
+                  }}
+                  disabled={sendingMessage || !dbAvailable || userRole === 'admin'}
+                  rows={1}
+                />
+                <Button onClick={handleSendPatientMessage} disabled={sendingMessage || !newMessage.trim() || !dbAvailable || userRole === 'admin'} size="icon" className="shrink-0">
+                  {sendingMessage ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+                  <span className="sr-only">Send message</span>
+                </Button>
+              </div>
+            </SheetFooter>
+          </SheetContent>
+        </Sheet>
       )}
     </div>
   );
