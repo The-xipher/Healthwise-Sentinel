@@ -53,6 +53,7 @@ interface DoctorDashboardProps {
 }
 
 const getChatId = (id1: string, id2: string): string => {
+  if (!id1 || !id2) return "";
   return [id1, id2].sort().join('_');
 };
 
@@ -131,9 +132,8 @@ function DoctorDashboardContent({ doctorId, doctorName, userRole }: DoctorDashbo
       setError(null);
       try {
         const patientsResultPromise = fetchDoctorPatientsAction(doctorId);
-        const appointmentsResultPromise = fetchDoctorAppointmentsAction(doctorId);
-
-        const [patientsResult, appointmentsResult] = await Promise.all([patientsResultPromise, appointmentsResultPromise]);
+        await Promise.all([patientsResultPromise, refreshAppointments()]);
+        const patientsResult = await patientsResultPromise;
 
 
         if (patientsResult.error) {
@@ -149,38 +149,29 @@ function DoctorDashboardContent({ doctorId, doctorName, userRole }: DoctorDashbo
           setPatients(patientsResult.patients || []);
           setDbAvailable(true);
         }
-        
-        if (appointmentsResult.error) {
-            setError(prev => prev ? `${prev}\nAppointments: ${appointmentsResult.error}` : `Appointments: ${appointmentsResult.error}`);
-             setAppointments([]);
-        } else {
-            setAppointments(appointmentsResult.appointments || []);
-        }
-
 
       } catch (e: any) {
         setError(e.message || 'An unexpected error occurred while fetching initial doctor data.');
         setDbAvailable(false);
         setPatients([]);
-        setAppointments([]);
+        setAppointments([]); 
         console.error("Error fetching initial doctor data:", e);
       } finally {
         setLoadingPatients(false);
-        setLoadingAppointments(false); // Ensure this is set after appointments are fetched too
       }
     }
     loadInitialDoctorData();
-  }, [doctorId, patientIdFromQuery]);
+  }, [doctorId, patientIdFromQuery]); 
 
   const prepareTrendAnalysisInput = (
     patient: DoctorPatient,
     healthData: DoctorPatientHealthData[],
     medications: DoctorPatientMedication[]
   ): AnalyzePatientHealthTrendsInput => {
-    const recentHealth = healthData.slice(-5).reverse(); // Last 5, newest first
+    const recentHealth = healthData.slice(-5).reverse(); 
     const healthSummary = recentHealth.length > 0
       ? "Recent Vitals (last " + recentHealth.length + " entries, newest first):\n" + recentHealth.map(d =>
-          `- ${new Date(d.timestamp).toLocaleDateString()}: BP: ${d.heartRate && d.steps ? (Math.round(d.heartRate * 1.6 + d.steps/200)) + '/' + (Math.round(d.heartRate * 0.9 + d.steps/300)) : 'N/A'}, HR: ${d.heartRate ?? 'N/A'}bpm, Glucose: ${d.bloodGlucose ?? 'N/A'}mg/dL, Steps: ${d.steps ?? 'N/A'}`
+          `- ${new Date(d.timestamp).toLocaleDateString()}: BP: ${d.heartRate && d.steps ? (Math.round(Number(d.heartRate) * 1.6 + Number(d.steps)/200)) + '/' + (Math.round(Number(d.heartRate) * 0.9 + Number(d.steps)/300)) : 'N/A'}, HR: ${d.heartRate ?? 'N/A'}bpm, Glucose: ${d.bloodGlucose ?? 'N/A'}mg/dL, Steps: ${d.steps ?? 'N/A'}`
         ).join("\n")
       : "No recent vital signs logged.";
 
@@ -218,10 +209,11 @@ function DoctorDashboardContent({ doctorId, doctorName, userRole }: DoctorDashbo
 
     async function fetchPatientAllData() {
       setLoadingPatientDetails(true);
-      setLoadingTrendAnalysis(true);
+      setLoadingTrendAnalysis(true); 
       setHistorySummary("Loading AI Summary...");
       setCarePlan("Loading AI Care Plan...");
-      setTrendAnalysis(null);
+      setTrendAnalysis(null); 
+
 
       try {
         const result = await fetchDoctorPatientDetailsAction(selectedPatientId, doctorId);
@@ -287,7 +279,7 @@ function DoctorDashboardContent({ doctorId, doctorName, userRole }: DoctorDashbo
             }
 
             if (result.patient && result.healthData && result.medications) {
-              setLoadingTrendAnalysis(true);
+              setLoadingTrendAnalysis(true); 
               const trendInput = prepareTrendAnalysisInput(result.patient, result.healthData, result.medications);
               try {
                 const trendOutput = await analyzePatientHealthTrends(trendInput);
@@ -317,12 +309,11 @@ function DoctorDashboardContent({ doctorId, doctorName, userRole }: DoctorDashbo
     }
 
     fetchPatientAllData();
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedPatientId, doctorId, doctorName, toast]); // Added doctorName and toast
+  }, [selectedPatientId, doctorId, doctorName, toast]); 
 
   useEffect(() => {
     if (isChatOpen && chatScrollAreaRef.current) {
-       setTimeout(() => { 
+       setTimeout(() => {
          if (chatScrollAreaRef.current) {
             chatScrollAreaRef.current.scrollTop = chatScrollAreaRef.current.scrollHeight;
          }
@@ -349,7 +340,7 @@ function DoctorDashboardContent({ doctorId, doctorName, userRole }: DoctorDashbo
       return;
     }
     setSendingMessage(true);
-    const currentDoctorId = doctorId;
+    const currentDoctorId = doctorId; 
     try {
       const result = await sendChatMessageAction(currentDoctorId, doctorName, selectedPatientId, newMessage);
       if (result.error) {
@@ -431,7 +422,7 @@ function DoctorDashboardContent({ doctorId, doctorName, userRole }: DoctorDashbo
     if (risk === 'medium') return 'secondary';
     return 'default';
   };
-  
+
   const coreDataLoading = loadingPatientDetails && selectedPatientId;
 
   return (
@@ -459,8 +450,8 @@ function DoctorDashboardContent({ doctorId, doctorName, userRole }: DoctorDashbo
         </Alert>
       )}
 
-      <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
-        <div className="lg:col-span-1 space-y-6">
+      <div className="grid grid-cols-1 lg:grid-cols-4 gap-4"> 
+        <div className="lg:col-span-1 space-y-4"> 
             <Card className="shadow-lg">
                 <CardHeader>
                 <CardTitle className="flex items-center gap-2">
@@ -565,39 +556,39 @@ function DoctorDashboardContent({ doctorId, doctorName, userRole }: DoctorDashbo
         {coreDataLoading ? (
             <DashboardSkeletonCentralColumns />
         ) : selectedPatientId && dbAvailable && selectedPatientData ? (
-            <div className="lg:col-span-3 grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6 content-start">
+            <div className="lg:col-span-3 grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4 content-start"> 
                 <Card className="shadow-md md:col-span-1 xl:col-span-1">
-                  <CardHeader className="flex flex-row items-center gap-4 pb-3">
-                    <Avatar className="h-16 w-16 border-2 border-primary">
+                  <CardHeader className="flex flex-row items-center gap-4 p-4 pb-2"> 
+                    <Avatar className="h-14 w-14 border-2 border-primary"> 
                       <AvatarImage src={selectedPatientData?.photoURL || undefined} alt={selectedPatientData?.name} data-ai-hint="profile person"/>
-                      <AvatarFallback className="text-xl">{getInitials(selectedPatientData?.name)}</AvatarFallback>
+                      <AvatarFallback className="text-lg">{getInitials(selectedPatientData?.name)}</AvatarFallback> 
                     </Avatar>
                     <div>
-                      <CardTitle className="text-xl">{selectedPatientData?.name}</CardTitle>
-                      <CardDescription className="text-sm">{selectedPatientData?.email || 'No email'}</CardDescription>
+                      <CardTitle className="text-lg">{selectedPatientData?.name}</CardTitle> 
+                      <CardDescription className="text-xs">{selectedPatientData?.email || 'No email'}</CardDescription> 
                       {selectedPatientData?.readmissionRisk && (
-                        <Badge variant={getRiskBadgeVariant(selectedPatientData.readmissionRisk)} className="mt-2 text-xs px-2 py-0.5 capitalize">
+                        <Badge variant={getRiskBadgeVariant(selectedPatientData.readmissionRisk)} className="mt-1 text-xs px-1.5 py-0.5 capitalize"> 
                           {selectedPatientData.readmissionRisk} readmission risk
                         </Badge>
                       )}
                     </div>
                   </CardHeader>
-                  <CardContent className="text-xs text-muted-foreground pt-0">
+                  <CardContent className="text-xs text-muted-foreground px-4 pt-0 pb-3"> 
                     <p>Patient ID: {selectedPatientData?.id}</p>
                     {selectedPatientData?.lastActivity && <p>Last Activity: {formatDistanceToNow(new Date(selectedPatientData.lastActivity), { addSuffix: true })}</p>}
                   </CardContent>
                 </Card>
 
                 <Card className="shadow-md md:col-span-1 xl:col-span-1">
-                  <CardHeader>
-                    <CardTitle className="text-lg flex items-center gap-2"><Brain className="h-5 w-5 text-primary"/>AI Patient Summary</CardTitle>
-                    <CardDescription className="text-xs">Key points from the patient's history.</CardDescription>
+                  <CardHeader className="p-4 pb-2"> 
+                    <CardTitle className="text-base flex items-center gap-2"><Brain className="h-4 w-4 text-primary"/>AI Patient Summary</CardTitle> 
+                    <CardDescription className="text-xs">Key points from history.</CardDescription>
                   </CardHeader>
-                  <CardContent>
+                  <CardContent className="px-4 pt-0 pb-3"> 
                     {loadingSummary ? (
-                      <div className="space-y-2"><Skeleton className="h-4 w-full" /><Skeleton className="h-4 w-5/6" /><Skeleton className="h-4 w-3/4" /></div>
+                      <div className="space-y-1.5"><Skeleton className="h-3.5 w-full" /><Skeleton className="h-3.5 w-5/6" /><Skeleton className="h-3.5 w-3/4" /></div>
                     ) : (
-                      <ScrollArea className="h-[100px] pr-3"> {/* Reduced height */}
+                      <ScrollArea className="h-[100px] pr-2">
                         <p className="text-sm text-muted-foreground" dangerouslySetInnerHTML={{ __html: formatBoldMarkdown(historySummary) }} />
                       </ScrollArea>
                     )}
@@ -605,99 +596,100 @@ function DoctorDashboardContent({ doctorId, doctorName, userRole }: DoctorDashbo
                 </Card>
 
                 <Card className="shadow-md md:col-span-2 xl:col-span-1">
-                  <CardHeader>
-                    <CardTitle className="text-lg flex items-center gap-2"><Brain className="h-5 w-5 text-primary"/>AI Generated Care Plan</CardTitle>
-                    <CardDescription className="text-xs">Initial draft based on patient data.</CardDescription>
+                  <CardHeader className="p-4 pb-2"> 
+                    <CardTitle className="text-base flex items-center gap-2"><Brain className="h-4 w-4 text-primary"/>AI Generated Care Plan</CardTitle> 
+                    <CardDescription className="text-xs">Initial draft based on data.</CardDescription>
                   </CardHeader>
-                  <CardContent>
+                  <CardContent className="px-4 pt-0 pb-3"> 
                     {loadingCarePlan ? (
-                      <div className="space-y-2"><Skeleton className="h-4 w-full" /><Skeleton className="h-4 w-full" /><Skeleton className="h-4 w-5/6" /></div>
+                      <div className="space-y-1.5"><Skeleton className="h-3.5 w-full" /><Skeleton className="h-3.5 w-full" /><Skeleton className="h-3.5 w-5/6" /></div>
                     ) : (
-                       <ScrollArea className="h-[120px] pr-3"> {/* Reduced height */}
+                       <ScrollArea className="h-[100px] pr-2"> 
                         <p className="text-sm text-muted-foreground" dangerouslySetInnerHTML={{ __html: formatBoldMarkdown(carePlan) }} />
                       </ScrollArea>
                     )}
                   </CardContent>
-                  <CardFooter>
-                    <Button size="sm" variant="outline" disabled={loadingCarePlan || !dbAvailable}>
+                  <CardFooter className="p-3 pt-0"> 
+                    <Button size="sm" variant="outline" disabled={loadingCarePlan || !dbAvailable} className="h-8 text-xs"> 
                       Edit/Approve Plan
                     </Button>
                   </CardFooter>
                 </Card>
-                
+
                 <Card className="shadow-md md:col-span-1 xl:col-span-1">
-                  <CardHeader>
-                    <CardTitle className="text-lg flex items-center gap-2"><Activity className="h-5 w-5 text-primary" /> Recent Health Data</CardTitle>
+                  <CardHeader className="p-4 pb-2"> 
+                    <CardTitle className="text-base flex items-center gap-2"><Activity className="h-4 w-4 text-primary" /> Recent Health Data</CardTitle> 
                   </CardHeader>
-                  <CardContent>
+                  <CardContent className="px-4 pt-0 pb-3"> 
                     {patientHealthData.length > 0 ? (
-                      <ScrollArea className="h-[150px] pr-3"> {/* Reduced height */}
-                      <ul className="space-y-2 text-sm">
-                        {patientHealthData.slice(-7).reverse().map((data) => ( 
-                          <li key={data.id} className="flex justify-between items-center border-b pb-1.5 pt-1">
+                      <ScrollArea className="h-[150px] pr-2"> 
+                      <ul className="space-y-1.5 text-sm"> 
+                        {patientHealthData.slice(-7).reverse().map((data) => (
+                          <li key={data.id} className="flex justify-between items-center border-b pb-1 pt-0.5"> 
                             <span className="text-xs">{formatDistanceToNow(new Date(data.timestamp), { addSuffix: true })}</span>
-                            <div className="flex gap-2 text-xs text-muted-foreground">
-                              {data.steps !== undefined && <span className="flex items-center"><Activity className="h-3 w-3 mr-1" />{data.steps}</span>}
-                              {data.heartRate !== undefined && <span className="flex items-center"><HeartPulse className="h-3 w-3 mr-1 text-red-500" />{data.heartRate} bpm</span>}
-                               {data.bloodGlucose !== undefined && <span className="flex items-center"><Droplet className="h-3 w-3 mr-1 text-blue-500" />{data.bloodGlucose} mg/dL</span>}
+                            <div className="flex gap-1.5 text-xs text-muted-foreground"> 
+                              {data.steps !== undefined && <span className="flex items-center"><Activity className="h-3 w-3 mr-0.5" />{data.steps}</span>}
+                              {data.heartRate !== undefined && <span className="flex items-center"><HeartPulse className="h-3 w-3 mr-0.5 text-red-500" />{data.heartRate} bpm</span>}
+                               {data.bloodGlucose !== undefined && <span className="flex items-center"><Droplet className="h-3 w-3 mr-0.5 text-blue-500" />{data.bloodGlucose} mg/dL</span>}
                             </div>
                           </li>
                         ))}
                       </ul>
                       </ScrollArea>
                     ) : (
-                      <p className="text-sm text-muted-foreground py-4 text-center">No recent health data.</p>
+                      <p className="text-sm text-muted-foreground py-3 text-center">No recent health data.</p> 
                     )}
                   </CardContent>
-                  <CardFooter>
-                    <Button variant="link" size="sm" disabled={!dbAvailable} className="text-primary">View All Health Data</Button>
+                  <CardFooter className="p-3 pt-0"> 
+                    <Button variant="link" size="xs" disabled={!dbAvailable} className="text-primary p-0 h-auto">View All Health Data</Button>
                   </CardFooter>
                 </Card>
 
                 <Card className="shadow-md md:col-span-1 xl:col-span-1">
-                  <CardHeader>
-                    <CardTitle className="text-lg flex items-center gap-2">
-                      <TrendingUp className="h-5 w-5 text-primary" /> AI Health Trend Analysis
-                    </CardTitle>
-                    <CardDescription className="text-xs">Proactive analysis of recent patient data.</CardDescription>
+                  <CardHeader className="p-4 pb-2"> 
+                    <CardTitle className="text-base flex items-center gap-2">
+                      <TrendingUp className="h-4 w-4 text-primary" /> AI Health Trend Analysis
+                    </CardTitle> 
+                    <CardDescription className="text-xs">Proactive analysis of data.</CardDescription>
                   </CardHeader>
-                  <CardContent className="min-h-[120px]"> {/* Reduced min-height */}
+                  <CardContent className="px-4 pt-0 pb-3 min-h-[120px]"> 
                     {loadingTrendAnalysis ? (
-                      <div className="space-y-2">
-                        <Skeleton className="h-4 w-3/4" />
-                        <Skeleton className="h-4 w-full" />
-                        <Skeleton className="h-4 w-5/6" />
-                         <Skeleton className="h-8 w-1/2 mt-2" />
+                      <div className="space-y-1.5">
+                        <Skeleton className="h-3.5 w-3/4" />
+                        <Skeleton className="h-3.5 w-full" />
+                        <Skeleton className="h-3.5 w-5/6" />
+                         <Skeleton className="h-7 w-1/2 mt-1.5" /> 
                       </div>
                     ) : trendAnalysis ? (
                       trendAnalysis.isTrendConcerning ? (
-                        <div className="space-y-2">
-                          <Alert variant="destructive">
-                             <AlertTriangle className="h-4 w-4"/>
-                             <AlertTitle>Concerning Trend Identified!</AlertTitle>
+                        <div className="space-y-1.5">
+                          <Alert variant="destructive" className="p-2 text-xs"> 
+                             <AlertTriangle className="h-3.5 w-3.5"/>
+                             <AlertTitle className="text-xs">Concerning Trend!</AlertTitle>
                              <AlertDescription>{trendAnalysis.trendSummary || "A concerning trend was noted."}</AlertDescription>
                           </Alert>
                           {trendAnalysis.suggestedActionForDoctor && (
-                            <div className="mt-3 p-3 bg-amber-50 border border-amber-200 rounded-md dark:bg-amber-900/30 dark:border-amber-700">
-                              <p className="text-sm font-semibold text-amber-700 dark:text-amber-300">Suggested Action:</p>
-                              <p className="text-sm text-amber-600 dark:text-amber-400">{trendAnalysis.suggestedActionForDoctor}</p>
+                            <div className="mt-2 p-2 bg-amber-50 border border-amber-200 rounded-md dark:bg-amber-900/30 dark:border-amber-700 text-xs"> 
+                              <p className="text-xs font-semibold text-amber-700 dark:text-amber-300">Suggested Action:</p>
+                              <p className="text-xs text-amber-600 dark:text-amber-400">{trendAnalysis.suggestedActionForDoctor}</p>
                             </div>
                           )}
                         </div>
                       ) : (
-                        <div className="flex flex-col items-center justify-center text-center h-full">
-                          <ThumbsDown className="h-8 w-8 text-green-500 mb-2" />
-                          <p className="text-sm text-muted-foreground">{trendAnalysis.trendSummary || "No concerning health trends identified at this time."}</p>
+                        <div className="flex flex-col items-center justify-center text-center h-full py-2">
+                          <ThumbsDown className="h-6 w-6 text-green-500 mb-1" /> 
+                          <p className="text-xs text-muted-foreground">{trendAnalysis.trendSummary || "No concerning health trends identified."}</p>
                         </div>
                       )
                     ) : (
-                       dbAvailable && <p className="text-sm text-muted-foreground text-center py-4">Trend analysis not yet available for this patient.</p>
+                       dbAvailable && <p className="text-sm text-muted-foreground text-center py-3">Trend analysis not available.</p>
                     )}
                   </CardContent>
-                  <CardFooter>
+                  <CardFooter className="p-3 pt-0"> 
                       <Button
                           variant="outline"
                           size="sm"
+                          className="h-8 text-xs" 
                           onClick={async () => {
                               if (!selectedPatientData || !patientHealthData || !patientMedications) return;
                               setLoadingTrendAnalysis(true);
@@ -715,25 +707,25 @@ function DoctorDashboardContent({ doctorId, doctorName, userRole }: DoctorDashbo
                           }}
                           disabled={loadingTrendAnalysis || !selectedPatientData || !dbAvailable}
                       >
-                         {loadingTrendAnalysis ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> :  <Sparkles className="mr-2 h-4 w-4"/>}
-                          Re-analyze Trends
+                         {loadingTrendAnalysis ? <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" /> :  <Sparkles className="mr-1 h-3.5 w-3.5"/>} 
+                          Re-analyze
                       </Button>
                   </CardFooter>
                 </Card>
 
                 <Card className="shadow-md md:col-span-1 xl:col-span-1">
-                  <CardHeader>
-                    <CardTitle className="text-lg flex items-center gap-2"><Pill className="h-5 w-5 text-primary" /> Medication Overview</CardTitle>
+                  <CardHeader className="p-4 pb-2"> 
+                    <CardTitle className="text-base flex items-center gap-2"><Pill className="h-4 w-4 text-primary" /> Medication Overview</CardTitle> 
                   </CardHeader>
-                  <CardContent>
+                  <CardContent className="px-4 pt-0 pb-3"> 
                     {patientMedications.length > 0 ? (
-                      <ScrollArea className="h-[150px] pr-3"> {/* Reduced height */}
-                      <ul className="space-y-3 text-sm">
+                      <ScrollArea className="h-[150px] pr-2"> 
+                      <ul className="space-y-2 text-sm"> 
                         {patientMedications.map(med => (
-                          <li key={med.id} className="border-b pb-2">
-                            <div className="flex justify-between items-center mb-1">
-                              <span className="font-medium">{med.name} <span className="text-xs text-muted-foreground">({med.dosage})</span></span>
-                              <Badge variant={med.adherence && med.adherence >= 90 ? 'default' : med.adherence && med.adherence >= 70 ? 'secondary' : 'destructive'} className="text-xs px-2 py-0.5">
+                          <li key={med.id} className="border-b pb-1.5"> 
+                            <div className="flex justify-between items-center mb-0.5"> 
+                              <span className="font-medium text-xs">{med.name} <span className="text-xs text-muted-foreground">({med.dosage})</span></span> 
+                              <Badge variant={med.adherence && med.adherence >= 90 ? 'default' : med.adherence && med.adherence >= 70 ? 'secondary' : 'destructive'} className="text-xs px-1.5 py-0.5"> 
                                 {med.adherence !== undefined ? `${med.adherence}% adherence` : 'N/A'}
                               </Badge>
                             </div>
@@ -743,41 +735,41 @@ function DoctorDashboardContent({ doctorId, doctorName, userRole }: DoctorDashbo
                       </ul>
                       </ScrollArea>
                     ) : (
-                      <p className="text-sm text-muted-foreground py-4 text-center">No medications assigned.</p>
+                      <p className="text-sm text-muted-foreground py-3 text-center">No medications assigned.</p>
                     )}
                   </CardContent>
-                  <CardFooter>
-                    <Button variant="link" size="sm" disabled={!dbAvailable} className="text-primary">Manage Medications</Button>
+                  <CardFooter className="p-3 pt-0"> 
+                    <Button variant="link" size="xs" disabled={!dbAvailable} className="text-primary p-0 h-auto">Manage Medications</Button>
                   </CardFooter>
                 </Card>
 
-                 <Card className="shadow-md md:col-span-2 xl:col-span-3"> {/* Span 2 on md, span 3 on xl for full width */}
-                  <CardHeader>
-                    <CardTitle className="text-lg flex items-center gap-2"><Info className="h-5 w-5 text-primary" /> AI Suggested Interventions</CardTitle>
+                 <Card className="shadow-md md:col-span-2 xl:col-span-3"> 
+                  <CardHeader className="p-4 pb-2"> 
+                    <CardTitle className="text-base flex items-center gap-2"><Info className="h-4 w-4 text-primary" /> AI Suggested Interventions</CardTitle> 
                     <CardDescription className="text-xs">Review and act on AI-driven suggestions.</CardDescription>
                   </CardHeader>
-                  <CardContent>
+                  <CardContent className="px-4 pt-0 pb-3"> 
                     {(loadingPatientDetails && !aiSuggestions.length) ? (
-                      <div className="flex items-center justify-center p-4"><Loader2 className="h-6 w-6 animate-spin text-primary" /></div>
+                      <div className="flex items-center justify-center p-3"><Loader2 className="h-5 w-5 animate-spin text-primary" /></div>
                     ) : aiSuggestions.length > 0 ? (
-                      <ScrollArea className="h-[180px] pr-3"> {/* Reduced height */}
-                        <ul className="space-y-3">
+                      <ScrollArea className="h-[180px] pr-2"> 
+                        <ul className="space-y-2"> 
                           {aiSuggestions.map(suggestion => (
-                            <li key={suggestion.id} className="p-3 border rounded-md bg-card hover:shadow-sm transition-shadow space-y-2">
+                            <li key={suggestion.id} className="p-2.5 border rounded-md bg-card hover:shadow-sm transition-shadow space-y-1.5"> 
                               <p className="text-sm" dangerouslySetInnerHTML={{ __html: formatBoldMarkdown(suggestion.suggestionText) }} />
                               <div className="flex justify-between items-center">
                                 <span className="text-xs text-muted-foreground">{formatDistanceToNow(new Date(suggestion.timestamp), { addSuffix: true })}</span>
                                 {suggestion.status === 'pending' ? (
-                                  <div className="flex gap-2">
-                                    <Button size="xs" variant="outline" className="h-7 px-2 py-1 text-xs border-green-500 text-green-700 hover:bg-green-50 hover:text-green-800 dark:border-green-600 dark:text-green-400 dark:hover:bg-green-700 dark:hover:text-green-200" onClick={() => handleSuggestionAction(suggestion.id, 'approved')} disabled={!dbAvailable}>
-                                      <Check className="h-3 w-3 mr-1" /> Approve
+                                  <div className="flex gap-1.5"> 
+                                    <Button size="xs" variant="outline" className="h-6 px-1.5 py-0.5 text-xs border-green-500 text-green-700 hover:bg-green-50 hover:text-green-800 dark:border-green-600 dark:text-green-400 dark:hover:bg-green-700 dark:hover:text-green-200" onClick={() => handleSuggestionAction(suggestion.id, 'approved')} disabled={!dbAvailable}>
+                                      <Check className="h-3 w-3 mr-0.5" /> Approve
                                     </Button>
-                                    <Button size="xs" variant="outline" className="h-7 px-2 py-1 text-xs border-red-500 text-red-700 hover:bg-red-50 hover:text-red-800 dark:border-red-600 dark:text-red-400 dark:hover:bg-red-700 dark:hover:text-red-200" onClick={() => handleSuggestionAction(suggestion.id, 'rejected')} disabled={!dbAvailable}>
-                                      <X className="h-3 w-3 mr-1" /> Reject
+                                    <Button size="xs" variant="outline" className="h-6 px-1.5 py-0.5 text-xs border-red-500 text-red-700 hover:bg-red-50 hover:text-red-800 dark:border-red-600 dark:text-red-400 dark:hover:bg-red-700 dark:hover:text-red-200" onClick={() => handleSuggestionAction(suggestion.id, 'rejected')} disabled={!dbAvailable}>
+                                      <X className="h-3 w-3 mr-0.5" /> Reject
                                     </Button>
                                   </div>
                                 ) : (
-                                  <Badge variant={suggestion.status === 'approved' ? 'default' : 'destructive'} className="text-xs capitalize px-2 py-0.5">
+                                  <Badge variant={suggestion.status === 'approved' ? 'default' : 'destructive'} className="text-xs capitalize px-1.5 py-0.5"> 
                                     {suggestion.status}
                                   </Badge>
                                 )}
@@ -787,7 +779,7 @@ function DoctorDashboardContent({ doctorId, doctorName, userRole }: DoctorDashbo
                         </ul>
                       </ScrollArea>
                     ) : (
-                      <p className="text-sm text-muted-foreground py-4 text-center">No AI suggestions available for this patient.</p>
+                      <p className="text-sm text-muted-foreground py-3 text-center">No AI suggestions available.</p>
                     )}
                   </CardContent>
                 </Card>
@@ -912,13 +904,13 @@ function DoctorDashboardPageSkeleton({ message }: { message?: string }) {
           {message}
         </div>
       )}
-      <div className="w-full max-w-7xl p-8 space-y-8 bg-card rounded-lg shadow-md">
-        <Skeleton className="h-10 w-1/3 mb-4" /> {/* Title Skeleton */}
-        
-        <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
-            <div className="lg:col-span-1 space-y-6">
-                <Skeleton className="h-48 rounded-lg" /> {/* Patient Management */}
-                <Skeleton className="h-64 rounded-lg" /> {/* Appointments */}
+      <div className="w-full max-w-7xl p-6 space-y-6 bg-card rounded-lg shadow-md"> 
+        <Skeleton className="h-9 w-1/3 mb-3" /> 
+
+        <div className="grid grid-cols-1 lg:grid-cols-4 gap-4"> 
+            <div className="lg:col-span-1 space-y-4"> 
+                <Skeleton className="h-40 rounded-lg" /> 
+                <Skeleton className="h-56 rounded-lg" /> 
             </div>
             <DashboardSkeletonCentralColumns />
         </div>
@@ -930,16 +922,15 @@ function DoctorDashboardPageSkeleton({ message }: { message?: string }) {
 function DashboardSkeletonCentralColumns() {
   return (
     <>
-      <div className="lg:col-span-3 grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6 content-start">
-        <Skeleton className="h-36 rounded-lg" />  {/* Patient Info */}
-        <Skeleton className="h-40 rounded-lg" />  {/* AI Summary */}
-        <Skeleton className="h-44 rounded-lg" />  {/* AI Care Plan */}
-        <Skeleton className="h-40 rounded-lg" />  {/* Health Data */}
-        <Skeleton className="h-44 rounded-lg" />  {/* Trend Analysis */}
-        <Skeleton className="h-40 rounded-lg" />  {/* Medications */}
-        <Skeleton className="h-48 rounded-lg md:col-span-2 xl:col-span-3" /> {/* AI Suggestions */}
+      <div className="lg:col-span-3 grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4 content-start"> 
+        <Skeleton className="h-32 rounded-lg" />  
+        <Skeleton className="h-36 rounded-lg" />  
+        <Skeleton className="h-40 rounded-lg" />  
+        <Skeleton className="h-36 rounded-lg" />  
+        <Skeleton className="h-40 rounded-lg" />  
+        <Skeleton className="h-36 rounded-lg" />  
+        <Skeleton className="h-44 rounded-lg md:col-span-2 xl:col-span-3" /> 
       </div>
     </>
   );
 }
-
