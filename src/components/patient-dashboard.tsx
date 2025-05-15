@@ -77,7 +77,7 @@ export default function PatientDashboard({ userId, userRole }: PatientDashboardP
   const [medications, setMedications] = useState<PatientMedication[]>([]);
   const [symptomReports, setSymptomReports] = useState<PatientSymptomReport[]>([]);
   const [chatMessages, setChatMessages] = useState<PatientChatMessage[]>([]);
-  const [patientSuggestions, setPatientSuggestions] = useState<PatientAISuggestion[]>([]); // Renamed from approvedAISuggestions
+  const [patientSuggestions, setPatientSuggestions] = useState<PatientAISuggestion[]>([]); 
   const [loadingPatientSuggestions, setLoadingPatientSuggestions] = useState(true);
 
   const [assignedDoctorId, setAssignedDoctorId] = useState<string | null>(null);
@@ -137,7 +137,7 @@ export default function PatientDashboard({ userId, userRole }: PatientDashboardP
           setMedications(mainDataResult.medications || []);
           setSymptomReports(mainDataResult.symptomReports || []);
           setChatMessages(mainDataResult.chatMessages || []);
-          setPatientSuggestions(mainDataResult.patientSuggestions || []); // Updated
+          setPatientSuggestions(mainDataResult.patientSuggestions || []); 
           setAssignedDoctorId(mainDataResult.assignedDoctorId || null);
           setAssignedDoctorName(mainDataResult.assignedDoctorName || null);
           setPatientDisplayName(mainDataResult.patientDisplayName || "Patient");
@@ -362,7 +362,7 @@ export default function PatientDashboard({ userId, userRole }: PatientDashboardP
           <Skeleton className="h-24 rounded-lg md:col-span-1 lg:col-span-1" />
           <div className="lg:col-span-3 grid grid-cols-1 lg:grid-cols-2 gap-6">
             <div className="space-y-6">
-                <Skeleton className="h-[250px] rounded-lg md:h-[300px]" /> {/* Chart */}
+                <Skeleton className="h-[300px] rounded-lg" /> {/* Chart */}
                 <Skeleton className="h-96 rounded-lg" /> {/* Report Symptoms */}
             </div>
              <div className="space-y-6">
@@ -414,7 +414,7 @@ export default function PatientDashboard({ userId, userRole }: PatientDashboardP
                         <CardTitle>Recent Health Trends</CardTitle>
                         <CardDescription>Steps and Heart Rate over the last recorded entries.</CardDescription>
                         </CardHeader>
-                        <CardContent className="h-[250px] md:h-[300px]">
+                        <CardContent className="h-[300px]">
                         {healthData.length > 0 ? (
                             <ResponsiveContainer width="100%" height="100%">
                             <BarChart data={healthData}>
@@ -526,21 +526,23 @@ export default function PatientDashboard({ userId, userRole }: PatientDashboardP
                         )}
                         <div className="mt-6 space-y-3">
                             <h4 className="text-sm font-medium text-muted-foreground">Recent Reports:</h4>
-                            {symptomReports.length > 0 ? (
-                            symptomReports.map(report => (
-                                <div key={report.id!} className="text-xs p-2 border rounded-md bg-muted/50 dark:bg-muted/20 flex items-start gap-2">
-                                {getSeverityIcon(report.severity)}
-                                <div>
-                                    <span className="font-semibold capitalize">{report.severity}</span> on {formatDateForDisplay(report.timestamp)}:
-                                    <p className="text-muted-foreground">{report.description}</p>
-                                </div>
-                                </div>
-                            ))
-                            ) : (
-                            <p className="text-xs text-muted-foreground">
-                                {dbAvailable ? "No recent reports." : "Symptom reports unavailable."}
-                            </p>
-                            )}
+                            <ScrollArea className="h-32 mt-4 pr-2">
+                              {symptomReports.length > 0 ? (
+                              symptomReports.map(report => (
+                                  <div key={report.id!} className="text-xs p-2 border rounded-md bg-muted/50 dark:bg-muted/20 flex items-start gap-2 mb-2">
+                                  {getSeverityIcon(report.severity)}
+                                  <div>
+                                      <span className="font-semibold capitalize">{report.severity}</span> on {formatDateForDisplay(report.timestamp)}:
+                                      <p className="text-muted-foreground">{report.description}</p>
+                                  </div>
+                                  </div>
+                              ))
+                              ) : (
+                              <p className="text-xs text-muted-foreground">
+                                  {dbAvailable ? "No recent reports." : "Symptom reports unavailable."}
+                              </p>
+                              )}
+                            </ScrollArea>
                         </div>
                         </CardContent>
                     </Card>
@@ -555,18 +557,20 @@ export default function PatientDashboard({ userId, userRole }: PatientDashboardP
                         </CardHeader>
                         <CardContent className="space-y-4">
                         {medications.length > 0 ? (
-                            medications.map((med) => (
-                            <div key={med.id!} className="space-y-1">
-                                <div className="flex justify-between items-center">
-                                <span className="font-medium">{med.name} ({med.dosage}, {med.frequency})</span>
-                                <Badge variant={med.adherence && med.adherence >= 90 ? 'default' : med.adherence && med.adherence >= 70 ? 'secondary' : 'destructive'}>
-                                    {med.adherence !== undefined ? `${med.adherence}%` : 'N/A'}
-                                </Badge>
+                            <ScrollArea className="h-[180px] pr-2">
+                                {medications.map((med) => (
+                                <div key={med.id!} className="space-y-1 mb-3">
+                                    <div className="flex justify-between items-center">
+                                    <span className="font-medium">{med.name} ({med.dosage}, {med.frequency})</span>
+                                    <Badge variant={med.adherence && med.adherence >= 90 ? 'default' : med.adherence && med.adherence >= 70 ? 'secondary' : 'destructive'}>
+                                        {med.adherence !== undefined ? `${med.adherence}%` : 'N/A'}
+                                    </Badge>
+                                    </div>
+                                    <Progress value={med.adherence} className="h-2" aria-label={`${med.name} adherence ${med.adherence}%`} />
+                                    {med.lastTaken && <p className="text-xs text-muted-foreground">Last taken: {formatDateForDisplay(med.lastTaken)}</p>}
                                 </div>
-                                <Progress value={med.adherence} className="h-2" aria-label={`${med.name} adherence ${med.adherence}%`} />
-                                {med.lastTaken && <p className="text-xs text-muted-foreground">Last taken: {formatDateForDisplay(med.lastTaken)}</p>}
-                            </div>
-                            ))
+                                ))}
+                            </ScrollArea>
                         ) : (
                             <p className="text-sm text-muted-foreground">
                             No medications assigned yet.
@@ -696,3 +700,4 @@ export default function PatientDashboard({ userId, userRole }: PatientDashboardP
     </div>
   );
 }
+
