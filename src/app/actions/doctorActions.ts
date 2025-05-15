@@ -3,6 +3,8 @@
 
 import { connectToDatabase, toObjectId, ObjectId } from '@/lib/mongodb';
 import { revalidatePath } from 'next/cache';
+import { formatDistanceToNow, parseISO } from 'date-fns';
+
 
 // Type definitions for data structures (can be shared or defined per component/action)
 export interface DoctorPatient {
@@ -15,6 +17,11 @@ export interface DoctorPatient {
   assignedDoctorId?: string;
   readmissionRisk?: 'low' | 'medium' | 'high';
   medicalHistory?: string;
+  // For approved care plan display
+  approvedCarePlanText?: string;
+  carePlanLastUpdatedByDoctorId?: string;
+  carePlanLastUpdatedByDoctorName?: string; // To show who approved it
+  carePlanLastUpdatedDate?: Date | string;
 }
 interface RawDoctorPatient { 
   _id: ObjectId;
@@ -26,6 +33,9 @@ interface RawDoctorPatient {
   role: 'patient';
   readmissionRisk?: 'low' | 'medium' | 'high';
   medicalHistory?: string;
+  approvedCarePlanText?: string;
+  carePlanLastUpdatedByDoctorId?: string;
+  carePlanLastUpdatedDate?: Date;
 }
 
 
@@ -36,6 +46,7 @@ export interface DoctorPatientHealthData {
   timestamp: Date | string;
   steps?: number;
   heartRate?: number;
+  bloodGlucose?: number; // Added
 }
 interface RawDoctorPatientHealthData {
   _id: ObjectId;
@@ -43,6 +54,7 @@ interface RawDoctorPatientHealthData {
   timestamp: Date;
   steps?: number;
   heartRate?: number;
+  bloodGlucose?: number; // Added
 }
 
 export interface DoctorPatientMedication {
@@ -145,12 +157,27 @@ export async function fetchDoctorPatientsAction(doctorId: string): Promise<{ pat
       assignedDoctorId: doctorId
     }).toArray();
 
+    // Fetch doctor details to populate carePlanLastUpdatedByDoctorName
+    const doctorObjectIds = patientList
+      .map(p => p.carePlanLastUpdatedByDoctorId)
+      .filter(id => id && ObjectId.isValid(id))
+      .map(id => toObjectId(id!));
+    
+    let doctorMap: Map<string, string> = new Map();
+    if (doctorObjectIds.length > 0) {
+        const doctors = await usersCollection.find({ _id: { $in: doctorObjectIds } }).toArray();
+        doctors.forEach(doc => doctorMap.set(doc._id.toString(), doc.displayName || 'Unknown Doctor'));
+    }
+
+
     const patients: DoctorPatient[] = patientList.map(p => ({
       ...p,
       _id: p._id.toString(),
       id: p._id.toString(),
       name: p.displayName || 'Unknown Patient', 
       lastActivity: p.lastActivity?.toISOString(),
+      carePlanLastUpdatedDate: p.carePlanLastUpdatedDate?.toISOString(),
+      carePlanLastUpdatedByDoctorName: p.carePlanLastUpdatedByDoctorId ? doctorMap.get(p.carePlanLastUpdatedByDoctorId) : undefined,
     }));
     return { patients };
   } catch (err: any) {
@@ -185,13 +212,22 @@ export async function fetchDoctorPatientDetailsAction(patientIdStr: string, doct
       }
       return { error: "Patient not assigned to this doctor." };
     }
+    
+    let carePlanDoctorName: string | undefined = undefined;
+    if (rawPatient.carePlanLastUpdatedByDoctorId) {
+        const carePlanDoctor = await usersCollection.findOne({ _id: toObjectId(rawPatient.carePlanLastUpdatedByDoctorId) });
+        carePlanDoctorName = carePlanDoctor?.displayName;
+    }
+
 
     const patient: DoctorPatient = {
         ...rawPatient,
          _id: rawPatient._id.toString(),
          id: rawPatient._id.toString(),
          name: rawPatient.displayName || 'Unknown Patient', 
-         lastActivity: rawPatient.lastActivity?.toISOString()
+         lastActivity: rawPatient.lastActivity?.toISOString(),
+         carePlanLastUpdatedDate: rawPatient.carePlanLastUpdatedDate?.toISOString(),
+         carePlanLastUpdatedByDoctorName: carePlanDoctorName,
     };
 
     const healthCollection = db.collection<RawDoctorPatientHealthData>('healthData');
@@ -397,5 +433,84 @@ export async function createAppointmentAction(appointmentData: {
   } catch (err: any) {
     console.error("Error creating appointment:", err);
     return { error: "Could not create appointment. " + (err.message || '') };
+  }
+}
+
+export async function fetchFullPatientHealthDataAction(patientIdStr: string): Promise<{ healthData?: DoctorPatientHealthData[], error?: string }> {
+  const patientObjectId = toObjectId(patientIdStr);
+  if (!patientObjectId) {
+    return { error: "Invalid patient ID format." };
+  }
+
+  try {
+    const { db } = await connectToDatabase();
+    const healthCollection = db.collection<RawDoctorPatientHealthData>('healthData');
+    // Fetch more entries, e.g., last 50, sorted by newest first
+    const rawHealthData = await healthCollection.find({ patientId: patientObjectId })
+      .sort({ timestamp: -1 }).limit(50).toArray(); 
+    
+    const healthData: DoctorPatientHealthData[] = rawHealthData.map(d => ({
+      ...d,
+      _id: d._id.toString(),
+      id: d._id.toString(),
+      patientId: d.patientId.toString(),
+      timestamp: d.timestamp.toISOString()
+    }));
+    return { healthData };
+  } catch (err: any) {
+    console.error("Error fetching full patient health data:", err);
+    return { error: "Could not load full health data. " + (err.message || '') };
+  }
+}
+
+export async function approveCarePlanAction(
+  patientIdStr: string,
+  carePlanText: string,
+  doctorId: string
+): Promise<{ success: boolean; error?: string; updatedPatient?: Partial<DoctorPatient> }> {
+  const patientObjectId = toObjectId(patientIdStr);
+  if (!patientObjectId) {
+    return { success: false, error: "Invalid patient ID format." };
+  }
+  if (!carePlanText.trim()) {
+    return { success: false, error: "Care plan text cannot be empty." };
+  }
+
+  try {
+    const { db } = await connectToDatabase();
+    const usersCollection = db.collection<RawDoctorPatient>('users');
+
+    const updateResult = await usersCollection.updateOne(
+      { _id: patientObjectId, role: 'patient' },
+      {
+        $set: {
+          approvedCarePlanText: carePlanText,
+          carePlanLastUpdatedByDoctorId: doctorId,
+          carePlanLastUpdatedDate: new Date(),
+        },
+      }
+    );
+
+    if (updateResult.matchedCount === 0) {
+      return { success: false, error: "Patient not found." };
+    }
+    if (updateResult.modifiedCount === 0) {
+        // Could mean the plan was already the same, still consider it a success for UI
+        return { success: true, updatedPatient: { approvedCarePlanText: carePlanText } };
+    }
+    
+    revalidatePath(`/dashboard/doctor?patientId=${patientIdStr}`);
+    
+    // For optimistic update, return the key fields that changed
+    return { success: true, updatedPatient: { 
+        approvedCarePlanText: carePlanText,
+        carePlanLastUpdatedByDoctorId: doctorId,
+        carePlanLastUpdatedDate: new Date().toISOString(),
+        // We would need to fetch the doctor's name if we want to return it here for the UI
+      } 
+    };
+  } catch (err: any) {
+    console.error("Error approving care plan:", err);
+    return { success: false, error: "Could not approve care plan. " + (err.message || '') };
   }
 }

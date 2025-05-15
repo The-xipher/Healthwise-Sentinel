@@ -23,6 +23,10 @@ interface User {
   lastActivity?: Date;
   creationTime: Date;
   lastSignInTime: Date;
+  // Fields for doctor-approved care plan
+  approvedCarePlanText?: string;
+  carePlanLastUpdatedByDoctorId?: string;
+  carePlanLastUpdatedDate?: Date;
 }
 
 interface Credential {
@@ -213,6 +217,9 @@ export async function seedDatabase(): Promise<{ success: boolean; message: strin
         emergencyContactEmail: 'ethan.emergency@example.com',
         photoInitial: "EC",
         readmissionRisk: 'high' as 'low' | 'medium' | 'high',
+        approvedCarePlanText: "1. Monitor blood pressure twice daily (morning and evening).\n2. Take Lisinopril 10mg once daily as prescribed.\n3. Follow a low-sodium diet.\n4. Walk for at least 30 minutes, 5 days a week.\n5. Report any chest pain, shortness of breath, or significant swelling to Dr. Reed immediately.",
+        carePlanLastUpdatedByDoctorId: doctorUserObjectId1.toString(),
+        carePlanLastUpdatedDate: faker.date.recent({days: 3}),
       },
       {
         _id: patientUserObjectId2,
@@ -281,6 +288,9 @@ export async function seedDatabase(): Promise<{ success: boolean; message: strin
         creationTime: faker.date.past({ years: 1 }),
         lastSignInTime: faker.date.recent({ days: Math.floor(Math.random() * 7) + 1 }),
         lastActivity: faker.date.recent({ days: Math.floor(Math.random() * 3) + 1 }),
+        approvedCarePlanText: pData.approvedCarePlanText,
+        carePlanLastUpdatedByDoctorId: pData.carePlanLastUpdatedByDoctorId,
+        carePlanLastUpdatedDate: pData.carePlanLastUpdatedDate,
       };
       usersToInsert.push(patient);
       credentialsToInsert.push({
@@ -524,5 +534,3 @@ if (require.main === module) {
     }
   })();
 }
-
-    

@@ -12,9 +12,20 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Input } from '@/components/ui/input';
-import { Loader2, AlertTriangle, Users, Stethoscope, Activity, HeartPulse, Pill, MessageSquare, Send, Check, X, Info, Brain, Search, CalendarDays, Sparkles, BookMarked, Droplet, TrendingUp, ThumbsDown } from 'lucide-react'; // Added TrendingUp, ThumbsDown
+import { Loader2, AlertTriangle, Users, Stethoscope, Activity, HeartPulse, Pill, MessageSquare, Send, Check, X, Info, Brain, Search, CalendarDays, Sparkles, BookMarked, Droplet, TrendingUp, ThumbsDown, FileText, Edit3 } from 'lucide-react'; // Added FileText, Edit3
 import { Textarea } from './ui/textarea';
 import { ScrollArea } from './ui/scroll-area';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+  DialogClose,
+} from "@/components/ui/dialog";
 import {
   Sheet,
   SheetContent,
@@ -35,6 +46,8 @@ import {
   updateSuggestionStatusAction,
   fetchDoctorAppointmentsAction,
   createAppointmentAction,
+  fetchFullPatientHealthDataAction, // New action
+  approveCarePlanAction, // New action
   type DoctorPatient,
   type DoctorPatientHealthData,
   type DoctorPatientMedication,
@@ -87,12 +100,22 @@ function DoctorDashboardContent({ doctorId, doctorName, userRole }: DoctorDashbo
   const [sendingMessage, setSendingMessage] = useState<boolean>(false);
   const [historySummary, setHistorySummary] = useState<string | null>(null);
   const [loadingSummary, setLoadingSummary] = useState<boolean>(false);
-  const [carePlan, setCarePlan] = useState<string | null>(null);
-  const [loadingCarePlan, setLoadingCarePlan] = useState<boolean>(false);
+  const [aiDraftCarePlan, setAiDraftCarePlan] = useState<string | null>(null);
+  const [loadingAiDraftCarePlan, setLoadingAiDraftCarePlan] = useState<boolean>(false);
   const { toast } = useToast();
   const [dbAvailable, setDbAvailable] = useState<boolean>(true);
   const chatScrollAreaRef = useRef<HTMLDivElement>(null);
   const [isChatOpen, setIsChatOpen] = useState(false);
+
+  // State for "View All Health Data" modal
+  const [isFullHealthDataDialogOpen, setIsFullHealthDataDialogOpen] = useState(false);
+  const [fullHealthData, setFullHealthData] = useState<DoctorPatientHealthData[]>([]);
+  const [loadingFullHealthData, setLoadingFullHealthData] = useState(false);
+
+  // State for "Edit/Approve Care Plan" modal
+  const [isCarePlanDialogOpen, setIsCarePlanDialogOpen] = useState(false);
+  const [editableCarePlanText, setEditableCarePlanText] = useState('');
+  const [savingCarePlan, setSavingCarePlan] = useState(false);
 
 
   useEffect(() => {
@@ -118,6 +141,120 @@ function DoctorDashboardContent({ doctorId, doctorName, userRole }: DoctorDashbo
         setLoadingAppointments(false);
     }
   };
+
+  const fetchPatientAllData = async () => {
+      if (!selectedPatientId || !doctorId) return;
+
+      setLoadingPatientDetails(true);
+      setLoadingTrendAnalysis(true);
+      setHistorySummary("Loading AI Summary...");
+      setAiDraftCarePlan("Loading AI Care Plan Draft...");
+      setTrendAnalysis(null);
+
+      try {
+        const result = await fetchDoctorPatientDetailsAction(selectedPatientId!, doctorId);
+        if (result.error) {
+          setError(prev => prev ? `${prev}\nPatient Details: ${result.error}` : `Patient Details: ${result.error}`);
+          if (result.error.toLowerCase().includes("database connection") ||
+              result.error.toLowerCase().includes("timeout") ||
+              result.error.toLowerCase().includes("failed to connect") ||
+              result.error.toLowerCase().includes("could not load patient data")) {
+            setDbAvailable(false);
+          }
+          setSelectedPatientData(null);
+          setPatientHealthData([]);
+          setPatientMedications([]);
+          setAiSuggestions([]);
+          setChatMessages([]);
+          setHistorySummary("Could not load AI summary due to data error.");
+          setAiDraftCarePlan("Could not load AI care plan draft due to data error.");
+          setTrendAnalysis({ isTrendConcerning: false, trendSummary: "Could not perform trend analysis due to data error.", suggestedActionForDoctor: null });
+        } else {
+          setSelectedPatientData(result.patient || null);
+          setPatientHealthData(result.healthData || []);
+          setPatientMedications(result.medications || []);
+          setAiSuggestions(result.aiSuggestions || []);
+          setChatMessages(result.chatMessages || []);
+          
+          // Set editable care plan text when patient data is loaded
+          setEditableCarePlanText(result.patient?.approvedCarePlanText || '');
+
+
+          if (result.patient) {
+            const currentChatId = getChatId(doctorId, selectedPatientId!);
+            await markMessagesAsReadAction(currentChatId, doctorId);
+
+            setLoadingSummary(true);
+            try {
+              const summaryResult = await summarizePatientHistory({
+                patientId: selectedPatientId!,
+                medicalHistory: result.patient.medicalHistory || "No detailed medical history available."
+              });
+              setHistorySummary(summaryResult.summary);
+            } catch (aiError: any) {
+              console.error("AI Patient Summary Error:", aiError);
+              const errorMsg = aiError.message?.includes("NOT_FOUND") || aiError.message?.includes("API key") || aiError.message?.includes("model") ? "Model not found or API key issue." : "Service error.";
+              setHistorySummary("Could not generate AI summary. " + errorMsg);
+            } finally {
+              setLoadingSummary(false);
+            }
+
+            // Only generate AI draft if no approved plan exists
+            if (!result.patient.approvedCarePlanText) {
+              setLoadingAiDraftCarePlan(true);
+              try {
+                  const currentMedsString = (result.medications || []).map(m => `${m.name} (${m.dosage})`).join(', ') || "None listed";
+                  const predictedRisksString = result.patient?.readmissionRisk ? `Readmission Risk: ${result.patient.readmissionRisk}` : "No specific risks predicted by system.";
+                  const carePlanResult = await generateCarePlan({
+                    patientId: selectedPatientId!,
+                    predictedRisks: predictedRisksString,
+                    medicalHistory: result.patient.medicalHistory || "No detailed medical history available.",
+                    currentMedications: currentMedsString
+                  });
+                  setAiDraftCarePlan(carePlanResult.carePlan);
+                  if (!editableCarePlanText) setEditableCarePlanText(carePlanResult.carePlan); // Pre-fill for editing if no approved plan
+              } catch (aiError: any) {
+                console.error("AI Care Plan Error:", aiError);
+                const errorMsg = aiError.message?.includes("NOT_FOUND") || aiError.message?.includes("API key") || aiError.message?.includes("model") ? "Model not found or API key issue." : "Service error.";
+                setAiDraftCarePlan("Could not generate AI care plan draft. " + errorMsg);
+              } finally {
+                setLoadingAiDraftCarePlan(false);
+              }
+            } else {
+                setAiDraftCarePlan(null); // Clear AI draft if approved plan exists
+                setEditableCarePlanText(result.patient.approvedCarePlanText); // Ensure editable text is the approved one
+            }
+
+
+            if (result.patient && result.healthData && result.medications) {
+              setLoadingTrendAnalysis(true);
+              const trendInput = prepareTrendAnalysisInput(result.patient, result.healthData, result.medications);
+              try {
+                const trendOutput = await analyzePatientHealthTrends(trendInput);
+                setTrendAnalysis(trendOutput);
+              } catch (aiError: any) {
+                 console.error("AI Trend Analysis Error:", aiError);
+                 const errorMsg = aiError.message?.includes("NOT_FOUND") || aiError.message?.includes("API key") || aiError.message?.includes("model") ? "Model not found or API key issue." : "Service error.";
+                 setTrendAnalysis({ isTrendConcerning: false, trendSummary: "Could not perform AI trend analysis. " + errorMsg, suggestedActionForDoctor: null });
+              } finally {
+                 setLoadingTrendAnalysis(false);
+              }
+            } else {
+               setTrendAnalysis({ isTrendConcerning: false, trendSummary: "Insufficient data for trend analysis.", suggestedActionForDoctor: null });
+               setLoadingTrendAnalysis(false);
+            }
+          }
+        }
+      } catch (e: any) {
+        setError(e.message || "An unexpected error occurred fetching patient details.");
+        setHistorySummary("Error fetching patient data for AI summary.");
+        setAiDraftCarePlan("Error fetching patient data for AI care plan draft.");
+        setTrendAnalysis({ isTrendConcerning: false, trendSummary: "Error fetching patient data for trend analysis.", suggestedActionForDoctor: null });
+        console.error("Error fetching patient details:", e);
+      } finally {
+        setLoadingPatientDetails(false);
+      }
+    };
 
   useEffect(() => {
     if (!doctorId) {
@@ -161,7 +298,36 @@ function DoctorDashboardContent({ doctorId, doctorName, userRole }: DoctorDashbo
       }
     }
     loadInitialDoctorData();
-  }, [doctorId, patientIdFromQuery]); 
+  }, [doctorId]); 
+
+
+  useEffect(() => {
+    if (!selectedPatientId || !doctorId) {
+      setSelectedPatientData(null);
+      setPatientHealthData([]);
+      setPatientMedications([]);
+      setAiSuggestions([]);
+      setChatMessages([]);
+      setHistorySummary(null);
+      setAiDraftCarePlan(null);
+      setLoadingPatientDetails(false);
+      setTrendAnalysis(null);
+      setLoadingTrendAnalysis(false);
+      if(isChatOpen && selectedPatientId !== selectedPatientData?.id) setIsChatOpen(false);
+      return;
+    }
+    fetchPatientAllData();
+  }, [selectedPatientId, doctorId, doctorName, toast]);
+
+  useEffect(() => {
+    if (isChatOpen && chatScrollAreaRef.current) {
+       setTimeout(() => {
+         if (chatScrollAreaRef.current) {
+            chatScrollAreaRef.current.scrollTop = chatScrollAreaRef.current.scrollHeight;
+         }
+      }, 100); // Increased delay slightly
+    }
+  }, [chatMessages, isChatOpen]);
 
   const prepareTrendAnalysisInput = (
     patient: DoctorPatient,
@@ -190,136 +356,6 @@ function DoctorDashboardContent({ doctorId, doctorName, userRole }: DoctorDashbo
       patientRiskProfile: riskProfile,
     };
   };
-
-  useEffect(() => {
-    if (!selectedPatientId || !doctorId) {
-      setSelectedPatientData(null);
-      setPatientHealthData([]);
-      setPatientMedications([]);
-      setAiSuggestions([]);
-      setChatMessages([]);
-      setHistorySummary(null);
-      setCarePlan(null);
-      setLoadingPatientDetails(false);
-      setTrendAnalysis(null);
-      setLoadingTrendAnalysis(false);
-      if(isChatOpen && selectedPatientId !== selectedPatientData?.id) setIsChatOpen(false);
-      return;
-    }
-
-    async function fetchPatientAllData() {
-      setLoadingPatientDetails(true);
-      setLoadingTrendAnalysis(true); 
-      setHistorySummary("Loading AI Summary...");
-      setCarePlan("Loading AI Care Plan...");
-      setTrendAnalysis(null); 
-
-
-      try {
-        const result = await fetchDoctorPatientDetailsAction(selectedPatientId!, doctorId); 
-        if (result.error) {
-          setError(prev => prev ? `${prev}\nPatient Details: ${result.error}` : `Patient Details: ${result.error}`);
-           if (result.error.toLowerCase().includes("database connection") ||
-               result.error.toLowerCase().includes("timeout") ||
-               result.error.toLowerCase().includes("failed to connect") ||
-               result.error.toLowerCase().includes("could not load patient data")) {
-            setDbAvailable(false);
-          }
-          setSelectedPatientData(null);
-          setPatientHealthData([]);
-          setPatientMedications([]);
-          setAiSuggestions([]);
-          setChatMessages([]);
-          setHistorySummary("Could not load AI summary due to data error.");
-          setCarePlan("Could not load AI care plan due to data error.");
-          setTrendAnalysis({ isTrendConcerning: false, trendSummary: "Could not perform trend analysis due to data error.", suggestedActionForDoctor: null });
-        } else {
-          setSelectedPatientData(result.patient || null);
-          setPatientHealthData(result.healthData || []);
-          setPatientMedications(result.medications || []);
-          setAiSuggestions(result.aiSuggestions || []);
-          setChatMessages(result.chatMessages || []);
-
-          if (result.patient) {
-            const currentChatId = getChatId(doctorId, selectedPatientId!); 
-            await markMessagesAsReadAction(currentChatId, doctorId);
-
-            setLoadingSummary(true);
-            try {
-              const summaryResult = await summarizePatientHistory({
-                patientId: selectedPatientId!, 
-                medicalHistory: result.patient.medicalHistory || "No detailed medical history available."
-              });
-              setHistorySummary(summaryResult.summary);
-            } catch (aiError: any) {
-              console.error("AI Patient Summary Error:", aiError);
-              const errorMsg = aiError.message?.includes("NOT_FOUND") || aiError.message?.includes("API key") || aiError.message?.includes("model") ? "Model not found or API key issue." : "Service error.";
-              setHistorySummary("Could not generate AI summary. " + errorMsg);
-            } finally {
-              setLoadingSummary(false);
-            }
-
-            setLoadingCarePlan(true);
-            try {
-                const currentMedsString = (result.medications || []).map(m => `${m.name} (${m.dosage})`).join(', ') || "None listed";
-                const predictedRisksString = result.patient?.readmissionRisk ? `Readmission Risk: ${result.patient.readmissionRisk}` : "No specific risks predicted by system.";
-                const carePlanResult = await generateCarePlan({
-                  patientId: selectedPatientId!, 
-                  predictedRisks: predictedRisksString,
-                  medicalHistory: result.patient.medicalHistory || "No detailed medical history available.",
-                  currentMedications: currentMedsString
-                });
-                setCarePlan(carePlanResult.carePlan);
-            } catch (aiError: any) {
-              console.error("AI Care Plan Error:", aiError);
-              const errorMsg = aiError.message?.includes("NOT_FOUND") || aiError.message?.includes("API key") || aiError.message?.includes("model") ? "Model not found or API key issue." : "Service error.";
-              setCarePlan("Could not generate AI care plan. " + errorMsg);
-            } finally {
-              setLoadingCarePlan(false);
-            }
-
-            if (result.patient && result.healthData && result.medications) {
-              setLoadingTrendAnalysis(true); 
-              const trendInput = prepareTrendAnalysisInput(result.patient, result.healthData, result.medications);
-              try {
-                const trendOutput = await analyzePatientHealthTrends(trendInput);
-                setTrendAnalysis(trendOutput);
-              } catch (aiError: any) {
-                 console.error("AI Trend Analysis Error:", aiError);
-                 const errorMsg = aiError.message?.includes("NOT_FOUND") || aiError.message?.includes("API key") || aiError.message?.includes("model") ? "Model not found or API key issue." : "Service error.";
-                 setTrendAnalysis({ isTrendConcerning: false, trendSummary: "Could not perform AI trend analysis. " + errorMsg, suggestedActionForDoctor: null });
-              } finally {
-                 setLoadingTrendAnalysis(false);
-              }
-            } else {
-               setTrendAnalysis({ isTrendConcerning: false, trendSummary: "Insufficient data for trend analysis.", suggestedActionForDoctor: null });
-               setLoadingTrendAnalysis(false);
-            }
-          }
-        }
-      } catch (e: any) {
-        setError(e.message || "An unexpected error occurred fetching patient details.");
-        setHistorySummary("Error fetching patient data for AI summary.");
-        setCarePlan("Error fetching patient data for AI care plan.");
-        setTrendAnalysis({ isTrendConcerning: false, trendSummary: "Error fetching patient data for trend analysis.", suggestedActionForDoctor: null });
-        console.error("Error fetching patient details:", e);
-      } finally {
-        setLoadingPatientDetails(false);
-      }
-    }
-
-    fetchPatientAllData();
-  }, [selectedPatientId, doctorId, doctorName, toast]); 
-
-  useEffect(() => {
-    if (isChatOpen && chatScrollAreaRef.current) {
-       setTimeout(() => {
-         if (chatScrollAreaRef.current) {
-            chatScrollAreaRef.current.scrollTop = chatScrollAreaRef.current.scrollHeight;
-         }
-      }, 0);
-    }
-  }, [chatMessages, isChatOpen]);
 
   const filteredPatients = useMemo(() => {
     if (!searchQuery) {
@@ -383,23 +419,83 @@ function DoctorDashboardContent({ doctorId, doctorName, userRole }: DoctorDashbo
     }
   };
 
-  const formatDateOnly = (dateString: string | Date): string => {
-    if (!dateString) return 'N/A';
+  const handleViewAllHealthData = async () => {
+    if (!selectedPatientId || !dbAvailable) return;
+    setLoadingFullHealthData(true);
+    setIsFullHealthDataDialogOpen(true);
     try {
-      return format(parseISO(dateString as string), 'PPP');
-    } catch {
-      return 'Invalid Date';
+      const result = await fetchFullPatientHealthDataAction(selectedPatientId);
+      if (result.error) {
+        toast({ title: "Error", description: `Could not load full health data: ${result.error}`, variant: "destructive" });
+        setFullHealthData([]);
+      } else {
+        setFullHealthData(result.healthData || []);
+      }
+    } catch (e: any) {
+      toast({ title: "Error", description: "An unexpected error occurred while fetching full health data.", variant: "destructive" });
+      setFullHealthData([]);
+    } finally {
+      setLoadingFullHealthData(false);
     }
   };
 
-  const formatTimeOnly = (dateString: string | Date): string => {
-     if (!dateString) return 'N/A';
+  const handleOpenCarePlanDialog = () => {
+    const currentPlan = selectedPatientData?.approvedCarePlanText || aiDraftCarePlan || '';
+    setEditableCarePlanText(currentPlan);
+    setIsCarePlanDialogOpen(true);
+  };
+
+  const handleApproveCarePlan = async () => {
+    if (!selectedPatientId || !editableCarePlanText.trim() || !dbAvailable) {
+      toast({ title: "Cannot Approve", description: "Patient not selected or care plan text is empty.", variant: "destructive" });
+      return;
+    }
+    setSavingCarePlan(true);
     try {
-      return format(parseISO(dateString as string), 'p');
-    } catch {
-      return 'Invalid Time';
+      const result = await approveCarePlanAction(selectedPatientId, editableCarePlanText, doctorId);
+      if (result.success) {
+        toast({ title: "Care Plan Approved", description: "The care plan has been updated and approved.", variant: "default" });
+        setIsCarePlanDialogOpen(false);
+        // Optimistically update or refetch patient data
+        fetchPatientAllData(); // Re-fetch all data to reflect new approved plan
+      } else {
+        toast({ title: "Approval Failed", description: result.error, variant: "destructive" });
+      }
+    } catch (e: any) {
+      toast({ title: "Error", description: "An unexpected error occurred while approving the care plan.", variant: "destructive" });
+    } finally {
+      setSavingCarePlan(false);
     }
   };
+
+
+  const formatDateOnly = (dateString: string | Date | undefined): string => {
+    if (!dateString) return 'N/A';
+    try {
+      return format(parseISO(dateString as string), 'PPP'); // e.g., Jun 22, 2023
+    } catch {
+      try { return format(dateString as Date, 'PPP'); } catch { return 'Invalid Date';}
+    }
+  };
+
+  const formatTimeOnly = (dateString: string | Date | undefined): string => {
+     if (!dateString) return 'N/A';
+    try {
+      return format(parseISO(dateString as string), 'p'); // e.g., 1:29 PM
+    } catch {
+      try { return format(dateString as Date, 'p'); } catch { return 'Invalid Time';}
+    }
+  };
+  
+  const formatFullDateTime = (dateString: string | Date | undefined): string => {
+    if (!dateString) return 'N/A';
+    try {
+      return format(parseISO(dateString as string), 'Pp p'); // e.g., Jun 22, 2023, 1:29 PM
+    } catch {
+       try { return format(dateString as Date, 'Pp p'); } catch { return 'Invalid Date/Time';}
+    }
+  };
+
 
   const getInitials = (name: string | null | undefined): string => {
     if (!name) return '?';
@@ -476,7 +572,7 @@ function DoctorDashboardContent({ doctorId, doctorName, userRole }: DoctorDashbo
                     <SelectContent>
                         {filteredPatients.length > 0 ? (
                         filteredPatients.map((patient) => {
-                            const patientName = patient.name;
+                            const patientName = patient.name || 'Unknown Patient';
                             return (
                             <SelectItem key={patient.id} value={patient.id}>
                                 <div className="flex items-center justify-between w-full gap-3">
@@ -546,7 +642,7 @@ function DoctorDashboardContent({ doctorId, doctorName, userRole }: DoctorDashbo
 
         {/* Patient Details Section - occupies remaining 3 columns, responsive grid inside */}
         {coreDataLoading ? (
-             <div className="lg:col-span-3"> <DashboardSkeletonCentralColumns /> </div>
+             <div className="lg:col-span-3 grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4 content-start"> <DashboardSkeletonCentralColumns /> </div>
         ) : selectedPatientId && dbAvailable && selectedPatientData ? (
              <div className="lg:col-span-3 grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4 content-start"> 
                 {/* Patient Info Card */}
@@ -589,27 +685,36 @@ function DoctorDashboardContent({ doctorId, doctorName, userRole }: DoctorDashbo
                   </CardContent>
                 </Card>
 
-                {/* AI Generated Care Plan Card */}
+                {/* Care Plan Card */}
                 <Card className="shadow-md">
-                  <CardHeader className="p-4 pb-2"> 
-                    <CardTitle className="text-sm flex items-center gap-2"><Brain className="h-4 w-4 text-primary"/>AI Generated Care Plan</CardTitle> 
-                    <CardDescription className="text-xs">Initial draft based on data.</CardDescription>
+                  <CardHeader className="p-4 pb-2">
+                    <CardTitle className="text-sm flex items-center gap-2">
+                      <FileText className="h-4 w-4 text-primary"/>
+                      {selectedPatientData?.approvedCarePlanText ? "Current Care Plan" : "AI Draft Care Plan"}
+                    </CardTitle>
+                    {selectedPatientData?.approvedCarePlanText && selectedPatientData.carePlanLastUpdatedByDoctorName && (
+                      <CardDescription className="text-xs">
+                        Approved by {selectedPatientData.carePlanLastUpdatedByDoctorName} on {formatDateOnly(selectedPatientData.carePlanLastUpdatedDate)}
+                      </CardDescription>
+                    )}
+                     {!selectedPatientData?.approvedCarePlanText && <CardDescription className="text-xs">Initial AI draft.</CardDescription>}
                   </CardHeader>
-                  <CardContent className="px-4 pt-1 pb-2"> 
-                    {loadingCarePlan ? (
+                  <CardContent className="px-4 pt-1 pb-2">
+                    {loadingAiDraftCarePlan && !selectedPatientData?.approvedCarePlanText ? (
                       <div className="space-y-1.5"><Skeleton className="h-3 w-full" /><Skeleton className="h-3 w-full" /><Skeleton className="h-3 w-5/6" /></div>
                     ) : (
-                       <ScrollArea className="h-[80px] pr-2"> 
-                        <p className="text-xs text-muted-foreground" dangerouslySetInnerHTML={{ __html: formatBoldMarkdown(carePlan) }} />
+                      <ScrollArea className="h-[80px] pr-2">
+                        <p className="text-xs text-muted-foreground" dangerouslySetInnerHTML={{ __html: formatBoldMarkdown(selectedPatientData?.approvedCarePlanText || aiDraftCarePlan) }} />
                       </ScrollArea>
                     )}
                   </CardContent>
-                  <CardFooter className="p-3 pt-1"> 
-                    <Button size="sm" variant="outline" disabled={loadingCarePlan || !dbAvailable} className="h-7 text-xs px-2"> 
-                      Edit/Approve Plan
+                  <CardFooter className="p-3 pt-1">
+                    <Button size="xs" variant="outline" className="h-7 text-xs px-2" onClick={handleOpenCarePlanDialog} disabled={(!aiDraftCarePlan && !selectedPatientData?.approvedCarePlanText) || !dbAvailable}>
+                      <Edit3 className="mr-1 h-3 w-3" /> Edit/Approve Plan
                     </Button>
                   </CardFooter>
                 </Card>
+
 
                 {/* Recent Health Data Card */}
                 <Card className="shadow-md">
@@ -618,7 +723,7 @@ function DoctorDashboardContent({ doctorId, doctorName, userRole }: DoctorDashbo
                   </CardHeader>
                   <CardContent className="px-4 pt-1 pb-2"> 
                     {patientHealthData.length > 0 ? (
-                      <ScrollArea className="h-[240px] pr-2"> 
+                      <ScrollArea className="h-[180px] pr-2"> 
                       <ul className="space-y-1.5 text-xs"> 
                         {patientHealthData.slice(-15).reverse().map((data) => ( 
                           <li key={data.id} className="flex justify-between items-center border-b pb-1 pt-0.5 text-xs"> 
@@ -637,7 +742,7 @@ function DoctorDashboardContent({ doctorId, doctorName, userRole }: DoctorDashbo
                     )}
                   </CardContent>
                   <CardFooter className="p-3 pt-1"> 
-                    <Button variant="link" size="xs" disabled={!dbAvailable} className="text-primary p-0 h-auto text-xs">View All Health Data</Button>
+                    <Button variant="link" size="xs" disabled={!dbAvailable || !selectedPatientData} className="text-primary p-0 h-auto text-xs" onClick={handleViewAllHealthData}>View All Health Data</Button>
                   </CardFooter>
                 </Card>
 
@@ -649,7 +754,7 @@ function DoctorDashboardContent({ doctorId, doctorName, userRole }: DoctorDashbo
                     </CardTitle> 
                     <CardDescription className="text-xs">Proactive analysis of data.</CardDescription>
                   </CardHeader>
-                  <CardContent className="px-4 pt-1 pb-2 min-h-[100px]"> 
+                  <CardContent className="px-4 pt-1 pb-2 min-h-[120px]"> 
                     {loadingTrendAnalysis ? (
                       <div className="space-y-1.5">
                         <Skeleton className="h-3 w-3/4" />
@@ -685,7 +790,7 @@ function DoctorDashboardContent({ doctorId, doctorName, userRole }: DoctorDashbo
                   <CardFooter className="p-3 pt-1"> 
                       <Button
                           variant="outline"
-                          size="sm"
+                          size="xs"
                           className="h-7 text-xs px-2" 
                           onClick={async () => {
                               if (!selectedPatientData || !patientHealthData || !patientMedications) return;
@@ -717,7 +822,7 @@ function DoctorDashboardContent({ doctorId, doctorName, userRole }: DoctorDashbo
                   </CardHeader>
                   <CardContent className="px-4 pt-1 pb-2"> 
                     {patientMedications.length > 0 ? (
-                      <ScrollArea className="h-[240px] pr-2"> 
+                      <ScrollArea className="h-[180px] pr-2"> 
                       <ul className="space-y-1.5 text-xs"> 
                         {patientMedications.map(med => (
                           <li key={med.id} className="border-b pb-1.5"> 
@@ -737,7 +842,7 @@ function DoctorDashboardContent({ doctorId, doctorName, userRole }: DoctorDashbo
                     )}
                   </CardContent>
                   <CardFooter className="p-3 pt-1"> 
-                    <Button variant="link" size="xs" disabled={!dbAvailable} className="text-primary p-0 h-auto text-xs">Manage Medications</Button>
+                    <Button variant="link" size="xs" disabled={!dbAvailable} className="text-primary p-0 h-auto text-xs" onClick={() => toast({title: "Manage Medications", description: "Medication management for " + (selectedPatientData?.name || 'this patient') + " - Feature is planned for a future update."})}>Manage Medications</Button>
                   </CardFooter>
                 </Card>
 
@@ -811,8 +916,85 @@ function DoctorDashboardContent({ doctorId, doctorName, userRole }: DoctorDashbo
                 </Card>
             </div>
         )}
-
       </div>
+
+      {/* View All Health Data Dialog */}
+      <Dialog open={isFullHealthDataDialogOpen} onOpenChange={setIsFullHealthDataDialogOpen}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>Full Health Data for {selectedPatientData?.name || 'Patient'}</DialogTitle>
+            <DialogDescription>Showing up to the last 50 entries.</DialogDescription>
+          </DialogHeader>
+          <ScrollArea className="h-[400px] mt-4">
+            {loadingFullHealthData ? (
+              <div className="flex justify-center items-center h-full">
+                <Loader2 className="h-8 w-8 animate-spin text-primary" />
+              </div>
+            ) : fullHealthData.length > 0 ? (
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Timestamp</TableHead>
+                    <TableHead>Steps</TableHead>
+                    <TableHead>Heart Rate (bpm)</TableHead>
+                    <TableHead>Blood Glucose (mg/dL)</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {fullHealthData.map(data => (
+                    <TableRow key={data.id}>
+                      <TableCell className="text-xs">{formatFullDateTime(data.timestamp)}</TableCell>
+                      <TableCell>{data.steps ?? 'N/A'}</TableCell>
+                      <TableCell>{data.heartRate ?? 'N/A'}</TableCell>
+                      <TableCell>{data.bloodGlucose ?? 'N/A'}</TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            ) : (
+              <p className="text-muted-foreground text-center py-4">No health data available for this patient.</p>
+            )}
+          </ScrollArea>
+          <DialogFooter className="mt-4">
+            <DialogClose asChild>
+              <Button type="button" variant="outline">Close</Button>
+            </DialogClose>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Edit/Approve Care Plan Dialog */}
+      <Dialog open={isCarePlanDialogOpen} onOpenChange={setIsCarePlanDialogOpen}>
+        <DialogContent className="sm:max-w-[600px]">
+          <DialogHeader>
+            <DialogTitle>Edit and Approve Care Plan for {selectedPatientData?.name || 'Patient'}</DialogTitle>
+            <DialogDescription>
+              Review the AI-generated draft or existing approved plan. Make any necessary edits and then approve.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="py-4 space-y-2">
+            <label htmlFor="carePlanTextarea" className="text-sm font-medium">Care Plan Text:</label>
+            <Textarea
+              id="carePlanTextarea"
+              value={editableCarePlanText}
+              onChange={(e) => setEditableCarePlanText(e.target.value)}
+              rows={10}
+              className="text-sm"
+              placeholder="Enter care plan details here..."
+            />
+          </div>
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={() => setIsCarePlanDialogOpen(false)} disabled={savingCarePlan}>
+              Cancel
+            </Button>
+            <Button type="button" onClick={handleApproveCarePlan} disabled={savingCarePlan || !editableCarePlanText.trim()}>
+              {savingCarePlan && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              Save & Approve
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
 
       {selectedPatientId && selectedPatientData && dbAvailable && (
         <Sheet open={isChatOpen} onOpenChange={setIsChatOpen}>
@@ -924,13 +1106,12 @@ function DashboardSkeletonCentralColumns() {
       <div className="lg:col-span-3 grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4 content-start"> 
         <Skeleton className="h-24 rounded-lg" />  
         <Skeleton className="h-24 rounded-lg" />  
-        <Skeleton className="h-24 rounded-lg" />  
-        <Skeleton className="h-40 rounded-lg" /> 
-        <Skeleton className="h-32 rounded-lg" />  
-        <Skeleton className="h-40 rounded-lg" />  
-        <Skeleton className="h-36 rounded-lg md:col-span-3 xl:col-span-3" /> 
+        <Skeleton className="h-32 rounded-lg" /> {/* Care Plan Card */}
+        <Skeleton className="h-40 rounded-lg" /> {/* Health Data Card */}
+        <Skeleton className="h-32 rounded-lg" />  {/* Trend Analysis Card */}
+        <Skeleton className="h-40 rounded-lg" />  {/* Medications Card */}
+        <Skeleton className="h-36 rounded-lg md:col-span-3 xl:col-span-3" /> {/* AI Suggestions */}
       </div>
     </>
   );
 }
-
