@@ -8,7 +8,7 @@ import { revalidatePath } from 'next/cache';
 export interface DoctorPatient {
   _id: string;
   id: string;
-  name: string; // This is what the component expects
+  name: string; 
   email?: string;
   photoURL?: string;
   lastActivity?: Date | string;
@@ -16,9 +16,9 @@ export interface DoctorPatient {
   readmissionRisk?: 'low' | 'medium' | 'high';
   medicalHistory?: string;
 }
-interface RawDoctorPatient { // Represents the structure in MongoDB
+interface RawDoctorPatient { 
   _id: ObjectId;
-  displayName: string; // MongoDB stores names as displayName
+  displayName: string; 
   email?: string;
   photoURL?: string;
   lastActivity?: Date;
@@ -70,20 +70,20 @@ export interface DoctorChatMessage {
   chatId: string;
   senderId: string;
   senderName: string;
-  receiverId: string; // Added
+  receiverId: string; 
   text: string;
   timestamp: Date | string;
-  isRead?: boolean; // Added
+  isRead?: boolean; 
 }
 interface RawDoctorChatMessage {
   _id: ObjectId;
   chatId: string;
   senderId: string;
   senderName: string;
-  receiverId: string; // Added
+  receiverId: string; 
   text: string;
   timestamp: Date;
-  isRead?: boolean; // Added
+  isRead?: boolean; 
 }
 
 export interface DoctorAISuggestion {
@@ -93,6 +93,8 @@ export interface DoctorAISuggestion {
   suggestionText: string;
   timestamp: Date | string;
   status: 'pending' | 'approved' | 'rejected';
+  source?: string; 
+  symptomReportId?: string;
 }
 interface RawDoctorAISuggestion {
   _id: ObjectId;
@@ -100,6 +102,8 @@ interface RawDoctorAISuggestion {
   suggestionText: string;
   timestamp: Date;
   status: 'pending' | 'approved' | 'rejected';
+  source?: string;
+  symptomReportId?: string;
 }
 
 export interface Appointment {
@@ -135,19 +139,17 @@ const getChatId = (id1: string, id2: string): string => {
 export async function fetchDoctorPatientsAction(doctorId: string): Promise<{ patients?: DoctorPatient[], error?: string }> {
   try {
     const { db } = await connectToDatabase();
-    // Fetch users with role 'patient' and assignedDoctorId, expecting 'displayName'
     const usersCollection = db.collection<RawDoctorPatient>('users');
     const patientList = await usersCollection.find({
       role: 'patient',
       assignedDoctorId: doctorId
     }).toArray();
 
-    // Map RawDoctorPatient (with displayName) to DoctorPatient (with name)
     const patients: DoctorPatient[] = patientList.map(p => ({
       ...p,
       _id: p._id.toString(),
       id: p._id.toString(),
-      name: p.displayName || 'Unknown Patient', // Ensure 'name' is always a string
+      name: p.displayName || 'Unknown Patient', 
       lastActivity: p.lastActivity?.toISOString(),
     }));
     return { patients };
@@ -172,7 +174,7 @@ export async function fetchDoctorPatientDetailsAction(patientIdStr: string, doct
 
   try {
     const { db } = await connectToDatabase();
-    const usersCollection = db.collection<RawDoctorPatient>('users'); // Expects RawDoctorPatient
+    const usersCollection = db.collection<RawDoctorPatient>('users'); 
 
     const rawPatient = await usersCollection.findOne({ _id: patientObjectId, assignedDoctorId: doctorId, role: 'patient' });
 
@@ -184,12 +186,11 @@ export async function fetchDoctorPatientDetailsAction(patientIdStr: string, doct
       return { error: "Patient not assigned to this doctor." };
     }
 
-    // Map RawDoctorPatient to DoctorPatient
     const patient: DoctorPatient = {
         ...rawPatient,
          _id: rawPatient._id.toString(),
          id: rawPatient._id.toString(),
-         name: rawPatient.displayName || 'Unknown Patient', // Ensure 'name' is always a string
+         name: rawPatient.displayName || 'Unknown Patient', 
          lastActivity: rawPatient.lastActivity?.toISOString()
     };
 
@@ -273,7 +274,7 @@ export async function sendChatMessageAction(
         id: result.insertedId.toString(),
         timestamp: messageData.timestamp.toISOString()
     };
-    revalidatePath(`/dashboard/doctor`); // Revalidate to update chat for receiver potentially
+    revalidatePath(`/dashboard/doctor`); 
     revalidatePath(`/dashboard/patient`);
     return { message: insertedMessage };
   } catch (err: any) {
@@ -313,6 +314,7 @@ export async function updateSuggestionStatusAction(
       return { error: "Suggestion status was not changed. It might already be " + status + "." };
     }
     revalidatePath(`/dashboard/doctor?patientId=${patientIdStr}`);
+    revalidatePath(`/dashboard/patient`); // Revalidate patient dashboard too
     return { updatedSuggestion: { id: suggestionIdStr, status: status } };
   } catch (err: any)
 {
@@ -390,7 +392,7 @@ export async function createAppointmentAction(appointmentData: {
       doctorId: rawAppointmentData.doctorId.toString(),
       appointmentDate: rawAppointmentData.appointmentDate.toISOString(),
     };
-    revalidatePath(`/dashboard/doctor`); // To refresh the appointments list
+    revalidatePath(`/dashboard/doctor`); 
     return { appointment: insertedAppointment };
   } catch (err: any) {
     console.error("Error creating appointment:", err);

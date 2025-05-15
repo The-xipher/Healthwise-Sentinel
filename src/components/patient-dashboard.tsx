@@ -10,7 +10,7 @@ import { Progress } from '@/components/ui/progress';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts';
-import { Activity, AlertTriangle, Droplet, HeartPulse, Pill, Smile, Frown, Meh, Loader2, Info, CheckCircle, MessageSquare, Send, Lightbulb } from 'lucide-react';
+import { Activity, AlertTriangle, Droplet, HeartPulse, Pill, Smile, Frown, Meh, Loader2, Info, CheckCircle, MessageSquare, Send, Lightbulb, BookMarked } from 'lucide-react';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useForm } from 'react-hook-form';
 import { z } from 'zod';
@@ -24,12 +24,11 @@ import {
   fetchPatientDashboardDataAction,
   submitSymptomReportAction,
   sendPatientChatMessageAction,
-  fetchPatientApprovedSuggestionsAction, // Import the new action
   type PatientHealthData,
   type PatientMedication,
   type PatientSymptomReport,
   type PatientChatMessage,
-  type PatientApprovedAISuggestion, // Import the new type
+  type PatientAISuggestion, 
 } from '@/app/actions/patientActions';
 import { markMessagesAsReadAction } from '@/app/actions/chatActions';
 
@@ -68,8 +67,8 @@ export default function PatientDashboard({ userId, userRole }: PatientDashboardP
   const [medications, setMedications] = useState<PatientMedication[]>([]);
   const [symptomReports, setSymptomReports] = useState<PatientSymptomReport[]>([]);
   const [chatMessages, setChatMessages] = useState<PatientChatMessage[]>([]);
-  const [approvedAISuggestions, setApprovedAISuggestions] = useState<PatientApprovedAISuggestion[]>([]);
-  const [loadingApprovedAISuggestions, setLoadingApprovedAISuggestions] = useState(true);
+  const [patientSuggestions, setPatientSuggestions] = useState<PatientAISuggestion[]>([]); // Renamed
+  const [loadingPatientSuggestions, setLoadingPatientSuggestions] = useState(true); // Renamed
 
   const [assignedDoctorId, setAssignedDoctorId] = useState<string | null>(null);
   const [assignedDoctorName, setAssignedDoctorName] = useState<string | null>(null);
@@ -81,7 +80,7 @@ export default function PatientDashboard({ userId, userRole }: PatientDashboardP
   const [suggestedInterventions, setSuggestedInterventions] = useState<string | null>("Loading AI suggestions...");
   const [loadingInterventions, setLoadingInterventions] = useState(false);
   const { toast } = useToast();
-  const [dbAvailable, setDbAvailable] = useState(true);
+  const [dbAvailable, setDbAvailable] = useState<boolean>(true);
 
   const [newMessage, setNewMessage] = useState<string>('');
   const [sendingMessage, setSendingMessage] = useState<boolean>(false);
@@ -102,15 +101,14 @@ export default function PatientDashboard({ userId, userRole }: PatientDashboardP
         setLoadingData(false);
         setDbAvailable(false);
         setSuggestedInterventions("Could not load AI suggestions due to data error.");
-        setLoadingApprovedAISuggestions(false);
+        setLoadingPatientSuggestions(false);
         return;
     }
     async function loadData() {
       setLoadingData(true);
-      setLoadingApprovedAISuggestions(true);
+      setLoadingPatientSuggestions(true);
       setError(null);
       try {
-        // Fetch main dashboard data
         const mainDataResult = await fetchPatientDashboardDataAction(userId);
         if (mainDataResult.error) {
           setError(mainDataResult.error);
@@ -121,14 +119,14 @@ export default function PatientDashboard({ userId, userRole }: PatientDashboardP
           setMedications([]);
           setSymptomReports([]);
           setChatMessages([]);
-          setApprovedAISuggestions([]); // Clear on error
+          setPatientSuggestions([]); 
           setSuggestedInterventions("Could not load AI suggestions due to data error.");
         } else {
           setHealthData(mainDataResult.healthData || []);
           setMedications(mainDataResult.medications || []);
           setSymptomReports(mainDataResult.symptomReports || []);
           setChatMessages(mainDataResult.chatMessages || []);
-          setApprovedAISuggestions(mainDataResult.approvedAISuggestions || []); // Set from main data fetch
+          setPatientSuggestions(mainDataResult.patientSuggestions || []); 
           setAssignedDoctorId(mainDataResult.assignedDoctorId || null);
           setAssignedDoctorName(mainDataResult.assignedDoctorName || null);
           setPatientDisplayName(mainDataResult.patientDisplayName || "Patient");
@@ -146,11 +144,11 @@ export default function PatientDashboard({ userId, userRole }: PatientDashboardP
         setError(e.message || 'An unexpected error occurred fetching patient data.');
         setDbAvailable(false);
         setSuggestedInterventions("Error fetching data for AI suggestions.");
-        setApprovedAISuggestions([]);
+        setPatientSuggestions([]);
         console.error(e);
       } finally {
         setLoadingData(false);
-        setLoadingApprovedAISuggestions(false); // Also set loading false here
+        setLoadingPatientSuggestions(false); 
       }
     }
     loadData();
@@ -182,8 +180,6 @@ export default function PatientDashboard({ userId, userRole }: PatientDashboardP
 
       const input = {
         patientHealthData: `${healthSummary} Current Medications: ${medicationsSummary}. Recent Symptoms: ${symptomsSummaryText}`,
-        // Using a placeholder risk prediction as it's not directly generated for patient view here.
-        // The suggestions are for general well-being advice based on provided data.
         riskPredictions: `Patient is seeking general health improvement advice based on current data.`,
       };
 
@@ -223,6 +219,11 @@ export default function PatientDashboard({ userId, userRole }: PatientDashboardP
           action: <CheckCircle className="text-green-600 dark:text-green-400" />,
         });
         form.reset();
+        // After submitting, re-fetch patient data to get any new pending suggestions
+        const updatedData = await fetchPatientDashboardDataAction(userId);
+        if (updatedData.patientSuggestions) {
+          setPatientSuggestions(updatedData.patientSuggestions);
+        }
       }
     } catch (err: any) {
       console.error("Error reporting symptom:", err);
@@ -340,34 +341,47 @@ export default function PatientDashboard({ userId, userRole }: PatientDashboardP
         </Card>
       )}
       
-      {/* New Card for Doctor Approved Suggestions */}
       <Card className="shadow-md">
         <CardHeader>
           <CardTitle className="flex items-center gap-2 text-green-700 dark:text-green-300">
-            <Lightbulb className="h-5 w-5"/> Doctor's Approved Recommendations
+            <Lightbulb className="h-5 w-5"/> Recommendations &amp; AI Tips
           </CardTitle>
-          <CardDescription>Advice and suggestions approved by your doctor.</CardDescription>
+          <CardDescription>Advice and suggestions for your well-being.</CardDescription>
         </CardHeader>
         <CardContent>
-          {loadingApprovedAISuggestions ? (
+          {loadingPatientSuggestions ? (
             <div className="space-y-2">
               <Skeleton className="h-8 w-full" />
               <Skeleton className="h-8 w-5/6" />
             </div>
-          ) : approvedAISuggestions.length > 0 ? (
+          ) : patientSuggestions.length > 0 ? (
             <ScrollArea className="h-[150px] pr-3">
               <ul className="space-y-3">
-                {approvedAISuggestions.map(suggestion => (
-                  <li key={suggestion.id} className="p-3 border rounded-md bg-green-50 dark:bg-green-900/30 border-green-200 dark:border-green-700">
-                    <p className="text-sm text-green-800 dark:text-green-200" dangerouslySetInnerHTML={{ __html: formatBoldMarkdown(suggestion.suggestionText) }} />
-                    <p className="text-xs text-muted-foreground mt-1">Approved on: {formatDateOnly(suggestion.timestamp)}</p>
+                {patientSuggestions.map(suggestion => (
+                  <li key={suggestion.id} 
+                      className={`p-3 border rounded-md 
+                        ${suggestion.status === 'approved' ? 'bg-green-50 dark:bg-green-900/30 border-green-200 dark:border-green-700' 
+                                                            : 'bg-blue-50 dark:bg-blue-900/20 border-blue-200 dark:border-blue-700'}`}>
+                    <div className="flex items-start gap-2">
+                        {suggestion.status === 'approved' ? <BookMarked className="h-5 w-5 text-green-600 dark:text-green-400 shrink-0 mt-0.5"/> : <Lightbulb className="h-5 w-5 text-blue-500 dark:text-blue-400 shrink-0 mt-0.5"/>}
+                        <div>
+                            <p className={`text-sm font-medium ${suggestion.status === 'approved' ? 'text-green-800 dark:text-green-200' : 'text-blue-700 dark:text-blue-300'}`}>
+                                {suggestion.status === 'approved' ? "Doctor's Recommendation:" : "AI Tip (Awaiting Doctor Review):"}
+                            </p>
+                            <p className={`text-sm ${suggestion.status === 'approved' ? 'text-green-700 dark:text-green-300' : 'text-blue-600 dark:text-blue-400'}`} 
+                               dangerouslySetInnerHTML={{ __html: formatBoldMarkdown(suggestion.suggestionText) }} />
+                            <p className="text-xs text-muted-foreground mt-1">
+                                {suggestion.status === 'approved' ? `Approved on: ${formatDateOnly(suggestion.timestamp)}` : `Suggested on: ${formatDateOnly(suggestion.timestamp)}`}
+                            </p>
+                        </div>
+                    </div>
                   </li>
                 ))}
               </ul>
             </ScrollArea>
           ) : (
             <p className="text-sm text-muted-foreground text-center py-4">
-              {dbAvailable ? "No approved recommendations from your doctor yet." : "Approved recommendations unavailable (DB offline)."}
+              {dbAvailable ? "No specific recommendations or tips available yet." : "Recommendations unavailable (DB offline)."}
             </p>
           )}
         </CardContent>
@@ -382,7 +396,7 @@ export default function PatientDashboard({ userId, userRole }: PatientDashboardP
           <Skeleton className="h-[350px] rounded-lg md:col-span-2 lg:col-span-3" />
           <Skeleton className="h-48 rounded-lg lg:col-span-2" />
           <Skeleton className="h-72 rounded-lg lg:col-span-1" />
-           <Skeleton className="h-48 rounded-lg lg:col-span-3" /> {/* Skeleton for Approved Suggestions */}
+           <Skeleton className="h-48 rounded-lg lg:col-span-3" /> {/* Skeleton for Patient Suggestions */}
         </div>
       ) : (
         !error && dbAvailable &&
@@ -646,4 +660,3 @@ export default function PatientDashboard({ userId, userRole }: PatientDashboardP
     </div>
   );
 }
-

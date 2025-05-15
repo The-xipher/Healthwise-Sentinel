@@ -32,7 +32,7 @@ interface Credential {
   passwordSalt?: string;
   passwordHash?: string;
   passwordPlainText: string;
-  requiresPasswordChange?: boolean; // New field
+  requiresPasswordChange?: boolean; 
 }
 
 interface HealthData {
@@ -69,6 +69,8 @@ interface AISuggestion {
     suggestionText: string;
     timestamp: Date;
     status: 'pending' | 'approved' | 'rejected';
+    source?: string; // e.g., 'general_intervention', 'symptom_analysis_mild'
+    symptomReportId?: string; // Link to the symptom report if applicable
 }
 
 interface ChatMessage {
@@ -136,9 +138,9 @@ export async function seedDatabase(): Promise<{ success: boolean; message: strin
     // --- Admins ---
     const adminUser: User = {
       _id: adminUserObjectId1,
-      email: 'admin.contact@healthwise.com', // For display/contact
+      email: 'admin.contact@healthwise.com', 
       displayName: 'Admin User',
-      photoURL: `https://placehold.co/100x100.png?text=AU`, dataAIHint: 'profile admin',
+      photoURL: `https://placehold.co/100x100.png?text=AU`,
       role: 'admin',
       creationTime: faker.date.past({ years: 1 }),
       lastSignInTime: faker.date.recent({ days: 5 }),
@@ -148,7 +150,7 @@ export async function seedDatabase(): Promise<{ success: boolean; message: strin
     credentialsToInsert.push({
       _id: new ObjectId(),
       userId: adminUser._id,
-      email: 'admin@healthwise.com', // Login email
+      email: 'admin@healthwise.com', 
       passwordPlainText: DEFAULT_PASSWORD,
       requiresPasswordChange: false,
     });
@@ -159,7 +161,7 @@ export async function seedDatabase(): Promise<{ success: boolean; message: strin
       _id: doctorUserObjectId1,
       email: 'evelyn.reed.contact@healthwise.com',
       displayName: 'Dr. Evelyn Reed',
-      photoURL: `https://placehold.co/100x100.png?text=ER`, dataAIHint: 'profile doctor',
+      photoURL: `https://placehold.co/100x100.png?text=ER`,
       role: 'doctor',
       specialty: 'Cardiology',
       creationTime: faker.date.past({ years: 5 }),
@@ -171,7 +173,7 @@ export async function seedDatabase(): Promise<{ success: boolean; message: strin
     credentialsToInsert.push({
       _id: new ObjectId(),
       userId: doctor1._id,
-      email: 'dr.reed@healthwise.com', // Login email
+      email: 'dr.reed@healthwise.com', 
       passwordPlainText: DEFAULT_PASSWORD,
       requiresPasswordChange: false,
     });
@@ -180,7 +182,7 @@ export async function seedDatabase(): Promise<{ success: boolean; message: strin
         _id: doctorUserObjectId2,
         email: `ben.carter.contact@healthwise.com`,
         displayName: `Dr. Ben Carter`,
-        photoURL: `https://placehold.co/100x100.png?text=BC`, dataAIHint: 'profile doctor',
+        photoURL: `https://placehold.co/100x100.png?text=BC`,
         role: 'doctor',
         specialty: 'Pulmonology',
         creationTime: faker.date.past({ years: 3 }),
@@ -192,7 +194,7 @@ export async function seedDatabase(): Promise<{ success: boolean; message: strin
     credentialsToInsert.push({
       _id: new ObjectId(),
       userId: doctor2._id,
-      email: `dr.carter@healthwise.com`, // Login email
+      email: `dr.carter@healthwise.com`, 
       passwordPlainText: DEFAULT_PASSWORD,
       requiresPasswordChange: false,
     });
@@ -231,7 +233,6 @@ export async function seedDatabase(): Promise<{ success: boolean; message: strin
         assignedDoctorIndex: 0, // Dr. Reed
         medicalHistory: "Recovering from a mild heart attack (MI). Prescribed beta-blockers and statins. No known allergies.",
         emergencyContactNumber: '555-0103',
-        // No emergency email for this one
         photoInitial: "LC",
         readmissionRisk: 'high' as 'low' | 'medium' | 'high',
       },
@@ -254,20 +255,21 @@ export async function seedDatabase(): Promise<{ success: boolean; message: strin
         contactEmail: 'noah.contact@healthwise.com',
         assignedDoctorIndex: 0, // Dr. Reed
         medicalHistory: "Atrial fibrillation. On anticoagulants. Follow-up appointment scheduled for next month.",
-        // No emergency contact number or email for this one to test display logic
         photoInitial: "NW",
         readmissionRisk: 'low' as 'low' | 'medium' | 'high',
       },
     ];
+    
+    const tempSymptomReportIds: {[key: string]: string} = {};
 
     for (const pData of patientSeedDetails) {
       const assignedDoctor = doctorsForAssignment[pData.assignedDoctorIndex];
 
       const patient: User = {
         _id: pData._id,
-        email: pData.contactEmail, // Store contact email in users collection
+        email: pData.contactEmail, 
         displayName: pData.displayName,
-        photoURL: `https://placehold.co/100x100.png?text=${pData.photoInitial}`, dataAIHint: 'profile patient',
+        photoURL: `https://placehold.co/100x100.png?text=${pData.photoInitial}`,
         role: 'patient',
         assignedDoctorId: assignedDoctor._id.toString(),
         assignedDoctorName: assignedDoctor.displayName,
@@ -283,12 +285,11 @@ export async function seedDatabase(): Promise<{ success: boolean; message: strin
       credentialsToInsert.push({
         _id: new ObjectId(),
         userId: patient._id,
-        email: pData.loginEmail, // Login email in credentials
+        email: pData.loginEmail, 
         passwordPlainText: DEFAULT_PASSWORD,
-        requiresPasswordChange: false, // Set to false for seeded users, true for admin-created ones
+        requiresPasswordChange: false, 
       });
 
-      // Health Data (more varied)
       for (let j = 0; j < 20; j++) {
         healthDataEntries.push({
           _id: new ObjectId(),
@@ -300,7 +301,6 @@ export async function seedDatabase(): Promise<{ success: boolean; message: strin
         });
       }
 
-      // Medications (more specific)
       const commonMeds = [
         { name: 'Lisinopril', dosage: '10mg Tablet', frequency: 'Once daily' },
         { name: 'Metformin', dosage: '500mg Tablet', frequency: 'Twice daily' },
@@ -321,7 +321,6 @@ export async function seedDatabase(): Promise<{ success: boolean; message: strin
           adherence: faker.number.int({ min: 65, max: 98 }),
         });
       }
-      // Ensure patients with specific conditions get relevant meds
       if (patient.medicalHistory.includes('hypertension') && !medicationEntries.find(m=>m.patientId.equals(patient._id) && m.name === 'Lisinopril')) {
         medicationEntries.push({...commonMeds[0], _id: new ObjectId(), patientId: patient._id, lastTaken: faker.date.recent({ days: 1 }), adherence: faker.number.int({ min: 70, max: 95 }) });
       }
@@ -329,66 +328,95 @@ export async function seedDatabase(): Promise<{ success: boolean; message: strin
          medicationEntries.push({...commonMeds[1], _id: new ObjectId(), patientId: patient._id, lastTaken: faker.date.recent({ days: 1 }), adherence: faker.number.int({ min: 70, max: 95 }) });
       }
 
-
-      // Symptom Reports (more varied)
       const symptomTemplates = [
         { severity: 'mild', description: "Slight headache in the morning." },
         { severity: 'moderate', description: "Feeling more tired than usual today, some shortness of breath after walking." },
         { severity: 'severe', description: "Experiencing chest pain and dizziness. Called emergency services." },
         { severity: 'mild', description: "Occasional cough, mostly dry."}
       ];
+      
+      let symptomReportIdForOlivia: string | undefined;
 
-      if (pData._id.equals(patientUserObjectId1)) { // Ethan Carter (high risk)
+      if (pData._id.equals(patientUserObjectId1)) { 
+        const newSymptomReportId = new ObjectId();
         symptomReportEntries.push({
-            _id: new ObjectId(),
+            _id: newSymptomReportId,
             patientId: patient._id,
             userId: patient._id.toString(),
             timestamp: faker.date.recent({ days: 1 }),
-            severity: 'severe', // Patient selected severe
+            severity: 'severe', 
             description: "Experiencing severe chest pain and difficulty breathing. Feels very unwell.",
         });
-      } else if (pData._id.equals(patientUserObjectId2)) { // Olivia Rodriguez (medium risk, diabetes, asthma)
+      } else if (pData._id.equals(patientUserObjectId2)) { 
+        const newSymptomReportId = new ObjectId();
+        tempSymptomReportIds[patient._id.toString()] = newSymptomReportId.toString(); // Store for AI suggestion linking
         symptomReportEntries.push({
-            _id: new ObjectId(),
+            _id: newSymptomReportId,
             patientId: patient._id,
             userId: patient._id.toString(),
             timestamp: faker.date.recent({ days: 2 }),
-            severity: 'moderate', // Patient selected moderate
+            severity: 'moderate', 
             description: "Feeling very breathless even after using my rescue inhaler. My blood sugar also feels quite high, around 200 mg/dL.",
+        });
+         aiSuggestionEntries.push({
+            _id: new ObjectId(),
+            patientId: patient._id,
+            suggestionText: "Ensure you are using your spacer device correctly with your inhaler. Test your blood sugar again in 1 hour. If breathlessness doesn't improve or sugar remains high, contact the clinic.",
+            timestamp: faker.date.recent({days: 1}),
+            status: 'pending',
+            source: 'symptom_analysis_mild', // Example, this would be set by the AI logic
+            symptomReportId: newSymptomReportId.toString(),
         });
       }
        else {
-        for (let l = 0; l < 1; l++) { // 1 report per other patient for brevity
-            const reportTemplate = faker.helpers.arrayElement(symptomTemplates.filter(s => s.severity !== 'severe')); // avoid too many severe
+        for (let l = 0; l < 1; l++) { 
+            const reportTemplate = faker.helpers.arrayElement(symptomTemplates.filter(s => s.severity !== 'severe')); 
+            const newSymptomReportId = new ObjectId();
             symptomReportEntries.push({
-              _id: new ObjectId(),
+              _id: newSymptomReportId,
               patientId: patient._id,
               userId: patient._id.toString(),
               timestamp: faker.date.recent({ days: 7 }),
               severity: reportTemplate.severity as 'mild' | 'moderate' | 'severe',
               description: reportTemplate.description,
             });
+             if (reportTemplate.severity === 'mild') {
+                tempSymptomReportIds[patient._id.toString()] = newSymptomReportId.toString();
+            }
         }
       }
 
-      // AI Suggestions (more specific)
       const suggestionTexts = [
           `Monitor blood pressure closely due to recent high readings. Consider adjusting medication if trend continues.`,
           `Encourage patient ${pData.displayName} to increase daily fluid intake to prevent dehydration, especially with current medication regimen.`,
           `Review patient ${pData.displayName}'s diet for sodium content; aim for less than 2000mg/day.`,
           `Schedule a follow-up for ${pData.displayName} in 2 weeks to discuss medication adherence and symptom progression.`
-      ]
+      ];
       for (let m = 0; m < 2; m++) {
           aiSuggestionEntries.push({
               _id: new ObjectId(),
               patientId: patient._id,
               suggestionText: faker.helpers.arrayElement(suggestionTexts),
               timestamp: faker.date.recent({days: 3}),
-              status: faker.helpers.arrayElement(['pending', 'approved', 'rejected'])
+              status: faker.helpers.arrayElement(['pending', 'approved', 'rejected']),
+              source: 'general_intervention' // General intervention source
           });
       }
+      
+      // Specific pending self-care tip for Noah Williams if a mild symptom was reported
+      if (pData._id.equals(patientUserObjectId5) && tempSymptomReportIds[patient._id.toString()]) {
+        aiSuggestionEntries.push({
+            _id: new ObjectId(),
+            patientId: patient._id,
+            suggestionText: "Try to get some rest and drink plenty of fluids. If the cough persists for more than a few days, please let us know.",
+            timestamp: faker.date.recent({days: 6}),
+            status: 'pending',
+            source: 'symptom_analysis_mild',
+            symptomReportId: tempSymptomReportIds[patient._id.toString()],
+        });
+      }
 
-      // Chat Messages
+
       const chatId = getChatId(assignedDoctor._id.toString(), patient._id.toString());
       const conversationParticipants = [
           { id: patient._id.toString(), name: patient.displayName },
@@ -405,7 +433,7 @@ export async function seedDatabase(): Promise<{ success: boolean; message: strin
           "No problem {patientName}, take it as soon as you remember, unless it's almost time for your next dose."
       ];
 
-      for (let n = 0; n < 5; n++) { // 5 messages per pair
+      for (let n = 0; n < 5; n++) { 
           const sender = faker.helpers.arrayElement(conversationParticipants);
           const receiver = conversationParticipants.find(u => u.id !== sender.id)!;
 
@@ -425,12 +453,11 @@ export async function seedDatabase(): Promise<{ success: boolean; message: strin
               receiverId: receiver.id,
               text: text,
               timestamp: faker.date.recent({days: 5 - n}),
-              isRead: n < 3 // Mark first few as read, last few as potentially unread
+              isRead: n < 3 
           });
       }
 
-       // Seed Appointments
-      if (pData._id.equals(patientUserObjectId1) || pData._id.equals(patientUserObjectId3)) { // For Dr. Reed's patients
+      if (pData._id.equals(patientUserObjectId1) || pData._id.equals(patientUserObjectId3)) { 
         appointmentEntries.push({
           _id: new ObjectId(),
           patientId: pData._id,
@@ -443,7 +470,7 @@ export async function seedDatabase(): Promise<{ success: boolean; message: strin
           notes: 'Routine check-up.',
         });
       }
-      if (pData._id.equals(patientUserObjectId2) || pData._id.equals(patientUserObjectId4)) { // For Dr. Carter's patients
+      if (pData._id.equals(patientUserObjectId2) || pData._id.equals(patientUserObjectId4)) { 
         appointmentEntries.push({
           _id: new ObjectId(),
           patientId: pData._id,
@@ -483,7 +510,6 @@ export async function seedDatabase(): Promise<{ success: boolean; message: strin
   }
 }
 
-// If run directly via `tsx src/lib/seed-db.ts`
 if (require.main === module) {
   (async () => {
     console.log("Running seed script directly...");
@@ -497,4 +523,3 @@ if (require.main === module) {
     }
   })();
 }
-
