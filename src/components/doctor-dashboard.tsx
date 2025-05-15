@@ -489,17 +489,17 @@ function DoctorDashboardContent({ doctorId, doctorName, userRole }: DoctorDashbo
                             return (
                             <SelectItem key={patient.id} value={patient.id}>
                                 <div className="flex items-center justify-between w-full gap-3">
-                                <div className="flex items-center gap-2">
-                                    <Avatar className="h-7 w-7">
+                                <div className="flex items-center gap-2 overflow-hidden"> {/* Inner flex for avatar and name, with overflow hidden */}
+                                    <Avatar className="h-7 w-7 shrink-0">
                                     <AvatarImage src={patient.photoURL || undefined} alt={patientName} data-ai-hint="profile person"/>
                                     <AvatarFallback>{getInitials(patientName)}</AvatarFallback>
                                     </Avatar>
-                                     <span>{patientName} ({patient.id?.substring(0,6)})</span>
+                                    <span className="truncate">{patientName} ({patient.id?.substring(0,6)})</span>
                                 </div>
                                 {patient.readmissionRisk && (
                                     <Badge
                                     variant={getRiskBadgeVariant(patient.readmissionRisk)}
-                                    className="ml-auto text-xs px-1.5 py-0.5 capitalize"
+                                    className="ml-auto text-xs px-1.5 py-0.5 capitalize shrink-0"
                                     >
                                     {patient.readmissionRisk} risk
                                     </Badge>
@@ -520,10 +520,10 @@ function DoctorDashboardContent({ doctorId, doctorName, userRole }: DoctorDashbo
             </Card>
 
             <Card className="shadow-lg">
-                <CardHeader className="p-4 pb-2">
+                <CardHeader className="py-3 px-4">
                     <CardTitle className="text-lg flex items-center gap-2"><CalendarDays className="h-5 w-5 text-primary"/> Upcoming Appointments</CardTitle>
                 </CardHeader>
-                <CardContent className="p-4 pt-2">
+                <CardContent className="px-4 pt-2 pb-3">
                     {loadingAppointments ? (
                          <div className="space-y-2">
                             <Skeleton className="h-10 w-full" />
@@ -556,7 +556,7 @@ function DoctorDashboardContent({ doctorId, doctorName, userRole }: DoctorDashbo
         {coreDataLoading ? (
             <DashboardSkeletonCentralColumns />
         ) : selectedPatientId && dbAvailable && selectedPatientData ? (
-            <div className="lg:col-span-3 grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4 content-start"> 
+             <div className="lg:col-span-3 grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4 content-start"> 
                 <Card className="shadow-md md:col-span-1 xl:col-span-1">
                   <CardHeader className="flex flex-row items-center gap-3 p-4 pb-2"> 
                     <Avatar className="h-12 w-12 border-2 border-primary"> 
@@ -595,7 +595,7 @@ function DoctorDashboardContent({ doctorId, doctorName, userRole }: DoctorDashbo
                   </CardContent>
                 </Card>
 
-                <Card className="shadow-md md:col-span-2 xl:col-span-1">
+                <Card className="shadow-md md:col-span-1 xl:col-span-1"> {/* Adjusted span for better flow */}
                   <CardHeader className="p-4 pb-2"> 
                     <CardTitle className="text-sm flex items-center gap-2"><Brain className="h-4 w-4 text-primary"/>AI Generated Care Plan</CardTitle> 
                     <CardDescription className="text-xs">Initial draft based on data.</CardDescription>
@@ -622,9 +622,9 @@ function DoctorDashboardContent({ doctorId, doctorName, userRole }: DoctorDashbo
                   </CardHeader>
                   <CardContent className="px-4 pt-1 pb-2"> 
                     {patientHealthData.length > 0 ? (
-                      <ScrollArea className="h-[180px] pr-2"> 
+                      <ScrollArea className="h-[240px] pr-2"> 
                       <ul className="space-y-1.5 text-xs"> 
-                        {patientHealthData.slice(-10).reverse().map((data) => ( // Show last 10
+                        {patientHealthData.slice(-15).reverse().map((data) => ( // Show last 15
                           <li key={data.id} className="flex justify-between items-center border-b pb-1 pt-0.5 text-xs"> 
                             <span className="text-muted-foreground">{formatDistanceToNow(new Date(data.timestamp), { addSuffix: true })}</span>
                             <div className="flex gap-1.5"> 
@@ -719,7 +719,7 @@ function DoctorDashboardContent({ doctorId, doctorName, userRole }: DoctorDashbo
                   </CardHeader>
                   <CardContent className="px-4 pt-1 pb-2"> 
                     {patientMedications.length > 0 ? (
-                      <ScrollArea className="h-[180px] pr-2"> 
+                      <ScrollArea className="h-[240px] pr-2"> 
                       <ul className="space-y-1.5 text-xs"> 
                         {patientMedications.map(med => (
                           <li key={med.id} className="border-b pb-1.5"> 
@@ -743,7 +743,7 @@ function DoctorDashboardContent({ doctorId, doctorName, userRole }: DoctorDashbo
                   </CardFooter>
                 </Card>
 
-                 <Card className="shadow-md md:col-span-2 xl:col-span-3"> 
+                 <Card className="shadow-md md:col-span-3 xl:col-span-3">  {/* Changed span to take full width */}
                   <CardHeader className="p-4 pb-2"> 
                     <CardTitle className="text-sm flex items-center gap-2"><Info className="h-4 w-4 text-primary" /> AI Suggested Interventions</CardTitle> 
                     <CardDescription className="text-xs">Review and act on AI-driven suggestions.</CardDescription>
@@ -924,13 +924,14 @@ function DashboardSkeletonCentralColumns() {
     <>
       <div className="lg:col-span-3 grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4 content-start"> 
         <Skeleton className="h-28 rounded-lg" />  
-        <Skeleton className="h-32 rounded-lg" />  
+        <Skeleton className="h-28 rounded-lg" />  
+        <Skeleton className="h-28 rounded-lg" />  
+        <Skeleton className="h-48 rounded-lg" />  {/* Was h-44 */}
         <Skeleton className="h-36 rounded-lg" />  
-        <Skeleton className="h-44 rounded-lg" />  
-        <Skeleton className="h-36 rounded-lg" />  
-        <Skeleton className="h-44 rounded-lg" />  
-        <Skeleton className="h-40 rounded-lg md:col-span-2 xl:col-span-3" /> 
+        <Skeleton className="h-48 rounded-lg" />  {/* Was h-44 */}
+        <Skeleton className="h-40 rounded-lg md:col-span-3 xl:col-span-3" /> 
       </div>
     </>
   );
 }
+
