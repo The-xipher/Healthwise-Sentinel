@@ -11,7 +11,14 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Button, buttonVariants } from '@/components/ui/button';
 import { Users, Activity, ShieldCheck, AlertTriangle, UserPlus, Loader2, Trash2, Edit3, Siren } from 'lucide-react';
-import { fetchAdminDashboardData, createUserAction, type AdminUser, deleteUserAction, simulatePatientAlertAction } from '@/app/actions/adminActions';
+import { 
+  fetchAdminDashboardData, 
+  createUserAction, 
+  type AdminUser, 
+  deleteUserAction, 
+  simulatePatientAlertAction,
+  updateUserByAdminAction 
+} from '@/app/actions/adminActions';
 import {
   Dialog,
   DialogContent,
@@ -31,7 +38,6 @@ import {
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
-  // AlertDialogTrigger, // Not needed for programmatically opened dialogs
 } from "@/components/ui/alert-dialog"
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -57,19 +63,29 @@ interface AdminDashboardProps {
   adminUserId: string; 
 }
 
-const addUserSchema = z.object({
+const userFormSchemaBase = {
   displayName: z.string().min(3, "Display name must be at least 3 characters."),
-  loginEmail: z.string().email("Invalid login email address."),
   contactEmail: z.string().email("Invalid contact email address.").optional().or(z.literal('')),
-  role: z.enum(['patient', 'doctor', 'admin'], { required_error: "Role is required." }),
   specialty: z.string().optional(), 
   assignedDoctorId: z.string().optional(),
   medicalHistory: z.string().optional(),
   emergencyContactNumber: z.string().optional(),
   emergencyContactEmail: z.string().email("Invalid emergency contact email.").optional().or(z.literal('')),
-});
+};
 
+const addUserSchema = z.object({
+  ...userFormSchemaBase,
+  loginEmail: z.string().email("Invalid login email address."),
+  role: z.enum(['patient', 'doctor', 'admin'], { required_error: "Role is required." }),
+});
 type AddUserFormValues = z.infer<typeof addUserSchema>;
+
+const editUserSchema = z.object({
+   ...userFormSchemaBase,
+   // Role and LoginEmail are not typically editable in this context by admin to simplify things
+});
+type EditUserFormValues = z.infer<typeof editUserSchema>;
+
 
 export default function AdminDashboard({ adminUserId }: AdminDashboardProps) {
   const [users, setUsers] = useState<AdminUser[]>([]);
@@ -78,15 +94,21 @@ export default function AdminDashboard({ adminUserId }: AdminDashboardProps) {
   const [loadingLogs, setLoadingLogs] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
   const [dbAvailable, setDbAvailable] = useState<boolean>(true);
+  
   const [isAddUserDialogOpen, setIsAddUserDialogOpen] = useState(false);
   const [addingUser, setAddingUser] = useState(false);
+
+  const [editingUser, setEditingUser] = useState<AdminUser | null>(null);
+  const [isEditUserDialogOpen, setIsEditUserDialogOpen] = useState(false);
+  const [updatingUser, setUpdatingUser] = useState(false);
+
   const [userToDelete, setUserToDelete] = useState<AdminUser | null>(null);
   const [userToAlert, setUserToAlert] = useState<AdminUser | null>(null);
   const [alertSimulationMessage, setAlertSimulationMessage] = useState('');
   const [simulatingAlert, setSimulatingAlert] = useState(false);
   const { toast } = useToast();
 
-  const { register, handleSubmit, control, formState: { errors }, reset, watch } = useForm<AddUserFormValues>({
+  const addUserForm = useForm<AddUserFormValues>({
     resolver: zodResolver(addUserSchema),
     defaultValues: {
       role: undefined,
@@ -94,7 +116,13 @@ export default function AdminDashboard({ adminUserId }: AdminDashboardProps) {
       emergencyContactEmail: ''
     }
   });
-  const selectedRole = watch("role");
+  const selectedRoleForAdd = addUserForm.watch("role");
+
+  const editUserForm = useForm<EditUserFormValues>({
+    resolver: zodResolver(editUserSchema),
+    defaultValues: {},
+  });
+
 
   useEffect(() => {
     async function loadData() {
@@ -138,6 +166,20 @@ export default function AdminDashboard({ adminUserId }: AdminDashboardProps) {
 
   }, [adminUserId]);
 
+  useEffect(() => {
+    if (editingUser) {
+      editUserForm.reset({
+        displayName: editingUser.displayName || '',
+        contactEmail: editingUser.email || '',
+        specialty: editingUser.role === 'doctor' ? editingUser.specialty || '' : undefined,
+        assignedDoctorId: editingUser.role === 'patient' ? editingUser.assignedDoctorId || '' : undefined,
+        medicalHistory: editingUser.role === 'patient' ? editingUser.medicalHistory || '' : undefined,
+        emergencyContactNumber: editingUser.role === 'patient' ? editingUser.emergencyContactNumber || '' : undefined,
+        emergencyContactEmail: editingUser.role === 'patient' ? editingUser.emergencyContactEmail || '' : undefined,
+      });
+    }
+  }, [editingUser, editUserForm]);
+
   const onAddUserSubmit = async (data: AddUserFormValues) => {
     setAddingUser(true);
     const formData = new FormData();
@@ -159,10 +201,10 @@ export default function AdminDashboard({ adminUserId }: AdminDashboardProps) {
       if (result.success) {
         toast({ title: "User Created", description: result.message, variant: "default" });
         if (result.user) {
-          setUsers(prev => [...prev, result.user!]);
+          setUsers(prev => [...prev, result.user!].sort((a,b) => (a.displayName || '').localeCompare(b.displayName || '')));
         }
         setIsAddUserDialogOpen(false);
-        reset();
+        addUserForm.reset();
       } else {
         toast({ title: "Creation Failed", description: result.message || result.error, variant: "destructive" });
       }
@@ -170,6 +212,58 @@ export default function AdminDashboard({ adminUserId }: AdminDashboardProps) {
       toast({ title: "Error", description: "An unexpected error occurred: " + err.message, variant: "destructive" });
     } finally {
       setAddingUser(false);
+    }
+  };
+
+  const onEditUserSubmit = async (data: EditUserFormValues) => {
+    if (!editingUser) return;
+    setUpdatingUser(true);
+    const formData = new FormData();
+    
+    // Only append changed values or values relevant to the role
+    if (data.displayName && data.displayName !== editingUser.displayName) formData.append('displayName', data.displayName);
+    if (data.contactEmail && data.contactEmail !== editingUser.email) formData.append('contactEmail', data.contactEmail);
+    
+    if (editingUser.role === 'doctor' && data.specialty !== editingUser.specialty) {
+        formData.append('specialty', data.specialty || '');
+    }
+    if (editingUser.role === 'patient') {
+        if (data.assignedDoctorId !== editingUser.assignedDoctorId) formData.append('assignedDoctorId', data.assignedDoctorId || '');
+        if (data.medicalHistory !== editingUser.medicalHistory) formData.append('medicalHistory', data.medicalHistory || '');
+        if (data.emergencyContactNumber !== editingUser.emergencyContactNumber) formData.append('emergencyContactNumber', data.emergencyContactNumber || '');
+        if (data.emergencyContactEmail !== editingUser.emergencyContactEmail) formData.append('emergencyContactEmail', data.emergencyContactEmail || '');
+    }
+    
+    // If formData has no entries, it means nothing changed that we track for edit.
+    let hasChanges = false;
+    for (const _ of formData.entries()) {
+        hasChanges = true;
+        break;
+    }
+    if (!hasChanges && data.displayName === editingUser.displayName && data.contactEmail === editingUser.email) {
+         toast({ title: "No Changes", description: "No information was modified.", variant: "default" });
+         setIsEditUserDialogOpen(false);
+         setUpdatingUser(false);
+         return;
+    }
+
+
+    try {
+      const result = await updateUserByAdminAction(editingUser.id, formData);
+      if (result.success) {
+        toast({ title: "User Updated", description: result.message, variant: "default" });
+        if (result.updatedUser) {
+          setUsers(prev => prev.map(u => u.id === result.updatedUser!.id ? result.updatedUser! : u).sort((a,b) => (a.displayName || '').localeCompare(b.displayName || '')));
+        }
+        setIsEditUserDialogOpen(false);
+        setEditingUser(null);
+      } else {
+        toast({ title: "Update Failed", description: result.message || result.error, variant: "destructive" });
+      }
+    } catch (err: any) {
+      toast({ title: "Error", description: "An unexpected error occurred: " + err.message, variant: "destructive" });
+    } finally {
+      setUpdatingUser(false);
     }
   };
 
@@ -210,7 +304,6 @@ export default function AdminDashboard({ adminUserId }: AdminDashboardProps) {
       setSimulatingAlert(false);
     }
   };
-
 
   const getInitials = (name: string | null | undefined): string => {
     if (!name) return '?';
@@ -257,27 +350,27 @@ export default function AdminDashboard({ adminUserId }: AdminDashboardProps) {
                 Create a new patient, doctor, or admin account. An email with a temporary password will be sent.
               </DialogDescription>
             </DialogHeader>
-            <form onSubmit={handleSubmit(onAddUserSubmit)} className="grid gap-4 py-4">
+            <form onSubmit={addUserForm.handleSubmit(onAddUserSubmit)} className="grid gap-4 py-4">
               <div className="grid grid-cols-4 items-center gap-4">
-                <Label htmlFor="displayName" className="text-right">Display Name*</Label>
-                <Input id="displayName" {...register("displayName")} className="col-span-3" />
-                {errors.displayName && <p className="col-span-4 text-xs text-destructive text-right">{errors.displayName.message}</p>}
+                <Label htmlFor="add-displayName" className="text-right">Display Name*</Label>
+                <Input id="add-displayName" {...addUserForm.register("displayName")} className="col-span-3" />
+                {addUserForm.formState.errors.displayName && <p className="col-span-4 text-xs text-destructive text-right">{addUserForm.formState.errors.displayName.message}</p>}
               </div>
               <div className="grid grid-cols-4 items-center gap-4">
-                <Label htmlFor="loginEmail" className="text-right">Login Email*</Label>
-                <Input id="loginEmail" type="email" {...register("loginEmail")} className="col-span-3" />
-                 {errors.loginEmail && <p className="col-span-4 text-xs text-destructive text-right">{errors.loginEmail.message}</p>}
+                <Label htmlFor="add-loginEmail" className="text-right">Login Email*</Label>
+                <Input id="add-loginEmail" type="email" {...addUserForm.register("loginEmail")} className="col-span-3" />
+                 {addUserForm.formState.errors.loginEmail && <p className="col-span-4 text-xs text-destructive text-right">{addUserForm.formState.errors.loginEmail.message}</p>}
               </div>
               <div className="grid grid-cols-4 items-center gap-4">
-                <Label htmlFor="contactEmail" className="text-right">Contact Email</Label>
-                <Input id="contactEmail" type="email" {...register("contactEmail")} className="col-span-3" placeholder="Optional, defaults to login email"/>
-                 {errors.contactEmail && <p className="col-span-4 text-xs text-destructive text-right">{errors.contactEmail.message}</p>}
+                <Label htmlFor="add-contactEmail" className="text-right">Contact Email</Label>
+                <Input id="add-contactEmail" type="email" {...addUserForm.register("contactEmail")} className="col-span-3" placeholder="Optional, defaults to login email"/>
+                 {addUserForm.formState.errors.contactEmail && <p className="col-span-4 text-xs text-destructive text-right">{addUserForm.formState.errors.contactEmail.message}</p>}
               </div>
               <div className="grid grid-cols-4 items-center gap-4">
-                <Label htmlFor="role" className="text-right">Role*</Label>
+                <Label htmlFor="add-role" className="text-right">Role*</Label>
                 <Controller
                   name="role"
-                  control={control}
+                  control={addUserForm.control}
                   render={({ field }) => (
                     <Select onValueChange={field.onChange} defaultValue={field.value} value={field.value}>
                       <SelectTrigger className="col-span-3">
@@ -291,26 +384,26 @@ export default function AdminDashboard({ adminUserId }: AdminDashboardProps) {
                     </Select>
                   )}
                 />
-                 {errors.role && <p className="col-span-4 text-xs text-destructive text-right">{errors.role.message}</p>}
+                 {addUserForm.formState.errors.role && <p className="col-span-4 text-xs text-destructive text-right">{addUserForm.formState.errors.role.message}</p>}
               </div>
 
-              {selectedRole === 'doctor' && (
+              {selectedRoleForAdd === 'doctor' && (
                 <div className="grid grid-cols-4 items-center gap-4">
-                    <Label htmlFor="specialty" className="text-right">Specialty</Label>
-                    <Input id="specialty" {...register("specialty")} className="col-span-3" placeholder="e.g., Cardiology"/>
-                    {errors.specialty && <p className="col-span-4 text-xs text-destructive text-right">{errors.specialty.message}</p>}
+                    <Label htmlFor="add-specialty" className="text-right">Specialty</Label>
+                    <Input id="add-specialty" {...addUserForm.register("specialty")} className="col-span-3" placeholder="e.g., Cardiology"/>
+                    {addUserForm.formState.errors.specialty && <p className="col-span-4 text-xs text-destructive text-right">{addUserForm.formState.errors.specialty.message}</p>}
                 </div>
               )}
 
-              {selectedRole === 'patient' && (
+              {selectedRoleForAdd === 'patient' && (
                 <>
                   <div className="grid grid-cols-4 items-center gap-4">
-                    <Label htmlFor="assignedDoctorId" className="text-right">Assigned Doctor</Label>
+                    <Label htmlFor="add-assignedDoctorId" className="text-right">Assigned Doctor</Label>
                      <Controller
                         name="assignedDoctorId"
-                        control={control}
+                        control={addUserForm.control}
                         render={({ field }) => (
-                            <Select onValueChange={field.onChange} defaultValue={field.value} value={field.value}>
+                            <Select onValueChange={field.onChange} defaultValue={field.value} value={field.value || ''}>
                             <SelectTrigger className="col-span-3">
                                 <SelectValue placeholder="Select assigned doctor (optional)" />
                             </SelectTrigger>
@@ -322,22 +415,22 @@ export default function AdminDashboard({ adminUserId }: AdminDashboardProps) {
                             </Select>
                         )}
                         />
-                    {errors.assignedDoctorId && <p className="col-span-4 text-xs text-destructive text-right">{errors.assignedDoctorId.message}</p>}
+                    {addUserForm.formState.errors.assignedDoctorId && <p className="col-span-4 text-xs text-destructive text-right">{addUserForm.formState.errors.assignedDoctorId.message}</p>}
                   </div>
                   <div className="grid grid-cols-4 items-start gap-4">
-                     <Label htmlFor="medicalHistory" className="text-right pt-2">Medical History</Label>
-                     <Textarea id="medicalHistory" {...register("medicalHistory")} className="col-span-3" placeholder="Brief medical history (optional)"/>
-                     {errors.medicalHistory && <p className="col-span-4 text-xs text-destructive text-right">{errors.medicalHistory.message}</p>}
+                     <Label htmlFor="add-medicalHistory" className="text-right pt-2">Medical History</Label>
+                     <Textarea id="add-medicalHistory" {...addUserForm.register("medicalHistory")} className="col-span-3" placeholder="Brief medical history (optional)"/>
+                     {addUserForm.formState.errors.medicalHistory && <p className="col-span-4 text-xs text-destructive text-right">{addUserForm.formState.errors.medicalHistory.message}</p>}
                   </div>
                   <div className="grid grid-cols-4 items-center gap-4">
-                    <Label htmlFor="emergencyContactNumber" className="text-right">Emergency Phone</Label>
-                    <Input id="emergencyContactNumber" {...register("emergencyContactNumber")} className="col-span-3" placeholder="Optional"/>
-                    {errors.emergencyContactNumber && <p className="col-span-4 text-xs text-destructive text-right">{errors.emergencyContactNumber.message}</p>}
+                    <Label htmlFor="add-emergencyContactNumber" className="text-right">Emergency Phone</Label>
+                    <Input id="add-emergencyContactNumber" {...addUserForm.register("emergencyContactNumber")} className="col-span-3" placeholder="Optional"/>
+                    {addUserForm.formState.errors.emergencyContactNumber && <p className="col-span-4 text-xs text-destructive text-right">{addUserForm.formState.errors.emergencyContactNumber.message}</p>}
                   </div>
                   <div className="grid grid-cols-4 items-center gap-4">
-                    <Label htmlFor="emergencyContactEmail" className="text-right">Emergency Email</Label>
-                    <Input id="emergencyContactEmail" type="email" {...register("emergencyContactEmail")} className="col-span-3" placeholder="Optional"/>
-                    {errors.emergencyContactEmail && <p className="col-span-4 text-xs text-destructive text-right">{errors.emergencyContactEmail.message}</p>}
+                    <Label htmlFor="add-emergencyContactEmail" className="text-right">Emergency Email</Label>
+                    <Input id="add-emergencyContactEmail" type="email" {...addUserForm.register("emergencyContactEmail")} className="col-span-3" placeholder="Optional"/>
+                    {addUserForm.formState.errors.emergencyContactEmail && <p className="col-span-4 text-xs text-destructive text-right">{addUserForm.formState.errors.emergencyContactEmail.message}</p>}
                   </div>
                 </>
               )}
@@ -375,6 +468,98 @@ export default function AdminDashboard({ adminUserId }: AdminDashboardProps) {
           </AlertDescription>
         </Alert>
       )}
+
+      {/* Edit User Dialog */}
+      <Dialog open={isEditUserDialogOpen} onOpenChange={(open) => { if (!open) setEditingUser(null); setIsEditUserDialogOpen(open); }}>
+        <DialogContent className="sm:max-w-[525px] max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Edit User: {editingUser?.displayName}</DialogTitle>
+            <DialogDescription>
+              Modify the user's details below. Role and Login Email cannot be changed here.
+            </DialogDescription>
+          </DialogHeader>
+          {editingUser && (
+            <form onSubmit={editUserForm.handleSubmit(onEditUserSubmit)} className="grid gap-4 py-4">
+              <div className="grid grid-cols-4 items-center gap-4">
+                <Label className="text-right">Login Email</Label>
+                <Input value={editingUser.loginEmail || 'N/A'} className="col-span-3" disabled readOnly />
+              </div>
+              <div className="grid grid-cols-4 items-center gap-4">
+                <Label className="text-right">Role</Label>
+                <Input value={editingUser.role || 'N/A'} className="col-span-3 capitalize" disabled readOnly />
+              </div>
+
+              <div className="grid grid-cols-4 items-center gap-4">
+                <Label htmlFor="edit-displayName" className="text-right">Display Name*</Label>
+                <Input id="edit-displayName" {...editUserForm.register("displayName")} className="col-span-3" />
+                {editUserForm.formState.errors.displayName && <p className="col-span-4 text-xs text-destructive text-right">{editUserForm.formState.errors.displayName.message}</p>}
+              </div>
+              <div className="grid grid-cols-4 items-center gap-4">
+                <Label htmlFor="edit-contactEmail" className="text-right">Contact Email</Label>
+                <Input id="edit-contactEmail" type="email" {...editUserForm.register("contactEmail")} className="col-span-3" />
+                {editUserForm.formState.errors.contactEmail && <p className="col-span-4 text-xs text-destructive text-right">{editUserForm.formState.errors.contactEmail.message}</p>}
+              </div>
+              
+              {editingUser.role === 'doctor' && (
+                <div className="grid grid-cols-4 items-center gap-4">
+                    <Label htmlFor="edit-specialty" className="text-right">Specialty</Label>
+                    <Input id="edit-specialty" {...editUserForm.register("specialty")} className="col-span-3" />
+                    {editUserForm.formState.errors.specialty && <p className="col-span-4 text-xs text-destructive text-right">{editUserForm.formState.errors.specialty.message}</p>}
+                </div>
+              )}
+
+              {editingUser.role === 'patient' && (
+                <>
+                  <div className="grid grid-cols-4 items-center gap-4">
+                    <Label htmlFor="edit-assignedDoctorId" className="text-right">Assigned Doctor</Label>
+                     <Controller
+                        name="assignedDoctorId"
+                        control={editUserForm.control}
+                        render={({ field }) => (
+                            <Select onValueChange={field.onChange} value={field.value || ''} >
+                            <SelectTrigger className="col-span-3">
+                                <SelectValue placeholder="Select assigned doctor" />
+                            </SelectTrigger>
+                            <SelectContent>
+                                <SelectItem value="">None</SelectItem>
+                                {doctorOptions.map(doc => (
+                                <SelectItem key={doc.value} value={doc.value}>{doc.label}</SelectItem>
+                                ))}
+                            </SelectContent>
+                            </Select>
+                        )}
+                        />
+                    {editUserForm.formState.errors.assignedDoctorId && <p className="col-span-4 text-xs text-destructive text-right">{editUserForm.formState.errors.assignedDoctorId.message}</p>}
+                  </div>
+                  <div className="grid grid-cols-4 items-start gap-4">
+                     <Label htmlFor="edit-medicalHistory" className="text-right pt-2">Medical History</Label>
+                     <Textarea id="edit-medicalHistory" {...editUserForm.register("medicalHistory")} className="col-span-3"/>
+                     {editUserForm.formState.errors.medicalHistory && <p className="col-span-4 text-xs text-destructive text-right">{editUserForm.formState.errors.medicalHistory.message}</p>}
+                  </div>
+                  <div className="grid grid-cols-4 items-center gap-4">
+                    <Label htmlFor="edit-emergencyContactNumber" className="text-right">Emergency Phone</Label>
+                    <Input id="edit-emergencyContactNumber" {...editUserForm.register("emergencyContactNumber")} className="col-span-3" />
+                    {editUserForm.formState.errors.emergencyContactNumber && <p className="col-span-4 text-xs text-destructive text-right">{editUserForm.formState.errors.emergencyContactNumber.message}</p>}
+                  </div>
+                  <div className="grid grid-cols-4 items-center gap-4">
+                    <Label htmlFor="edit-emergencyContactEmail" className="text-right">Emergency Email</Label>
+                    <Input id="edit-emergencyContactEmail" type="email" {...editUserForm.register("emergencyContactEmail")} className="col-span-3" />
+                    {editUserForm.formState.errors.emergencyContactEmail && <p className="col-span-4 text-xs text-destructive text-right">{editUserForm.formState.errors.emergencyContactEmail.message}</p>}
+                  </div>
+                </>
+              )}
+              <DialogFooter>
+                <Button type="button" variant="outline" onClick={() => {setIsEditUserDialogOpen(false); setEditingUser(null);}}>Cancel</Button>
+                <Button type="submit" disabled={updatingUser}>
+                  {updatingUser && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                  Save Changes
+                </Button>
+              </DialogFooter>
+            </form>
+          )}
+        </DialogContent>
+      </Dialog>
+
 
       <Card>
         <CardHeader>
@@ -419,7 +604,7 @@ export default function AdminDashboard({ adminUserId }: AdminDashboardProps) {
                         <span className="font-medium">{u.displayName || 'N/A'}</span>
                       </div>
                     </TableCell>
-                    <TableCell>{u.loginEmail || u.email || 'N/A'}</TableCell>
+                    <TableCell>{u.loginEmail || 'N/A'}</TableCell>
                     <TableCell>
                       <Badge variant={u.role === 'admin' ? 'destructive' : u.role === 'doctor' ? 'secondary' : 'outline'} className="capitalize">
                         {u.role || 'N/A'}
@@ -427,7 +612,13 @@ export default function AdminDashboard({ adminUserId }: AdminDashboardProps) {
                     </TableCell>
                     <TableCell>{formatDate(u.creationTime) || 'N/A'}</TableCell>
                     <TableCell className="text-right space-x-1">
-                      <Button variant="ghost" size="icon" className="h-8 w-8" disabled={!dbAvailable} title="Edit User (Not implemented)">
+                      <Button 
+                        variant="ghost" 
+                        size="icon" 
+                        className="h-8 w-8" 
+                        disabled={!dbAvailable || updatingUser} 
+                        onClick={() => { setEditingUser(u); setIsEditUserDialogOpen(true); }}
+                        title="Edit User">
                         <Edit3 className="h-4 w-4" />
                       </Button>
                       {u.role === 'patient' && (
@@ -599,3 +790,4 @@ export default function AdminDashboard({ adminUserId }: AdminDashboardProps) {
     </div>
   );
 }
+

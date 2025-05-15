@@ -51,13 +51,18 @@ export async function fetchAdminDashboardData(): Promise<{ users?: AdminUser[], 
   try {
     const { db } = await connectToDatabase();
     const usersCollection = db.collection<RawAdminUser>('users');
-    const userList = await usersCollection.find({}).toArray();
+    const credentialsCollection = db.collection('credentials');
+    const userList = await usersCollection.find({}).sort({ displayName: 1 }).toArray();
     
-    const usersWithStringIds: AdminUser[] = userList.map(u => ({
-      ...u,
-      _id: u._id.toString(),
-      id: u._id.toString(),
-      creationTime: u.creationTime?.toISOString(), // Convert Date to ISOString
+    const usersWithStringIds: AdminUser[] = await Promise.all(userList.map(async (u) => {
+      const credential = await credentialsCollection.findOne({ userId: u._id });
+      return {
+        ...u,
+        _id: u._id.toString(),
+        id: u._id.toString(),
+        loginEmail: credential?.email, // Fetch login email
+        creationTime: u.creationTime?.toISOString(), // Convert Date to ISOString
+      };
     }));
     
     return { users: usersWithStringIds };
@@ -199,6 +204,95 @@ export async function createUserAction(
   }
 }
 
+export async function updateUserByAdminAction(
+  userId: string,
+  formData: FormData
+): Promise<{ success: boolean; message: string; error?: string; updatedUser?: AdminUser }> {
+  const userObjectId = toObjectId(userId);
+  if (!userObjectId) {
+    return { success: false, message: "Invalid user ID format." };
+  }
+
+  const displayName = formData.get('displayName') as string | null;
+  const contactEmail = formData.get('contactEmail') as string | null;
+  // Role and loginEmail are typically not changed via this form by admin for simplicity
+  
+  const specialty = formData.get('specialty') as string | null; // For doctors
+  const assignedDoctorId = formData.get('assignedDoctorId') as string | null; // For patients
+  const medicalHistory = formData.get('medicalHistory') as string | null; // For patients
+  const emergencyContactNumber = formData.get('emergencyContactNumber') as string | null; // For patients
+  const emergencyContactEmail = formData.get('emergencyContactEmail') as string | null; // For patients
+  
+  const updateData: Partial<RawAdminUser> = {};
+  if (displayName) updateData.displayName = displayName;
+  if (contactEmail) updateData.email = contactEmail; // This is the contact email
+  
+  if (emergencyContactNumber !== null) updateData.emergencyContactNumber = emergencyContactNumber || undefined; // Allow clearing
+  if (emergencyContactEmail !== null) updateData.emergencyContactEmail = emergencyContactEmail || undefined; // Allow clearing
+  
+  // Role specific updates
+  const { db } = await connectToDatabase();
+  const usersCollection = db.collection<RawAdminUser>('users');
+  const currentUser = await usersCollection.findOne({ _id: userObjectId });
+
+  if (!currentUser) {
+    return { success: false, message: "User not found." };
+  }
+
+  if (currentUser.role === 'doctor' && specialty !== null) {
+    updateData.specialty = specialty || undefined;
+  }
+  
+  if (currentUser.role === 'patient') {
+    if (medicalHistory !== null) updateData.medicalHistory = medicalHistory || undefined;
+    if (assignedDoctorId !== null) {
+      updateData.assignedDoctorId = assignedDoctorId || undefined;
+      if (assignedDoctorId) {
+        const doctorProfile = await usersCollection.findOne({ _id: toObjectId(assignedDoctorId), role: 'doctor' });
+        updateData.assignedDoctorName = doctorProfile?.displayName || undefined;
+      } else {
+        updateData.assignedDoctorName = undefined; // Clear if assignedDoctorId is cleared
+      }
+    }
+  }
+
+  if (Object.keys(updateData).length === 0) {
+    return { success: true, message: "No changes were made." };
+  }
+
+  try {
+    const result = await usersCollection.findOneAndUpdate(
+      { _id: userObjectId },
+      { $set: updateData },
+      { returnDocument: 'after' }
+    );
+
+    if (!result) {
+      return { success: false, message: "User not found or update failed." };
+    }
+    const credentialsCollection = db.collection('credentials');
+    const credential = await credentialsCollection.findOne({ userId: userObjectId });
+
+    const returnedUser: AdminUser = {
+      ...result,
+      _id: result._id.toString(),
+      id: result._id.toString(),
+      loginEmail: credential?.email,
+      creationTime: result.creationTime?.toISOString(),
+    };
+
+    revalidatePath('/dashboard/admin');
+    return { success: true, message: "User profile updated successfully by admin.", updatedUser: returnedUser };
+
+  } catch (error: any) {
+    console.error('Error updating user by admin:', error);
+    if (error.message.includes('queryTxt ETIMEOUT') || error.message.includes('querySrv ENOTFOUND')) {
+      return { success: false, message: "Database connection timeout. Please check settings." };
+    }
+    return { success: false, message: 'An error occurred during profile update.', error: error.message || String(error) };
+  }
+}
+
 
 export async function deleteUserAction(userId: string): Promise<{ success: boolean; message: string; error?: string }> {
   const userObjectId = toObjectId(userId);
@@ -216,6 +310,7 @@ export async function deleteUserAction(userId: string): Promise<{ success: boole
       return { success: false, message: "User not found or already deleted from profiles." };
     }
 
+    // Also delete associated credentials
     const credentialDeleteResult = await credentialsCollection.deleteMany({ userId: userObjectId });
     
     revalidatePath('/dashboard/admin');
