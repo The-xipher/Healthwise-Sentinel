@@ -93,11 +93,6 @@ function DoctorDashboardContent({ doctorId, doctorName, userRole }: DoctorDashbo
   const chatScrollAreaRef = useRef<HTMLDivElement>(null);
   const [isChatOpen, setIsChatOpen] = useState(false);
 
-  // Removed AI booking state for now
-  // const [aiSuggestedAppointment, setAiSuggestedAppointment] = useState<SuggestAppointmentOutput | null>(null);
-  // const [loadingAiAppointmentSuggestion, setLoadingAiAppointmentSuggestion] = useState<boolean>(false);
-  // const [bookingAppointment, setBookingAppointment] = useState<boolean>(false);
-
 
   useEffect(() => {
     const queryPatientId = searchParams.get('patientId');
@@ -135,7 +130,11 @@ function DoctorDashboardContent({ doctorId, doctorName, userRole }: DoctorDashbo
       setLoadingPatients(true);
       setError(null);
       try {
-        const patientsResult = await fetchDoctorPatientsAction(doctorId);
+        const patientsResultPromise = fetchDoctorPatientsAction(doctorId);
+        const appointmentsResultPromise = fetchDoctorAppointmentsAction(doctorId);
+
+        const [patientsResult, appointmentsResult] = await Promise.all([patientsResultPromise, appointmentsResultPromise]);
+
 
         if (patientsResult.error) {
           setError(prev => prev ? `${prev}\n${patientsResult.error}` : patientsResult.error);
@@ -150,7 +149,14 @@ function DoctorDashboardContent({ doctorId, doctorName, userRole }: DoctorDashbo
           setPatients(patientsResult.patients || []);
           setDbAvailable(true);
         }
-        await refreshAppointments();
+        
+        if (appointmentsResult.error) {
+            setError(prev => prev ? `${prev}\nAppointments: ${appointmentsResult.error}` : `Appointments: ${appointmentsResult.error}`);
+             setAppointments([]);
+        } else {
+            setAppointments(appointmentsResult.appointments || []);
+        }
+
 
       } catch (e: any) {
         setError(e.message || 'An unexpected error occurred while fetching initial doctor data.');
@@ -160,6 +166,7 @@ function DoctorDashboardContent({ doctorId, doctorName, userRole }: DoctorDashbo
         console.error("Error fetching initial doctor data:", e);
       } finally {
         setLoadingPatients(false);
+        setLoadingAppointments(false); // Ensure this is set after appointments are fetched too
       }
     }
     loadInitialDoctorData();
@@ -205,9 +212,7 @@ function DoctorDashboardContent({ doctorId, doctorName, userRole }: DoctorDashbo
       setLoadingPatientDetails(false);
       setTrendAnalysis(null);
       setLoadingTrendAnalysis(false);
-      setIsChatOpen(false);
-      // setAiSuggestedAppointment(null); // Removed AI booking
-      // setLoadingAiAppointmentSuggestion(false); // Removed AI booking
+      if(isChatOpen && selectedPatientId !== selectedPatientData?.id) setIsChatOpen(false);
       return;
     }
 
@@ -217,8 +222,6 @@ function DoctorDashboardContent({ doctorId, doctorName, userRole }: DoctorDashbo
       setHistorySummary("Loading AI Summary...");
       setCarePlan("Loading AI Care Plan...");
       setTrendAnalysis(null);
-      // setAiSuggestedAppointment(null); // Removed AI booking
-      // setLoadingAiAppointmentSuggestion(false); // Removed AI booking
 
       try {
         const result = await fetchDoctorPatientDetailsAction(selectedPatientId, doctorId);
@@ -284,6 +287,7 @@ function DoctorDashboardContent({ doctorId, doctorName, userRole }: DoctorDashbo
             }
 
             if (result.patient && result.healthData && result.medications) {
+              setLoadingTrendAnalysis(true);
               const trendInput = prepareTrendAnalysisInput(result.patient, result.healthData, result.medications);
               try {
                 const trendOutput = await analyzePatientHealthTrends(trendInput);
@@ -292,34 +296,13 @@ function DoctorDashboardContent({ doctorId, doctorName, userRole }: DoctorDashbo
                  console.error("AI Trend Analysis Error:", aiError);
                  const errorMsg = aiError.message?.includes("NOT_FOUND") || aiError.message?.includes("API key") || aiError.message?.includes("model") ? "Model not found or API key issue." : "Service error.";
                  setTrendAnalysis({ isTrendConcerning: false, trendSummary: "Could not perform AI trend analysis. " + errorMsg, suggestedActionForDoctor: null });
+              } finally {
+                 setLoadingTrendAnalysis(false);
               }
             } else {
                setTrendAnalysis({ isTrendConcerning: false, trendSummary: "Insufficient data for trend analysis.", suggestedActionForDoctor: null });
+               setLoadingTrendAnalysis(false);
             }
-            
-            // Removed AI booking logic
-            // if (result.patient.readmissionRisk === 'high') {
-            //   setLoadingAiAppointmentSuggestion(true);
-            //   try {
-            //     const appointmentSuggestion = await suggestAppointmentForHighRiskPatient({
-            //       patientId: selectedPatientId,
-            //       patientName: result.patient.name || 'This patient',
-            //       patientReadmissionRisk: result.patient.readmissionRisk,
-            //       doctorId: doctorId,
-            //       doctorName: doctorName,
-            //     });
-            //     setAiSuggestedAppointment(appointmentSuggestion);
-            //   } catch (aiError: any) {
-            //     console.error("AI Appointment Suggestion Error:", aiError);
-            //     const errorMsg = aiError.message?.includes("NOT_FOUND") || aiError.message?.includes("API key") || aiError.message?.includes("model") ? "Model not found or API key issue." : "Service error.";
-            //     toast({ title: "AI Suggestion Error", description: "Could not get AI appointment suggestion. " + errorMsg, variant: "destructive" });
-            //     setAiSuggestedAppointment(null);
-            //   } finally {
-            //     setLoadingAiAppointmentSuggestion(false);
-            //   }
-            // } else {
-            //   setAiSuggestedAppointment(null);
-            // }
           }
         }
       } catch (e: any) {
@@ -330,12 +313,12 @@ function DoctorDashboardContent({ doctorId, doctorName, userRole }: DoctorDashbo
         console.error("Error fetching patient details:", e);
       } finally {
         setLoadingPatientDetails(false);
-        setLoadingTrendAnalysis(false);
       }
     }
 
     fetchPatientAllData();
-  }, [selectedPatientId, doctorId, doctorName, toast]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedPatientId, doctorId, doctorName, toast]); // Added doctorName and toast
 
   useEffect(() => {
     if (isChatOpen && chatScrollAreaRef.current) {
@@ -366,7 +349,7 @@ function DoctorDashboardContent({ doctorId, doctorName, userRole }: DoctorDashbo
       return;
     }
     setSendingMessage(true);
-    const currentDoctorId = doctorId; // Ensure we use the stable prop
+    const currentDoctorId = doctorId;
     try {
       const result = await sendChatMessageAction(currentDoctorId, doctorName, selectedPatientId, newMessage);
       if (result.error) {
@@ -449,9 +432,6 @@ function DoctorDashboardContent({ doctorId, doctorName, userRole }: DoctorDashbo
     return 'default';
   };
   
-  // Removed AI booking handler
-  // const handleBookAISuggestedAppointment = async () => { ... };
-
   const coreDataLoading = loadingPatientDetails && selectedPatientId;
 
   return (
@@ -617,14 +597,14 @@ function DoctorDashboardContent({ doctorId, doctorName, userRole }: DoctorDashbo
                     {loadingSummary ? (
                       <div className="space-y-2"><Skeleton className="h-4 w-full" /><Skeleton className="h-4 w-5/6" /><Skeleton className="h-4 w-3/4" /></div>
                     ) : (
-                      <ScrollArea className="h-[120px] pr-3">
+                      <ScrollArea className="h-[100px] pr-3"> {/* Reduced height */}
                         <p className="text-sm text-muted-foreground" dangerouslySetInnerHTML={{ __html: formatBoldMarkdown(historySummary) }} />
                       </ScrollArea>
                     )}
                   </CardContent>
                 </Card>
 
-                <Card className="shadow-md md:col-span-2 xl:col-span-1"> {/* Span 2 on md, 1 on xl */}
+                <Card className="shadow-md md:col-span-2 xl:col-span-1">
                   <CardHeader>
                     <CardTitle className="text-lg flex items-center gap-2"><Brain className="h-5 w-5 text-primary"/>AI Generated Care Plan</CardTitle>
                     <CardDescription className="text-xs">Initial draft based on patient data.</CardDescription>
@@ -633,7 +613,7 @@ function DoctorDashboardContent({ doctorId, doctorName, userRole }: DoctorDashbo
                     {loadingCarePlan ? (
                       <div className="space-y-2"><Skeleton className="h-4 w-full" /><Skeleton className="h-4 w-full" /><Skeleton className="h-4 w-5/6" /></div>
                     ) : (
-                       <ScrollArea className="h-[150px] pr-3">
+                       <ScrollArea className="h-[120px] pr-3"> {/* Reduced height */}
                         <p className="text-sm text-muted-foreground" dangerouslySetInnerHTML={{ __html: formatBoldMarkdown(carePlan) }} />
                       </ScrollArea>
                     )}
@@ -651,9 +631,9 @@ function DoctorDashboardContent({ doctorId, doctorName, userRole }: DoctorDashbo
                   </CardHeader>
                   <CardContent>
                     {patientHealthData.length > 0 ? (
-                      <ScrollArea className="h-[180px] pr-3">
+                      <ScrollArea className="h-[150px] pr-3"> {/* Reduced height */}
                       <ul className="space-y-2 text-sm">
-                        {patientHealthData.slice(-7).reverse().map((data) => ( // show last 7, newest first
+                        {patientHealthData.slice(-7).reverse().map((data) => ( 
                           <li key={data.id} className="flex justify-between items-center border-b pb-1.5 pt-1">
                             <span className="text-xs">{formatDistanceToNow(new Date(data.timestamp), { addSuffix: true })}</span>
                             <div className="flex gap-2 text-xs text-muted-foreground">
@@ -681,7 +661,7 @@ function DoctorDashboardContent({ doctorId, doctorName, userRole }: DoctorDashbo
                     </CardTitle>
                     <CardDescription className="text-xs">Proactive analysis of recent patient data.</CardDescription>
                   </CardHeader>
-                  <CardContent className="min-h-[150px]">
+                  <CardContent className="min-h-[120px]"> {/* Reduced min-height */}
                     {loadingTrendAnalysis ? (
                       <div className="space-y-2">
                         <Skeleton className="h-4 w-3/4" />
@@ -747,7 +727,7 @@ function DoctorDashboardContent({ doctorId, doctorName, userRole }: DoctorDashbo
                   </CardHeader>
                   <CardContent>
                     {patientMedications.length > 0 ? (
-                      <ScrollArea className="h-[180px] pr-3">
+                      <ScrollArea className="h-[150px] pr-3"> {/* Reduced height */}
                       <ul className="space-y-3 text-sm">
                         {patientMedications.map(med => (
                           <li key={med.id} className="border-b pb-2">
@@ -780,7 +760,7 @@ function DoctorDashboardContent({ doctorId, doctorName, userRole }: DoctorDashbo
                     {(loadingPatientDetails && !aiSuggestions.length) ? (
                       <div className="flex items-center justify-center p-4"><Loader2 className="h-6 w-6 animate-spin text-primary" /></div>
                     ) : aiSuggestions.length > 0 ? (
-                      <ScrollArea className="h-[200px] pr-3">
+                      <ScrollArea className="h-[180px] pr-3"> {/* Reduced height */}
                         <ul className="space-y-3">
                           {aiSuggestions.map(suggestion => (
                             <li key={suggestion.id} className="p-3 border rounded-md bg-card hover:shadow-sm transition-shadow space-y-2">
@@ -951,14 +931,15 @@ function DashboardSkeletonCentralColumns() {
   return (
     <>
       <div className="lg:col-span-3 grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6 content-start">
-        <Skeleton className="h-40 rounded-lg" /> 
-        <Skeleton className="h-48 rounded-lg" /> 
-        <Skeleton className="h-52 rounded-lg" /> 
-        <Skeleton className="h-48 rounded-lg" /> 
-        <Skeleton className="h-52 rounded-lg" /> 
-        <Skeleton className="h-48 rounded-lg" /> 
-        <Skeleton className="h-60 rounded-lg md:col-span-2 xl:col-span-3" /> {/* AI Suggestions might span more */}
+        <Skeleton className="h-36 rounded-lg" />  {/* Patient Info */}
+        <Skeleton className="h-40 rounded-lg" />  {/* AI Summary */}
+        <Skeleton className="h-44 rounded-lg" />  {/* AI Care Plan */}
+        <Skeleton className="h-40 rounded-lg" />  {/* Health Data */}
+        <Skeleton className="h-44 rounded-lg" />  {/* Trend Analysis */}
+        <Skeleton className="h-40 rounded-lg" />  {/* Medications */}
+        <Skeleton className="h-48 rounded-lg md:col-span-2 xl:col-span-3" /> {/* AI Suggestions */}
       </div>
     </>
   );
 }
+
