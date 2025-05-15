@@ -268,7 +268,7 @@ export default function PatientDashboard({ userId, userRole }: PatientDashboardP
       } else if (result.message) {
         setChatMessages(prev => [...prev, result.message!]);
         setNewMessage('');
-        toast({ title: "Message Sent", variant: "default" });
+        // toast({ title: "Message Sent", variant: "default" }); // Can be too noisy
       }
     } catch (err: any) {
       console.error("Error sending patient message:", err);
@@ -355,68 +355,27 @@ export default function PatientDashboard({ userId, userRole }: PatientDashboardP
         </Card>
       )}
 
-      <Card className="shadow-md">
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2 text-green-700 dark:text-green-300">
-            <Lightbulb className="h-5 w-5"/> Recommendations &amp; AI Tips
-          </CardTitle>
-          <CardDescription>Advice and suggestions for your well-being.</CardDescription>
-        </CardHeader>
-        <CardContent>
-          {loadingPatientSuggestions ? (
-            <div className="space-y-2">
-              <Skeleton className="h-8 w-full" />
-              <Skeleton className="h-8 w-5/6" />
-            </div>
-          ) : patientSuggestions.length > 0 ? (
-            <ScrollArea className="h-[150px] pr-3">
-              <ul className="space-y-3">
-                {patientSuggestions.map(suggestion => (
-                  <li key={suggestion.id}
-                      className={`p-3 border rounded-md
-                        ${suggestion.status === 'approved' ? 'bg-green-50 dark:bg-green-900/30 border-green-200 dark:border-green-700'
-                                                            : 'bg-blue-50 dark:bg-blue-900/20 border-blue-200 dark:border-blue-700'}`}>
-                    <div className="flex items-start gap-2">
-                        {suggestion.status === 'approved' ? <BookMarked className="h-5 w-5 text-green-600 dark:text-green-400 shrink-0 mt-0.5"/> : <Lightbulb className="h-5 w-5 text-blue-500 dark:text-blue-400 shrink-0 mt-0.5"/>}
-                        <div>
-                            <p className={`text-sm font-medium ${suggestion.status === 'approved' ? 'text-green-800 dark:text-green-200' : 'text-blue-700 dark:text-blue-300'}`}>
-                                {suggestion.status === 'approved' ? "Doctor's Recommendation:" : "AI Tip (Awaiting Doctor Review):"}
-                            </p>
-                            <p className={`text-sm ${suggestion.status === 'approved' ? 'text-green-700 dark:text-green-300' : 'text-blue-600 dark:text-blue-400'}`}
-                               dangerouslySetInnerHTML={{ __html: formatBoldMarkdown(suggestion.suggestionText) }} />
-                            <p className="text-xs text-muted-foreground mt-1">
-                                {suggestion.status === 'approved' ? `Approved on: ${formatDateOnly(suggestion.timestamp)}` : `Suggested on: ${formatDateOnly(suggestion.timestamp)}`}
-                            </p>
-                        </div>
-                    </div>
-                  </li>
-                ))}
-              </ul>
-            </ScrollArea>
-          ) : (
-            <p className="text-sm text-muted-foreground text-center py-4">
-              {dbAvailable ? "No specific recommendations or tips available yet." : "Recommendations unavailable (DB offline)."}
-            </p>
-          )}
-        </CardContent>
-      </Card>
-
-
       {showSkeleton ? (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           <Skeleton className="h-24 rounded-lg" />
           <Skeleton className="h-24 rounded-lg" />
-          <Skeleton className="h-24 rounded-lg" />
-          <Skeleton className="h-[350px] rounded-lg md:col-span-2 lg:col-span-3" />
-          <Skeleton className="h-48 rounded-lg lg:col-span-2" />
-          <Skeleton className="h-72 rounded-lg lg:col-span-1" />
+          <Skeleton className="h-24 rounded-lg md:col-span-1 lg:col-span-1" />
+          <div className="lg:col-span-3 grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <div className="space-y-6">
+                <Skeleton className="h-[250px] rounded-lg md:h-[300px]" /> {/* Chart */}
+                <Skeleton className="h-96 rounded-lg" /> {/* Report Symptoms */}
+            </div>
+             <div className="space-y-6">
+                <Skeleton className="h-64 rounded-lg" /> {/* Medications */}
+                <Skeleton className="h-64 rounded-lg" /> {/* AI Tips */}
+            </div>
+          </div>
         </div>
       ) : (
-        !error && dbAvailable &&
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          <div className="lg:col-span-2 space-y-6">
+        !error && dbAvailable && (
+          <>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                <Card>
+                <Card className="shadow-sm">
                     <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                     <CardTitle className="text-sm font-medium">Steps Today</CardTitle>
                     <Activity className="h-4 w-4 text-muted-foreground" />
@@ -426,7 +385,7 @@ export default function PatientDashboard({ userId, userRole }: PatientDashboardP
                     <p className="text-xs text-muted-foreground">Goal: 8,000 steps</p>
                     </CardContent>
                 </Card>
-                <Card>
+                <Card className="shadow-sm">
                     <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                     <CardTitle className="text-sm font-medium">Heart Rate (avg)</CardTitle>
                     <HeartPulse className="h-4 w-4 text-muted-foreground" />
@@ -436,7 +395,7 @@ export default function PatientDashboard({ userId, userRole }: PatientDashboardP
                     <p className="text-xs text-muted-foreground">Latest reading</p>
                     </CardContent>
                 </Card>
-                <Card>
+                <Card className="shadow-sm">
                     <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                     <CardTitle className="text-sm font-medium">Blood Glucose</CardTitle>
                     <Droplet className="h-4 w-4 text-muted-foreground" />
@@ -448,175 +407,222 @@ export default function PatientDashboard({ userId, userRole }: PatientDashboardP
                 </Card>
             </div>
 
-            <Card>
-                <CardHeader>
-                <CardTitle>Recent Health Trends</CardTitle>
-                <CardDescription>Steps and Heart Rate over the last recorded entries.</CardDescription>
-                </CardHeader>
-                <CardContent className="h-[250px] md:h-[300px]">
-                {healthData.length > 0 ? (
-                    <ResponsiveContainer width="100%" height="100%">
-                    <BarChart data={healthData}>
-                        <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
-                        <XAxis dataKey="timestamp" tickFormatter={(ts) => formatTimestampForChart(ts as string)} stroke="hsl(var(--muted-foreground))" />
-                        <YAxis yAxisId="left" orientation="left" stroke="hsl(var(--chart-1))" label={{ value: 'Steps', angle: -90, position: 'insideLeft', fill: 'hsl(var(--chart-1))' }} />
-                        <YAxis yAxisId="right" orientation="right" stroke="hsl(var(--chart-2))" label={{ value: 'Heart Rate (bpm)', angle: 90, position: 'insideRight', fill: 'hsl(var(--chart-2))' }} />
-                        <Tooltip
-                            labelFormatter={(label, payload) => formatDateForDisplay(payload?.[0]?.payload?.timestamp as string)}
-                            contentStyle={{ backgroundColor: 'hsl(var(--background))', border: '1px solid hsl(var(--border))' }}
-                            itemStyle={{ color: 'hsl(var(--foreground))' }}
-                        />
-                        <Legend wrapperStyle={{ color: 'hsl(var(--foreground))' }}/>
-                        <Bar yAxisId="left" dataKey="steps" fill="hsl(var(--chart-1))" name="Steps" radius={[4, 4, 0, 0]} />
-                        <Bar yAxisId="right" dataKey="heartRate" fill="hsl(var(--chart-2))" name="Heart Rate" radius={[4, 4, 0, 0]} />
-                    </BarChart>
-                    </ResponsiveContainer>
-                ) : (
-                    <div className="flex items-center justify-center h-full text-muted-foreground">
-                    No health data available yet for this patient.
-                    </div>
-                )}
-                </CardContent>
-            </Card>
-
-            <Card>
-                <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                    <Pill className="h-5 w-5" /> Medication Adherence
-                </CardTitle>
-                <CardDescription>Tracking your medication schedule.</CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                {medications.length > 0 ? (
-                    medications.map((med) => (
-                    <div key={med.id!} className="space-y-1">
-                        <div className="flex justify-between items-center">
-                        <span className="font-medium">{med.name} ({med.dosage}, {med.frequency})</span>
-                        <Badge variant={med.adherence && med.adherence >= 90 ? 'default' : med.adherence && med.adherence >= 70 ? 'secondary' : 'destructive'}>
-                            {med.adherence !== undefined ? `${med.adherence}%` : 'N/A'}
-                        </Badge>
-                        </div>
-                        <Progress value={med.adherence} className="h-2" aria-label={`${med.name} adherence ${med.adherence}%`} />
-                        {med.lastTaken && <p className="text-xs text-muted-foreground">Last taken: {formatDateForDisplay(med.lastTaken)}</p>}
-                    </div>
-                    ))
-                ) : (
-                    <p className="text-sm text-muted-foreground">
-                    No medications assigned yet.
-                    </p>
-                )}
-                </CardContent>
-            </Card>
-          </div>
-
-          <div className="lg:col-span-1 space-y-6 flex flex-col">
-            <Card>
-                <CardHeader>
-                <CardTitle>Report Symptoms</CardTitle>
-                <CardDescription>Let your doctor know how you're feeling.</CardDescription>
-                </CardHeader>
-                <CardContent>
-                {(!dbAvailable && !loadingData) || (userRole === 'admin' && !loadingData) ? (
-                    <Alert variant="default" className="mb-4 bg-yellow-50 border-yellow-200 text-yellow-800 dark:bg-yellow-900 dark:border-yellow-700 dark:text-yellow-200">
-                    <AlertTriangle className="h-4 w-4 text-yellow-600 dark:text-yellow-400" />
-                    <AlertTitle>Symptom Reporting {userRole === 'admin' ? 'Disabled (Admin View)' : 'Unavailable'}</AlertTitle>
-                    <AlertDescription>
-                        {userRole === 'admin' ? 'Symptom reporting is disabled in admin view.' : 'Database connection is required to report symptoms.'}
-                    </AlertDescription>
-                    </Alert>
-                ): null}
-                {(dbAvailable && userRole === 'patient') || loadingData ? (
-                    <Form {...form}>
-                    <form onSubmit={form.handleSubmit(onSubmitSymptom)} className="space-y-4">
-                        <FormField
-                        control={form.control}
-                        name="severity"
-                        render={({ field }) => (
-                            <FormItem className="space-y-3">
-                            <FormLabel>How severe are your symptoms?</FormLabel>
-                            <FormControl>
-                                <div className="flex gap-2">
-                                {(['mild', 'moderate', 'severe'] as const).map((severity) => (
-                                    <Button
-                                    key={severity}
-                                    type="button"
-                                    variant={field.value === severity ? 'default' : 'outline'}
-                                    onClick={() => field.onChange(severity)}
-                                    className={`flex-1 capitalize ${field.value === severity ? 'ring-2 ring-primary ring-offset-background dark:ring-offset-card' : ''}`}
-                                    disabled={!dbAvailable || reportingSymptom || userRole === 'admin'}
-                                    >
-                                    {getSeverityIcon(severity)}
-                                    <span className="ml-2">{severity}</span>
-                                    </Button>
-                                ))}
-                                </div>
-                            </FormControl>
-                            <FormMessage />
-                            </FormItem>
-                        )}
-                        />
-                        <FormField
-                        control={form.control}
-                        name="description"
-                        render={({ field }) => (
-                            <FormItem>
-                            <FormLabel>Describe your symptoms</FormLabel>
-                            <FormControl>
-                                <Textarea
-                                placeholder="e.g., Feeling dizzy, short of breath..."
-                                {...field}
-                                disabled={!dbAvailable || reportingSymptom || userRole === 'admin'}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                <div className="space-y-6">
+                    <Card className="shadow-md">
+                        <CardHeader>
+                        <CardTitle>Recent Health Trends</CardTitle>
+                        <CardDescription>Steps and Heart Rate over the last recorded entries.</CardDescription>
+                        </CardHeader>
+                        <CardContent className="h-[250px] md:h-[300px]">
+                        {healthData.length > 0 ? (
+                            <ResponsiveContainer width="100%" height="100%">
+                            <BarChart data={healthData}>
+                                <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
+                                <XAxis dataKey="timestamp" tickFormatter={(ts) => formatTimestampForChart(ts as string)} stroke="hsl(var(--muted-foreground))" />
+                                <YAxis yAxisId="left" orientation="left" stroke="hsl(var(--chart-1))" label={{ value: 'Steps', angle: -90, position: 'insideLeft', fill: 'hsl(var(--chart-1))' }} />
+                                <YAxis yAxisId="right" orientation="right" stroke="hsl(var(--chart-2))" label={{ value: 'Heart Rate (bpm)', angle: 90, position: 'insideRight', fill: 'hsl(var(--chart-2))' }} />
+                                <Tooltip
+                                    labelFormatter={(label, payload) => formatDateForDisplay(payload?.[0]?.payload?.timestamp as string)}
+                                    contentStyle={{ backgroundColor: 'hsl(var(--background))', border: '1px solid hsl(var(--border))' }}
+                                    itemStyle={{ color: 'hsl(var(--foreground))' }}
                                 />
-                            </FormControl>
-                            <FormMessage />
-                            </FormItem>
+                                <Legend wrapperStyle={{ color: 'hsl(var(--foreground))' }}/>
+                                <Bar yAxisId="left" dataKey="steps" fill="hsl(var(--chart-1))" name="Steps" radius={[4, 4, 0, 0]} />
+                                <Bar yAxisId="right" dataKey="heartRate" fill="hsl(var(--chart-2))" name="Heart Rate" radius={[4, 4, 0, 0]} />
+                            </BarChart>
+                            </ResponsiveContainer>
+                        ) : (
+                            <div className="flex items-center justify-center h-full text-muted-foreground">
+                            No health data available yet for this patient.
+                            </div>
                         )}
-                        />
-                        <Button type="submit" disabled={reportingSymptom || !dbAvailable || userRole === 'admin'} className="w-full">
-                        {reportingSymptom ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
-                        Report Symptom
-                        </Button>
-                    </form>
-                    </Form>
-                ) : ( userRole !== 'patient' &&
-                    <div className="space-y-4 opacity-50 cursor-not-allowed">
-                    <div className="space-y-3">
-                        <Label>How severe are your symptoms?</Label>
-                        <div className="flex gap-2">
-                        <Button type="button" variant='outline' className="flex-1 capitalize" disabled><Smile className="h-5 w-5 mr-2" />mild</Button>
-                        <Button type="button" variant='outline' className="flex-1 capitalize" disabled><Meh className="h-5 w-5 mr-2" />moderate</Button>
-                        <Button type="button" variant='outline' className="flex-1 capitalize" disabled><Frown className="h-5 w-5 mr-2" />severe</Button>
+                        </CardContent>
+                    </Card>
+                    <Card className="shadow-md">
+                        <CardHeader>
+                        <CardTitle>Report Symptoms</CardTitle>
+                        <CardDescription>Let your doctor know how you're feeling.</CardDescription>
+                        </CardHeader>
+                        <CardContent>
+                        {(!dbAvailable && !loadingData) || (userRole === 'admin' && !loadingData) ? (
+                            <Alert variant="default" className="mb-4 bg-yellow-50 border-yellow-200 text-yellow-800 dark:bg-yellow-900 dark:border-yellow-700 dark:text-yellow-200">
+                            <AlertTriangle className="h-4 w-4 text-yellow-600 dark:text-yellow-400" />
+                            <AlertTitle>Symptom Reporting {userRole === 'admin' ? 'Disabled (Admin View)' : 'Unavailable'}</AlertTitle>
+                            <AlertDescription>
+                                {userRole === 'admin' ? 'Symptom reporting is disabled in admin view.' : 'Database connection is required to report symptoms.'}
+                            </AlertDescription>
+                            </Alert>
+                        ): null}
+                        {(dbAvailable && userRole === 'patient') || loadingData ? (
+                            <Form {...form}>
+                            <form onSubmit={form.handleSubmit(onSubmitSymptom)} className="space-y-4">
+                                <FormField
+                                control={form.control}
+                                name="severity"
+                                render={({ field }) => (
+                                    <FormItem className="space-y-3">
+                                    <FormLabel>How severe are your symptoms?</FormLabel>
+                                    <FormControl>
+                                        <div className="flex gap-2">
+                                        {(['mild', 'moderate', 'severe'] as const).map((severity) => (
+                                            <Button
+                                            key={severity}
+                                            type="button"
+                                            variant={field.value === severity ? 'default' : 'outline'}
+                                            onClick={() => field.onChange(severity)}
+                                            className={`flex-1 capitalize ${field.value === severity ? 'ring-2 ring-primary ring-offset-background dark:ring-offset-card' : ''}`}
+                                            disabled={!dbAvailable || reportingSymptom || userRole === 'admin'}
+                                            >
+                                            {getSeverityIcon(severity)}
+                                            <span className="ml-2">{severity}</span>
+                                            </Button>
+                                        ))}
+                                        </div>
+                                    </FormControl>
+                                    <FormMessage />
+                                    </FormItem>
+                                )}
+                                />
+                                <FormField
+                                control={form.control}
+                                name="description"
+                                render={({ field }) => (
+                                    <FormItem>
+                                    <FormLabel>Describe your symptoms</FormLabel>
+                                    <FormControl>
+                                        <Textarea
+                                        placeholder="e.g., Feeling dizzy, short of breath..."
+                                        {...field}
+                                        disabled={!dbAvailable || reportingSymptom || userRole === 'admin'}
+                                        />
+                                    </FormControl>
+                                    <FormMessage />
+                                    </FormItem>
+                                )}
+                                />
+                                <Button type="submit" disabled={reportingSymptom || !dbAvailable || userRole === 'admin'} className="w-full">
+                                {reportingSymptom ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+                                Report Symptom
+                                </Button>
+                            </form>
+                            </Form>
+                        ) : ( userRole !== 'patient' &&
+                            <div className="space-y-4 opacity-50 cursor-not-allowed">
+                            <div className="space-y-3">
+                                <Label>How severe are your symptoms?</Label>
+                                <div className="flex gap-2">
+                                <Button type="button" variant='outline' className="flex-1 capitalize" disabled><Smile className="h-5 w-5 mr-2" />mild</Button>
+                                <Button type="button" variant='outline' className="flex-1 capitalize" disabled><Meh className="h-5 w-5 mr-2" />moderate</Button>
+                                <Button type="button" variant='outline' className="flex-1 capitalize" disabled><Frown className="h-5 w-5 mr-2" />severe</Button>
+                                </div>
+                            </div>
+                            <div className="space-y-2">
+                                <Label>Describe your symptoms</Label>
+                                <Textarea placeholder="e.g., Feeling dizzy, short of breath..." disabled />
+                            </div>
+                            <Button type="submit" disabled className="w-full">Report Symptom</Button>
+                            </div>
+                        )}
+                        <div className="mt-6 space-y-3">
+                            <h4 className="text-sm font-medium text-muted-foreground">Recent Reports:</h4>
+                            {symptomReports.length > 0 ? (
+                            symptomReports.map(report => (
+                                <div key={report.id!} className="text-xs p-2 border rounded-md bg-muted/50 dark:bg-muted/20 flex items-start gap-2">
+                                {getSeverityIcon(report.severity)}
+                                <div>
+                                    <span className="font-semibold capitalize">{report.severity}</span> on {formatDateForDisplay(report.timestamp)}:
+                                    <p className="text-muted-foreground">{report.description}</p>
+                                </div>
+                                </div>
+                            ))
+                            ) : (
+                            <p className="text-xs text-muted-foreground">
+                                {dbAvailable ? "No recent reports." : "Symptom reports unavailable."}
+                            </p>
+                            )}
                         </div>
-                    </div>
-                    <div className="space-y-2">
-                        <Label>Describe your symptoms</Label>
-                        <Textarea placeholder="e.g., Feeling dizzy, short of breath..." disabled />
-                    </div>
-                    <Button type="submit" disabled className="w-full">Report Symptom</Button>
-                    </div>
-                )}
-                <div className="mt-6 space-y-3">
-                    <h4 className="text-sm font-medium text-muted-foreground">Recent Reports:</h4>
-                    {symptomReports.length > 0 ? (
-                    symptomReports.map(report => (
-                        <div key={report.id!} className="text-xs p-2 border rounded-md bg-muted/50 dark:bg-muted/20 flex items-start gap-2">
-                        {getSeverityIcon(report.severity)}
-                        <div>
-                            <span className="font-semibold capitalize">{report.severity}</span> on {formatDateForDisplay(report.timestamp)}:
-                            <p className="text-muted-foreground">{report.description}</p>
-                        </div>
-                        </div>
-                    ))
-                    ) : (
-                    <p className="text-xs text-muted-foreground">
-                        {dbAvailable ? "No recent reports." : "Symptom reports unavailable."}
-                    </p>
-                    )}
+                        </CardContent>
+                    </Card>
                 </div>
-                </CardContent>
-            </Card>
-          </div>
-        </div>
+                <div className="space-y-6">
+                    <Card className="shadow-md">
+                        <CardHeader>
+                        <CardTitle className="flex items-center gap-2">
+                            <Pill className="h-5 w-5" /> Medication Adherence
+                        </CardTitle>
+                        <CardDescription>Tracking your medication schedule.</CardDescription>
+                        </CardHeader>
+                        <CardContent className="space-y-4">
+                        {medications.length > 0 ? (
+                            medications.map((med) => (
+                            <div key={med.id!} className="space-y-1">
+                                <div className="flex justify-between items-center">
+                                <span className="font-medium">{med.name} ({med.dosage}, {med.frequency})</span>
+                                <Badge variant={med.adherence && med.adherence >= 90 ? 'default' : med.adherence && med.adherence >= 70 ? 'secondary' : 'destructive'}>
+                                    {med.adherence !== undefined ? `${med.adherence}%` : 'N/A'}
+                                </Badge>
+                                </div>
+                                <Progress value={med.adherence} className="h-2" aria-label={`${med.name} adherence ${med.adherence}%`} />
+                                {med.lastTaken && <p className="text-xs text-muted-foreground">Last taken: {formatDateForDisplay(med.lastTaken)}</p>}
+                            </div>
+                            ))
+                        ) : (
+                            <p className="text-sm text-muted-foreground">
+                            No medications assigned yet.
+                            </p>
+                        )}
+                        </CardContent>
+                    </Card>
+                    <Card className="shadow-md">
+                        <CardHeader>
+                        <CardTitle className="flex items-center gap-2 text-green-700 dark:text-green-300">
+                            <Lightbulb className="h-5 w-5"/> Recommendations &amp; AI Tips
+                        </CardTitle>
+                        <CardDescription>Advice and suggestions for your well-being.</CardDescription>
+                        </CardHeader>
+                        <CardContent>
+                        {loadingPatientSuggestions ? (
+                            <div className="space-y-2">
+                            <Skeleton className="h-8 w-full" />
+                            <Skeleton className="h-8 w-5/6" />
+                            </div>
+                        ) : patientSuggestions.length > 0 ? (
+                            <ScrollArea className="h-[150px] pr-3">
+                            <ul className="space-y-3">
+                                {patientSuggestions.map(suggestion => (
+                                <li key={suggestion.id}
+                                    className={`p-3 border rounded-md
+                                        ${suggestion.status === 'approved' ? 'bg-green-50 dark:bg-green-900/30 border-green-200 dark:border-green-700'
+                                                                            : 'bg-blue-50 dark:bg-blue-900/20 border-blue-200 dark:border-blue-700'}`}>
+                                    <div className="flex items-start gap-2">
+                                        {suggestion.status === 'approved' ? <BookMarked className="h-5 w-5 text-green-600 dark:text-green-400 shrink-0 mt-0.5"/> : <Lightbulb className="h-5 w-5 text-blue-500 dark:text-blue-400 shrink-0 mt-0.5"/>}
+                                        <div>
+                                            <p className={`text-sm font-medium ${suggestion.status === 'approved' ? 'text-green-800 dark:text-green-200' : 'text-blue-700 dark:text-blue-300'}`}>
+                                                {suggestion.status === 'approved' ? "Doctor's Recommendation:" : "AI Tip (Awaiting Doctor Review):"}
+                                            </p>
+                                            <p className={`text-sm ${suggestion.status === 'approved' ? 'text-green-700 dark:text-green-300' : 'text-blue-600 dark:text-blue-400'}`}
+                                            dangerouslySetInnerHTML={{ __html: formatBoldMarkdown(suggestion.suggestionText) }} />
+                                            <p className="text-xs text-muted-foreground mt-1">
+                                                {suggestion.status === 'approved' ? `Approved on: ${formatDateOnly(suggestion.timestamp)}` : `Suggested on: ${formatDateOnly(suggestion.timestamp)}`}
+                                            </p>
+                                        </div>
+                                    </div>
+                                </li>
+                                ))}
+                            </ul>
+                            </ScrollArea>
+                        ) : (
+                            <p className="text-sm text-muted-foreground text-center py-4">
+                            {dbAvailable ? "No specific recommendations or tips available yet." : "Recommendations unavailable (DB offline)."}
+                            </p>
+                        )}
+                        </CardContent>
+                    </Card>
+                </div>
+            </div>
+        </>
+        )
       )}
 
       {userRole === 'patient' && assignedDoctorId && dbAvailable && (
@@ -636,6 +642,7 @@ export default function PatientDashboard({ userId, userRole }: PatientDashboardP
               <SheetTitle className="flex items-center gap-2 text-lg">
                 <MessageSquare className="h-5 w-5 text-primary" /> Chat with {assignedDoctorName || 'Your Doctor'}
               </SheetTitle>
+               <SheetClose onClick={() => setIsChatOpen(false)} />
             </SheetHeader>
             <ScrollArea className="flex-grow p-4 bg-muted/10" ref={chatScrollAreaRef}>
               {loadingData && !chatMessages.length ? (
@@ -689,3 +696,4 @@ export default function PatientDashboard({ userId, userRole }: PatientDashboardP
     </div>
   );
 }
+

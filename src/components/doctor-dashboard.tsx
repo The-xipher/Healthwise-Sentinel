@@ -347,7 +347,7 @@ function DoctorDashboardContent({ doctorId, doctorName, userRole }: DoctorDashbo
       } else if (result.message) {
         setChatMessages(prev => [...prev, result.message!]);
         setNewMessage('');
-        toast({ title: "Message Sent", variant: "default" });
+        // toast({ title: "Message Sent", variant: "default" }); // Toast might be excessive for each message
       }
     } catch (err: any) {
       console.error("Error sending message:", err);
@@ -452,14 +452,14 @@ function DoctorDashboardContent({ doctorId, doctorName, userRole }: DoctorDashbo
         </Alert>
       )}
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
         <div className="lg:col-span-1 space-y-6">
             <Card className="shadow-lg">
                 <CardHeader>
                 <CardTitle className="flex items-center gap-2">
-                    <Users className="h-5 w-5" /> Patient Management
+                    <Users className="h-5 w-5" /> Patient List
                 </CardTitle>
-                <CardDescription>Search for and select a patient to view their details.</CardDescription>
+                <CardDescription>Search and select a patient.</CardDescription>
                 </CardHeader>
                 <CardContent>
                 <div className="relative mb-4">
@@ -493,7 +493,7 @@ function DoctorDashboardContent({ doctorId, doctorName, userRole }: DoctorDashbo
                                 <div className="flex items-center justify-between w-full gap-3">
                                 <div className="flex items-center gap-2">
                                     <Avatar className="h-7 w-7">
-                                    <AvatarImage src={patient.photoURL || undefined} alt={patientName} data-ai-hint="profile person" />
+                                    <AvatarImage src={patient.photoURL || undefined} alt={patientName} data-ai-hint="profile person"/>
                                     <AvatarFallback>{getInitials(patientName)}</AvatarFallback>
                                     </Avatar>
                                      <span>{patientName} ({patient.id?.substring(0,6)})</span>
@@ -556,13 +556,11 @@ function DoctorDashboardContent({ doctorId, doctorName, userRole }: DoctorDashbo
         </div>
 
         {coreDataLoading ? (
-            <DashboardSkeletonCentralColumn />
+            <DashboardSkeletonCentralColumns />
         ) : selectedPatientId && dbAvailable && selectedPatientData ? (
-            <>
-            <div className="lg:col-span-2 grid grid-cols-1 md:grid-cols-2 gap-6 content-start"> {/* Changed to 2 columns and content-start */}
-              {/* Column 1 of Patient Details */}
-              <div className="space-y-6">
-                <Card className="shadow-md">
+            <div className="lg:col-span-3 grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6 content-start">
+              {/* Patient Info Card - Takes full width on smaller screens, then adjusted by grid */}
+                <Card className="shadow-md md:col-span-1">
                   <CardHeader className="flex flex-row items-center gap-4 pb-3">
                     <Avatar className="h-16 w-16 border-2 border-primary">
                       <AvatarImage src={selectedPatientData?.photoURL || undefined} alt={selectedPatientData?.name} data-ai-hint="profile person"/>
@@ -580,11 +578,11 @@ function DoctorDashboardContent({ doctorId, doctorName, userRole }: DoctorDashbo
                   </CardHeader>
                   <CardContent className="text-xs text-muted-foreground pt-0">
                     <p>Patient ID: {selectedPatientData?.id}</p>
-                    {selectedPatientData?.lastActivity && <p>Last Activity: {formatTimestamp(selectedPatientData.lastActivity)}</p>}
+                    {selectedPatientData?.lastActivity && <p>Last Activity: {formatDistanceToNow(new Date(selectedPatientData.lastActivity), { addSuffix: true })}</p>}
                   </CardContent>
                 </Card>
 
-                <Card className="shadow-md">
+                <Card className="shadow-md md:col-span-1">
                   <CardHeader>
                     <CardTitle className="text-lg flex items-center gap-2"><Brain className="h-5 w-5 text-primary"/>AI Patient Summary</CardTitle>
                     <CardDescription className="text-xs">Key points from the patient's history.</CardDescription>
@@ -600,7 +598,7 @@ function DoctorDashboardContent({ doctorId, doctorName, userRole }: DoctorDashbo
                   </CardContent>
                 </Card>
 
-                <Card className="shadow-md">
+                <Card className="shadow-md md:col-span-1">
                   <CardHeader>
                     <CardTitle className="text-lg flex items-center gap-2"><Brain className="h-5 w-5 text-primary"/>AI Generated Care Plan</CardTitle>
                     <CardDescription className="text-xs">Initial draft based on patient data.</CardDescription>
@@ -620,11 +618,8 @@ function DoctorDashboardContent({ doctorId, doctorName, userRole }: DoctorDashbo
                     </Button>
                   </CardFooter>
                 </Card>
-              </div>
-
-              {/* Column 2 of Patient Details */}
-              <div className="space-y-6">
-                 <Card className="shadow-md">
+                
+                <Card className="shadow-md md:col-span-1">
                   <CardHeader>
                     <CardTitle className="text-lg flex items-center gap-2"><Activity className="h-5 w-5 text-primary" /> Recent Health Data</CardTitle>
                   </CardHeader>
@@ -653,7 +648,7 @@ function DoctorDashboardContent({ doctorId, doctorName, userRole }: DoctorDashbo
                   </CardFooter>
                 </Card>
 
-                <Card className="shadow-md">
+                <Card className="shadow-md md:col-span-1">
                   <CardHeader>
                     <CardTitle className="text-lg flex items-center gap-2">
                       <TrendingUp className="h-5 w-5 text-primary" /> AI Health Trend Analysis
@@ -720,7 +715,7 @@ function DoctorDashboardContent({ doctorId, doctorName, userRole }: DoctorDashbo
                   </CardFooter>
                 </Card>
 
-                <Card className="shadow-md">
+                <Card className="shadow-md md:col-span-1">
                   <CardHeader>
                     <CardTitle className="text-lg flex items-center gap-2"><Pill className="h-5 w-5 text-primary" /> Medication Overview</CardTitle>
                   </CardHeader>
@@ -750,7 +745,7 @@ function DoctorDashboardContent({ doctorId, doctorName, userRole }: DoctorDashbo
                   </CardFooter>
                 </Card>
 
-                 <Card className="shadow-md">
+                 <Card className="shadow-md md:col-span-2 xl:col-span-1"> {/* Span 2 on md, 1 on xl */}
                   <CardHeader>
                     <CardTitle className="text-lg flex items-center gap-2"><Info className="h-5 w-5 text-primary" /> AI Suggested Interventions</CardTitle>
                     <CardDescription className="text-xs">Review and act on AI-driven suggestions.</CardDescription>
@@ -790,11 +785,10 @@ function DoctorDashboardContent({ doctorId, doctorName, userRole }: DoctorDashbo
                     )}
                   </CardContent>
                 </Card>
-              </div>
             </div>
             </>
         ) : selectedPatientId && !coreDataLoading && dbAvailable ? (
-             <div className="lg:col-span-2">
+             <div className="lg:col-span-3">
                 <Alert variant="default" className="bg-orange-50 border-orange-200 text-orange-800 dark:bg-orange-900 dark:border-orange-700 dark:text-orange-200 h-full flex flex-col justify-center items-center">
                     <AlertTriangle className="h-6 w-6 text-orange-600 dark:text-orange-400 mb-2" />
                     <AlertTitle className="text-lg">Patient Data Not Found</AlertTitle>
@@ -802,7 +796,7 @@ function DoctorDashboardContent({ doctorId, doctorName, userRole }: DoctorDashbo
                 </Alert>
             </div>
         ) : !selectedPatientId && dbAvailable && !loadingPatients && (
-            <div className="lg:col-span-2">
+            <div className="lg:col-span-3">
                 <Card className="shadow-md h-full flex items-center justify-center">
                     <CardContent className="pt-6">
                         <p className="text-center text-muted-foreground text-lg">
@@ -813,7 +807,7 @@ function DoctorDashboardContent({ doctorId, doctorName, userRole }: DoctorDashbo
             </div>
         )}
         {!selectedPatientId && !dbAvailable && !loadingPatients && (
-            <div className="lg:col-span-2">
+            <div className="lg:col-span-3">
                 <Card className="shadow-md h-full flex items-center justify-center">
                 <CardContent className="pt-6">
                     <p className="text-center text-muted-foreground text-lg">Patient selection unavailable. Database connection may be down.</p>
@@ -917,12 +911,12 @@ function DoctorDashboardPageSkeleton({ message }: { message?: string }) {
       <div className="w-full max-w-7xl p-8 space-y-8 bg-card rounded-lg shadow-md">
         <Skeleton className="h-10 w-1/3 mb-4" />
 
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
             <div className="lg:col-span-1 space-y-6">
-                <Skeleton className="h-48 rounded-lg" />
-                <Skeleton className="h-64 rounded-lg" />
+                <Skeleton className="h-48 rounded-lg" /> {/* Patient Management */}
+                <Skeleton className="h-64 rounded-lg" /> {/* Appointments */}
             </div>
-            <DashboardSkeletonCentralColumn />
+            <DashboardSkeletonCentralColumns />
         </div>
       </div>
     </div>
@@ -930,57 +924,20 @@ function DoctorDashboardPageSkeleton({ message }: { message?: string }) {
 }
 
 
-function DashboardSkeletonCentralColumn() {
+function DashboardSkeletonCentralColumns() { // Renamed to avoid conflict
   return (
     <>
-      <div className="lg:col-span-1 space-y-6">
-        <Card className="shadow-md">
-          <CardHeader className="flex flex-row items-center gap-4 pb-3">
-            <Skeleton className="h-16 w-16 rounded-full" />
-            <div className="space-y-2 flex-1">
-              <Skeleton className="h-6 w-3/4" />
-              <Skeleton className="h-4 w-1/2" />
-              <Skeleton className="h-5 w-1/3 mt-1" />
-            </div>
-          </CardHeader>
-          <CardContent className="text-xs pt-0 space-y-1">
-            <Skeleton className="h-3 w-3/5" />
-            <Skeleton className="h-3 w-4/5" />
-          </CardContent>
-        </Card>
-        <Card className="shadow-md">
-          <CardHeader><Skeleton className="h-6 w-4/6" /><Skeleton className="h-3 w-3/5 mt-1" /></CardHeader>
-          <CardContent className="space-y-2"><Skeleton className="h-4 w-full" /><Skeleton className="h-4 w-5/6" /></CardContent>
-        </Card>
-        <Card className="shadow-md">
-          <CardHeader><Skeleton className="h-6 w-3/5" /><Skeleton className="h-3 w-4/5 mt-1" /></CardHeader>
-          <CardContent className="space-y-2"><Skeleton className="h-4 w-full" /><Skeleton className="h-4 w-full" /><Skeleton className="h-4 w-5/6" /></CardContent>
-          <CardFooter><Skeleton className="h-8 w-24" /></CardFooter>
-        </Card>
-         <Card className="shadow-md">
-          <CardHeader><Skeleton className="h-6 w-4/5" /></CardHeader>
-          <CardContent className="space-y-2.5"><Skeleton className="h-5 w-full" /><Skeleton className="h-5 w-full" /><Skeleton className="h-5 w-full" /></CardContent>
-          <CardFooter><Skeleton className="h-6 w-28" /></CardFooter>
-        </Card>
-      </div>
-
-      <div className="lg:col-span-1 space-y-6">
-        <Card className="shadow-md">
-            <CardHeader><Skeleton className="h-6 w-4/5" /><Skeleton className="h-3 w-full mt-1" /></CardHeader>
-            <CardContent className="min-h-[150px] space-y-2"><Skeleton className="h-4 w-3/4" /><Skeleton className="h-4 w-full" /><Skeleton className="h-4 w-5/6" /><Skeleton className="h-8 w-1/2 mt-2" /></CardContent>
-            <CardFooter><Skeleton className="h-8 w-32" /></CardFooter>
-        </Card>
-        <Card className="shadow-md">
-          <CardHeader><Skeleton className="h-6 w-4/5" /></CardHeader>
-          <CardContent className="space-y-3"><Skeleton className="h-8 w-full" /><Skeleton className="h-8 w-full" /></CardContent>
-          <CardFooter><Skeleton className="h-6 w-32" /></CardFooter>
-        </Card>
-        <Card className="shadow-md">
-          <CardHeader><Skeleton className="h-6 w-4/5" /><Skeleton className="h-3 w-full mt-1" /></CardHeader>
-          <CardContent><Skeleton className="h-24 w-full" /></CardContent>
-        </Card>
-        {/* Removed Chat Skeleton Card - it's now a pop-up sheet */}
+      <div className="lg:col-span-3 grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6 content-start">
+        {/* Simulating 7 cards for patient details */}
+        <Skeleton className="h-40 rounded-lg" /> {/* Patient Info Card */}
+        <Skeleton className="h-48 rounded-lg" /> {/* AI Summary Card */}
+        <Skeleton className="h-52 rounded-lg" /> {/* AI Care Plan Card */}
+        <Skeleton className="h-48 rounded-lg" /> {/* Health Data Card */}
+        <Skeleton className="h-52 rounded-lg" /> {/* AI Trend Analysis Card */}
+        <Skeleton className="h-48 rounded-lg" /> {/* Medications Card */}
+        <Skeleton className="h-60 rounded-lg" /> {/* AI Suggestions Card */}
       </div>
     </>
   );
 }
+
