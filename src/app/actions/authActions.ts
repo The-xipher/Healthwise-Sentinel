@@ -2,7 +2,7 @@
 'use server';
 
 import { cookies } from 'next/headers';
-import { connectToDatabase, ObjectId } from '@/lib/mongodb';
+import { connectToDatabase, ObjectId, toObjectId } from '@/lib/mongodb';
 import { redirect } from 'next/navigation';
 
 const SESSION_COOKIE_NAME = 'healthwise_session';
@@ -12,7 +12,7 @@ export interface UserSession {
   role: 'patient' | 'doctor' | 'admin';
   displayName: string;
   email: string; // Login email
-  requiresPasswordChange?: boolean; // Added for forced password change
+  requiresPasswordChange?: boolean;
 }
 
 interface UserProfile {
@@ -26,8 +26,8 @@ interface Credential {
   _id: ObjectId;
   userId: ObjectId;
   email: string; // Login email
-  passwordPlainText: string; 
-  requiresPasswordChange?: boolean; // Added
+  passwordPlainText: string;
+  requiresPasswordChange?: boolean;
 }
 
 export async function loginAction(formData: FormData): Promise<{ success: boolean; message: string; }> {
@@ -74,12 +74,11 @@ export async function loginAction(formData: FormData): Promise<{ success: boolea
       sameSite: 'lax',
     });
 
-    // // TODO: Implement forced password change logic here
-    // if (sessionData.requiresPasswordChange) {
-    //   redirect('/auth/change-password'); // Implement this page and logic
-    // }
-
-    redirect('/dashboard'); 
+    if (sessionData.requiresPasswordChange) {
+      redirect('/auth/change-password');
+    } else {
+      redirect('/dashboard');
+    }
 
   } catch (error: any) {
     if (error.digest?.startsWith('NEXT_REDIRECT')) {
@@ -95,7 +94,7 @@ export async function loginAction(formData: FormData): Promise<{ success: boolea
 
 export async function logoutAction() {
   cookies().delete(SESSION_COOKIE_NAME);
-  redirect('/login'); 
+  redirect('/login');
 }
 
 export async function getSession(): Promise<UserSession | null> {
@@ -111,5 +110,70 @@ export async function getSession(): Promise<UserSession | null> {
   }
 }
 
-// TODO: Add changePasswordAction here later for forced password change
-// export async function changePasswordAction(userId: string, newPassword: string): Promise<{success: boolean, message: string}> { ... }
+export async function changePasswordAction(
+  formData: FormData
+): Promise<{ success: boolean; message: string; error?: string }> {
+  const newPassword = formData.get('newPassword') as string;
+
+  if (!newPassword || newPassword.length < 8) {
+    return { success: false, message: 'New password must be at least 8 characters long.' };
+  }
+
+  const session = await getSession();
+  if (!session) {
+    return { success: false, message: 'User session not found. Please log in again.' };
+  }
+
+  const userId = session.userId;
+  const userObjectId = toObjectId(userId);
+  if (!userObjectId) {
+    return { success: false, message: 'Invalid user ID in session.' };
+  }
+
+  try {
+    const { db } = await connectToDatabase();
+    const credentialsCollection = db.collection<Credential>('credentials');
+
+    const result = await credentialsCollection.findOneAndUpdate(
+      { userId: userObjectId },
+      {
+        $set: {
+          passwordPlainText: newPassword, // In a real app, hash this password
+          requiresPasswordChange: false,
+        },
+      },
+      { returnDocument: 'after' }
+    );
+
+    if (!result) {
+      return { success: false, message: 'Failed to update password. User credentials not found.' };
+    }
+    
+    // Update session cookie with requiresPasswordChange: false
+    const updatedSessionData: UserSession = {
+      ...session,
+      requiresPasswordChange: false,
+    };
+    cookies().set(SESSION_COOKIE_NAME, JSON.stringify(updatedSessionData), {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      maxAge: 60 * 60 * 24 * 7,
+      path: '/',
+      sameSite: 'lax',
+    });
+
+    redirect('/dashboard');
+    // Note: redirect will throw NEXT_REDIRECT, so return for success isn't strictly needed if redirect happens
+    // return { success: true, message: 'Password changed successfully.' };
+
+  } catch (error: any) {
+    if (error.digest?.startsWith('NEXT_REDIRECT')) {
+      throw error;
+    }
+    console.error('Change password error:', error);
+     if (error.message.includes('queryTxt ETIMEOUT') || error.message.includes('querySrv ENOTFOUND') || error.message.includes('connect ETIMEDOUT')) {
+        return { success: false, message: "Database connection timeout. Please check your network and MongoDB Atlas settings."};
+    }
+    return { success: false, message: 'An error occurred while changing the password.', error: error.message };
+  }
+}
