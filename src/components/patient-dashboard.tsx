@@ -10,7 +10,7 @@ import { Progress } from '@/components/ui/progress';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts';
-import { Activity, AlertTriangle, Droplet, HeartPulse, Pill, Smile, Frown, Meh, Loader2, Info, CheckCircle, MessageSquare, Send, Lightbulb, BookMarked } from 'lucide-react';
+import { Activity, AlertTriangle, Droplet, HeartPulse, Pill, Smile, Frown, Meh, Loader2, Info, CheckCircle, MessageSquare, Send, Lightbulb, BookMarked, AlarmClock } from 'lucide-react';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useForm } from 'react-hook-form';
 import { z } from 'zod';
@@ -77,7 +77,7 @@ export default function PatientDashboard({ userId, userRole }: PatientDashboardP
   const [medications, setMedications] = useState<PatientMedication[]>([]);
   const [symptomReports, setSymptomReports] = useState<PatientSymptomReport[]>([]);
   const [chatMessages, setChatMessages] = useState<PatientChatMessage[]>([]);
-  const [patientSuggestions, setPatientSuggestions] = useState<PatientAISuggestion[]>([]); 
+  const [patientSuggestions, setPatientSuggestions] = useState<PatientAISuggestion[]>([]);
   const [loadingPatientSuggestions, setLoadingPatientSuggestions] = useState(true);
 
   const [assignedDoctorId, setAssignedDoctorId] = useState<string | null>(null);
@@ -137,7 +137,7 @@ export default function PatientDashboard({ userId, userRole }: PatientDashboardP
           setMedications(mainDataResult.medications || []);
           setSymptomReports(mainDataResult.symptomReports || []);
           setChatMessages(mainDataResult.chatMessages || []);
-          setPatientSuggestions(mainDataResult.patientSuggestions || []); 
+          setPatientSuggestions(mainDataResult.patientSuggestions || []);
           setAssignedDoctorId(mainDataResult.assignedDoctorId || null);
           setAssignedDoctorName(mainDataResult.assignedDoctorName || null);
           setPatientDisplayName(mainDataResult.patientDisplayName || "Patient");
@@ -167,7 +167,7 @@ export default function PatientDashboard({ userId, userRole }: PatientDashboardP
 
   useEffect(() => {
     if (isChatOpen && chatScrollAreaRef.current) {
-      setTimeout(() => { 
+      setTimeout(() => {
          if (chatScrollAreaRef.current) {
             chatScrollAreaRef.current.scrollTop = chatScrollAreaRef.current.scrollHeight;
          }
@@ -234,7 +234,7 @@ export default function PatientDashboard({ userId, userRole }: PatientDashboardP
           action: <CheckCircle className="text-green-600 dark:text-green-400" />,
         });
         form.reset();
-        
+
         const updatedData = await fetchPatientDashboardDataAction(userId);
         if (updatedData.patientSuggestions) {
           setPatientSuggestions(updatedData.patientSuggestions);
@@ -367,7 +367,7 @@ export default function PatientDashboard({ userId, userRole }: PatientDashboardP
             </div>
              <div className="space-y-6">
                 <Skeleton className="h-64 rounded-lg" /> {/* Medications */}
-                <Skeleton className="h-64 rounded-lg" /> {/* AI Tips / Recommendations */}
+                <Skeleton className="h-64 rounded-lg" /> {/* Recommendations & AI Tips */}
             </div>
           </div>
         </div>
@@ -526,7 +526,7 @@ export default function PatientDashboard({ userId, userRole }: PatientDashboardP
                         )}
                         <div className="mt-6 space-y-3">
                             <h4 className="text-sm font-medium text-muted-foreground">Recent Reports:</h4>
-                            <ScrollArea className="h-32 mt-4 pr-2">
+                            <ScrollArea className="h-40 mt-4 pr-2">
                               {symptomReports.length > 0 ? (
                               symptomReports.map(report => (
                                   <div key={report.id!} className="text-xs p-2 border rounded-md bg-muted/50 dark:bg-muted/20 flex items-start gap-2 mb-2">
@@ -568,6 +568,12 @@ export default function PatientDashboard({ userId, userRole }: PatientDashboardP
                                     </div>
                                     <Progress value={med.adherence} className="h-2" aria-label={`${med.name} adherence ${med.adherence}%`} />
                                     {med.lastTaken && <p className="text-xs text-muted-foreground">Last taken: {formatDateForDisplay(med.lastTaken)}</p>}
+                                    {med.reminderTimes && med.reminderTimes.length > 0 && (
+                                      <div className="flex items-center text-xs text-muted-foreground mt-1">
+                                        <AlarmClock className="h-3.5 w-3.5 mr-1.5" />
+                                        Reminders: {med.reminderTimes.join(', ')}
+                                      </div>
+                                    )}
                                 </div>
                                 ))}
                             </ScrollArea>
@@ -701,3 +707,4 @@ export default function PatientDashboard({ userId, userRole }: PatientDashboardP
   );
 }
 
+    
