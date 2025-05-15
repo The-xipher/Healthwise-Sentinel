@@ -336,19 +336,29 @@ export async function seedDatabase(): Promise<{ success: boolean; message: strin
         { severity: 'moderate', description: "Feeling more tired than usual today, some shortness of breath after walking." },
         { severity: 'severe', description: "Experiencing chest pain and dizziness. Called emergency services." },
         { severity: 'mild', description: "Occasional cough, mostly dry."}
-      ]
-      // Seed one severe report for a high-risk patient for testing alerts
-      if (pData._id.equals(patientUserObjectId1)) { // Ethan Carter is high risk
+      ];
+
+      if (pData._id.equals(patientUserObjectId1)) { // Ethan Carter (high risk)
         symptomReportEntries.push({
             _id: new ObjectId(),
             patientId: patient._id,
             userId: patient._id.toString(),
             timestamp: faker.date.recent({ days: 1 }),
-            severity: 'severe',
+            severity: 'severe', // Patient selected severe
             description: "Experiencing severe chest pain and difficulty breathing. Feels very unwell.",
         });
-      } else {
-        for (let l = 0; l < 1; l++) { // 1 report per patient for brevity
+      } else if (pData._id.equals(patientUserObjectId2)) { // Olivia Rodriguez (medium risk, diabetes, asthma)
+        symptomReportEntries.push({
+            _id: new ObjectId(),
+            patientId: patient._id,
+            userId: patient._id.toString(),
+            timestamp: faker.date.recent({ days: 2 }),
+            severity: 'moderate', // Patient selected moderate
+            description: "Feeling very breathless even after using my rescue inhaler. My blood sugar also feels quite high, around 200 mg/dL.",
+        });
+      }
+       else {
+        for (let l = 0; l < 1; l++) { // 1 report per other patient for brevity
             const reportTemplate = faker.helpers.arrayElement(symptomTemplates.filter(s => s.severity !== 'severe')); // avoid too many severe
             symptomReportEntries.push({
               _id: new ObjectId(),
@@ -487,3 +497,4 @@ if (require.main === module) {
     }
   })();
 }
+
