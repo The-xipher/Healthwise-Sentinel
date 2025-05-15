@@ -453,13 +453,13 @@ function DoctorDashboardContent({ doctorId, doctorName, userRole }: DoctorDashbo
       <div className="grid grid-cols-1 lg:grid-cols-4 gap-4"> 
         <div className="lg:col-span-1 space-y-4"> 
             <Card className="shadow-lg">
-                <CardHeader>
+                <CardHeader className="p-4 pb-2">
                 <CardTitle className="flex items-center gap-2">
                     <Users className="h-5 w-5" /> Patient List
                 </CardTitle>
-                <CardDescription>Search and select a patient.</CardDescription>
+                <CardDescription className="text-xs">Search and select a patient.</CardDescription>
                 </CardHeader>
-                <CardContent>
+                <CardContent className="p-4 pt-2">
                 <div className="relative mb-4">
                     <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                     <Input
@@ -467,19 +467,19 @@ function DoctorDashboardContent({ doctorId, doctorName, userRole }: DoctorDashbo
                     placeholder="Search patient by name..."
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
-                    className="pl-10 w-full text-base py-3"
+                    className="pl-10 w-full text-sm py-2 h-10"
                     disabled={loadingPatients || !dbAvailable}
                     />
                 </div>
                 {loadingPatients ? (
-                    <Skeleton className="h-12 w-full" />
+                    <Skeleton className="h-10 w-full" />
                 ) : (
                     <Select
                     onValueChange={(value) => setSelectedPatientId(value)}
                     value={selectedPatientId || ''}
                     disabled={!dbAvailable || patients.length === 0}
                     >
-                    <SelectTrigger className="w-full text-base py-3 h-12">
+                    <SelectTrigger className="w-full text-sm py-2 h-10">
                         <SelectValue placeholder={!dbAvailable ? "Patient list unavailable (DB offline)" : (patients.length === 0 ? "No patients assigned" : (filteredPatients.length === 0 && searchQuery ? "No patients match search" : "Select a patient..."))} />
                     </SelectTrigger>
                     <SelectContent>
@@ -499,7 +499,7 @@ function DoctorDashboardContent({ doctorId, doctorName, userRole }: DoctorDashbo
                                 {patient.readmissionRisk && (
                                     <Badge
                                     variant={getRiskBadgeVariant(patient.readmissionRisk)}
-                                    className="ml-auto text-xs px-2 py-0.5 capitalize"
+                                    className="ml-auto text-xs px-1.5 py-0.5 capitalize"
                                     >
                                     {patient.readmissionRisk} risk
                                     </Badge>
@@ -520,10 +520,10 @@ function DoctorDashboardContent({ doctorId, doctorName, userRole }: DoctorDashbo
             </Card>
 
             <Card className="shadow-lg">
-                <CardHeader>
+                <CardHeader className="p-4 pb-2">
                     <CardTitle className="text-lg flex items-center gap-2"><CalendarDays className="h-5 w-5 text-primary"/> Upcoming Appointments</CardTitle>
                 </CardHeader>
-                <CardContent>
+                <CardContent className="p-4 pt-2">
                     {loadingAppointments ? (
                          <div className="space-y-2">
                             <Skeleton className="h-10 w-full" />
@@ -531,7 +531,7 @@ function DoctorDashboardContent({ doctorId, doctorName, userRole }: DoctorDashbo
                             <Skeleton className="h-10 w-full" />
                         </div>
                     ) : appointments.length > 0 ? (
-                        <ScrollArea className="h-[240px] pr-2">
+                        <ScrollArea className="h-[200px] pr-2">
                             <ul className="space-y-3">
                                 {appointments.map(appt => (
                                     <li key={appt.id} className="p-3 border rounded-md bg-card hover:shadow-sm transition-shadow space-y-1">
@@ -558,13 +558,13 @@ function DoctorDashboardContent({ doctorId, doctorName, userRole }: DoctorDashbo
         ) : selectedPatientId && dbAvailable && selectedPatientData ? (
             <div className="lg:col-span-3 grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4 content-start"> 
                 <Card className="shadow-md md:col-span-1 xl:col-span-1">
-                  <CardHeader className="flex flex-row items-center gap-4 p-4 pb-2"> 
-                    <Avatar className="h-14 w-14 border-2 border-primary"> 
+                  <CardHeader className="flex flex-row items-center gap-3 p-4 pb-2"> 
+                    <Avatar className="h-12 w-12 border-2 border-primary"> 
                       <AvatarImage src={selectedPatientData?.photoURL || undefined} alt={selectedPatientData?.name} data-ai-hint="profile person"/>
-                      <AvatarFallback className="text-lg">{getInitials(selectedPatientData?.name)}</AvatarFallback> 
+                      <AvatarFallback className="text-base">{getInitials(selectedPatientData?.name)}</AvatarFallback> 
                     </Avatar>
                     <div>
-                      <CardTitle className="text-lg">{selectedPatientData?.name}</CardTitle> 
+                      <CardTitle className="text-md">{selectedPatientData?.name}</CardTitle> 
                       <CardDescription className="text-xs">{selectedPatientData?.email || 'No email'}</CardDescription> 
                       {selectedPatientData?.readmissionRisk && (
                         <Badge variant={getRiskBadgeVariant(selectedPatientData.readmissionRisk)} className="mt-1 text-xs px-1.5 py-0.5 capitalize"> 
@@ -574,22 +574,22 @@ function DoctorDashboardContent({ doctorId, doctorName, userRole }: DoctorDashbo
                     </div>
                   </CardHeader>
                   <CardContent className="text-xs text-muted-foreground px-4 pt-0 pb-3"> 
-                    <p>Patient ID: {selectedPatientData?.id}</p>
+                    <p>Patient ID: {selectedPatientData?.id.substring(0,8)}...</p>
                     {selectedPatientData?.lastActivity && <p>Last Activity: {formatDistanceToNow(new Date(selectedPatientData.lastActivity), { addSuffix: true })}</p>}
                   </CardContent>
                 </Card>
 
                 <Card className="shadow-md md:col-span-1 xl:col-span-1">
                   <CardHeader className="p-4 pb-2"> 
-                    <CardTitle className="text-base flex items-center gap-2"><Brain className="h-4 w-4 text-primary"/>AI Patient Summary</CardTitle> 
+                    <CardTitle className="text-sm flex items-center gap-2"><Brain className="h-4 w-4 text-primary"/>AI Patient Summary</CardTitle> 
                     <CardDescription className="text-xs">Key points from history.</CardDescription>
                   </CardHeader>
-                  <CardContent className="px-4 pt-0 pb-3"> 
+                  <CardContent className="px-4 pt-1 pb-3"> 
                     {loadingSummary ? (
-                      <div className="space-y-1.5"><Skeleton className="h-3.5 w-full" /><Skeleton className="h-3.5 w-5/6" /><Skeleton className="h-3.5 w-3/4" /></div>
+                      <div className="space-y-1.5"><Skeleton className="h-3 w-full" /><Skeleton className="h-3 w-5/6" /><Skeleton className="h-3 w-3/4" /></div>
                     ) : (
-                      <ScrollArea className="h-[100px] pr-2">
-                        <p className="text-sm text-muted-foreground" dangerouslySetInnerHTML={{ __html: formatBoldMarkdown(historySummary) }} />
+                      <ScrollArea className="h-[80px] pr-2">
+                        <p className="text-xs text-muted-foreground" dangerouslySetInnerHTML={{ __html: formatBoldMarkdown(historySummary) }} />
                       </ScrollArea>
                     )}
                   </CardContent>
@@ -597,20 +597,20 @@ function DoctorDashboardContent({ doctorId, doctorName, userRole }: DoctorDashbo
 
                 <Card className="shadow-md md:col-span-2 xl:col-span-1">
                   <CardHeader className="p-4 pb-2"> 
-                    <CardTitle className="text-base flex items-center gap-2"><Brain className="h-4 w-4 text-primary"/>AI Generated Care Plan</CardTitle> 
+                    <CardTitle className="text-sm flex items-center gap-2"><Brain className="h-4 w-4 text-primary"/>AI Generated Care Plan</CardTitle> 
                     <CardDescription className="text-xs">Initial draft based on data.</CardDescription>
                   </CardHeader>
-                  <CardContent className="px-4 pt-0 pb-3"> 
+                  <CardContent className="px-4 pt-1 pb-2"> 
                     {loadingCarePlan ? (
-                      <div className="space-y-1.5"><Skeleton className="h-3.5 w-full" /><Skeleton className="h-3.5 w-full" /><Skeleton className="h-3.5 w-5/6" /></div>
+                      <div className="space-y-1.5"><Skeleton className="h-3 w-full" /><Skeleton className="h-3 w-full" /><Skeleton className="h-3 w-5/6" /></div>
                     ) : (
-                       <ScrollArea className="h-[100px] pr-2"> 
-                        <p className="text-sm text-muted-foreground" dangerouslySetInnerHTML={{ __html: formatBoldMarkdown(carePlan) }} />
+                       <ScrollArea className="h-[80px] pr-2"> 
+                        <p className="text-xs text-muted-foreground" dangerouslySetInnerHTML={{ __html: formatBoldMarkdown(carePlan) }} />
                       </ScrollArea>
                     )}
                   </CardContent>
-                  <CardFooter className="p-3 pt-0"> 
-                    <Button size="sm" variant="outline" disabled={loadingCarePlan || !dbAvailable} className="h-8 text-xs"> 
+                  <CardFooter className="p-3 pt-1"> 
+                    <Button size="sm" variant="outline" disabled={loadingCarePlan || !dbAvailable} className="h-7 text-xs px-2"> 
                       Edit/Approve Plan
                     </Button>
                   </CardFooter>
@@ -618,16 +618,16 @@ function DoctorDashboardContent({ doctorId, doctorName, userRole }: DoctorDashbo
 
                 <Card className="shadow-md md:col-span-1 xl:col-span-1">
                   <CardHeader className="p-4 pb-2"> 
-                    <CardTitle className="text-base flex items-center gap-2"><Activity className="h-4 w-4 text-primary" /> Recent Health Data</CardTitle> 
+                    <CardTitle className="text-sm flex items-center gap-2"><Activity className="h-4 w-4 text-primary" /> Recent Health Data</CardTitle> 
                   </CardHeader>
-                  <CardContent className="px-4 pt-0 pb-3"> 
+                  <CardContent className="px-4 pt-1 pb-2"> 
                     {patientHealthData.length > 0 ? (
-                      <ScrollArea className="h-[150px] pr-2"> 
-                      <ul className="space-y-1.5 text-sm"> 
-                        {patientHealthData.slice(-7).reverse().map((data) => (
-                          <li key={data.id} className="flex justify-between items-center border-b pb-1 pt-0.5"> 
-                            <span className="text-xs">{formatDistanceToNow(new Date(data.timestamp), { addSuffix: true })}</span>
-                            <div className="flex gap-1.5 text-xs text-muted-foreground"> 
+                      <ScrollArea className="h-[180px] pr-2"> 
+                      <ul className="space-y-1.5 text-xs"> 
+                        {patientHealthData.slice(-10).reverse().map((data) => ( // Show last 10
+                          <li key={data.id} className="flex justify-between items-center border-b pb-1 pt-0.5 text-xs"> 
+                            <span className="text-muted-foreground">{formatDistanceToNow(new Date(data.timestamp), { addSuffix: true })}</span>
+                            <div className="flex gap-1.5"> 
                               {data.steps !== undefined && <span className="flex items-center"><Activity className="h-3 w-3 mr-0.5" />{data.steps}</span>}
                               {data.heartRate !== undefined && <span className="flex items-center"><HeartPulse className="h-3 w-3 mr-0.5 text-red-500" />{data.heartRate} bpm</span>}
                                {data.bloodGlucose !== undefined && <span className="flex items-center"><Droplet className="h-3 w-3 mr-0.5 text-blue-500" />{data.bloodGlucose} mg/dL</span>}
@@ -637,59 +637,59 @@ function DoctorDashboardContent({ doctorId, doctorName, userRole }: DoctorDashbo
                       </ul>
                       </ScrollArea>
                     ) : (
-                      <p className="text-sm text-muted-foreground py-3 text-center">No recent health data.</p> 
+                      <p className="text-xs text-muted-foreground py-3 text-center">No recent health data.</p> 
                     )}
                   </CardContent>
-                  <CardFooter className="p-3 pt-0"> 
-                    <Button variant="link" size="xs" disabled={!dbAvailable} className="text-primary p-0 h-auto">View All Health Data</Button>
+                  <CardFooter className="p-3 pt-1"> 
+                    <Button variant="link" size="xs" disabled={!dbAvailable} className="text-primary p-0 h-auto text-xs">View All Health Data</Button>
                   </CardFooter>
                 </Card>
 
                 <Card className="shadow-md md:col-span-1 xl:col-span-1">
                   <CardHeader className="p-4 pb-2"> 
-                    <CardTitle className="text-base flex items-center gap-2">
+                    <CardTitle className="text-sm flex items-center gap-2">
                       <TrendingUp className="h-4 w-4 text-primary" /> AI Health Trend Analysis
                     </CardTitle> 
                     <CardDescription className="text-xs">Proactive analysis of data.</CardDescription>
                   </CardHeader>
-                  <CardContent className="px-4 pt-0 pb-3 min-h-[120px]"> 
+                  <CardContent className="px-4 pt-1 pb-2 min-h-[100px]"> 
                     {loadingTrendAnalysis ? (
                       <div className="space-y-1.5">
-                        <Skeleton className="h-3.5 w-3/4" />
-                        <Skeleton className="h-3.5 w-full" />
-                        <Skeleton className="h-3.5 w-5/6" />
+                        <Skeleton className="h-3 w-3/4" />
+                        <Skeleton className="h-3 w-full" />
+                        <Skeleton className="h-3 w-5/6" />
                          <Skeleton className="h-7 w-1/2 mt-1.5" /> 
                       </div>
                     ) : trendAnalysis ? (
                       trendAnalysis.isTrendConcerning ? (
                         <div className="space-y-1.5">
                           <Alert variant="destructive" className="p-2 text-xs"> 
-                             <AlertTriangle className="h-3.5 w-3.5"/>
-                             <AlertTitle className="text-xs">Concerning Trend!</AlertTitle>
-                             <AlertDescription>{trendAnalysis.trendSummary || "A concerning trend was noted."}</AlertDescription>
+                             <AlertTriangle className="h-3 w-3"/>
+                             <AlertTitle className="text-xs font-semibold">Concerning Trend!</AlertTitle>
+                             <AlertDescription className="text-xs leading-tight">{trendAnalysis.trendSummary || "A concerning trend was noted."}</AlertDescription>
                           </Alert>
                           {trendAnalysis.suggestedActionForDoctor && (
-                            <div className="mt-2 p-2 bg-amber-50 border border-amber-200 rounded-md dark:bg-amber-900/30 dark:border-amber-700 text-xs"> 
+                            <div className="mt-1 p-2 bg-amber-50 border border-amber-200 rounded-md dark:bg-amber-900/30 dark:border-amber-700"> 
                               <p className="text-xs font-semibold text-amber-700 dark:text-amber-300">Suggested Action:</p>
-                              <p className="text-xs text-amber-600 dark:text-amber-400">{trendAnalysis.suggestedActionForDoctor}</p>
+                              <p className="text-xs text-amber-600 dark:text-amber-400 leading-tight">{trendAnalysis.suggestedActionForDoctor}</p>
                             </div>
                           )}
                         </div>
                       ) : (
                         <div className="flex flex-col items-center justify-center text-center h-full py-2">
-                          <ThumbsDown className="h-6 w-6 text-green-500 mb-1" /> 
+                          <ThumbsDown className="h-5 w-5 text-green-500 mb-1" /> 
                           <p className="text-xs text-muted-foreground">{trendAnalysis.trendSummary || "No concerning health trends identified."}</p>
                         </div>
                       )
                     ) : (
-                       dbAvailable && <p className="text-sm text-muted-foreground text-center py-3">Trend analysis not available.</p>
+                       dbAvailable && <p className="text-xs text-muted-foreground text-center py-3">Trend analysis not available.</p>
                     )}
                   </CardContent>
-                  <CardFooter className="p-3 pt-0"> 
+                  <CardFooter className="p-3 pt-1"> 
                       <Button
                           variant="outline"
                           size="sm"
-                          className="h-8 text-xs" 
+                          className="h-7 text-xs px-2" 
                           onClick={async () => {
                               if (!selectedPatientData || !patientHealthData || !patientMedications) return;
                               setLoadingTrendAnalysis(true);
@@ -707,7 +707,7 @@ function DoctorDashboardContent({ doctorId, doctorName, userRole }: DoctorDashbo
                           }}
                           disabled={loadingTrendAnalysis || !selectedPatientData || !dbAvailable}
                       >
-                         {loadingTrendAnalysis ? <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" /> :  <Sparkles className="mr-1 h-3.5 w-3.5"/>} 
+                         {loadingTrendAnalysis ? <Loader2 className="mr-1 h-3 w-3 animate-spin" /> :  <Sparkles className="mr-1 h-3 w-3"/>} 
                           Re-analyze
                       </Button>
                   </CardFooter>
@@ -715,12 +715,12 @@ function DoctorDashboardContent({ doctorId, doctorName, userRole }: DoctorDashbo
 
                 <Card className="shadow-md md:col-span-1 xl:col-span-1">
                   <CardHeader className="p-4 pb-2"> 
-                    <CardTitle className="text-base flex items-center gap-2"><Pill className="h-4 w-4 text-primary" /> Medication Overview</CardTitle> 
+                    <CardTitle className="text-sm flex items-center gap-2"><Pill className="h-4 w-4 text-primary" /> Medication Overview</CardTitle> 
                   </CardHeader>
-                  <CardContent className="px-4 pt-0 pb-3"> 
+                  <CardContent className="px-4 pt-1 pb-2"> 
                     {patientMedications.length > 0 ? (
-                      <ScrollArea className="h-[150px] pr-2"> 
-                      <ul className="space-y-2 text-sm"> 
+                      <ScrollArea className="h-[180px] pr-2"> 
+                      <ul className="space-y-1.5 text-xs"> 
                         {patientMedications.map(med => (
                           <li key={med.id} className="border-b pb-1.5"> 
                             <div className="flex justify-between items-center mb-0.5"> 
@@ -735,32 +735,32 @@ function DoctorDashboardContent({ doctorId, doctorName, userRole }: DoctorDashbo
                       </ul>
                       </ScrollArea>
                     ) : (
-                      <p className="text-sm text-muted-foreground py-3 text-center">No medications assigned.</p>
+                      <p className="text-xs text-muted-foreground py-3 text-center">No medications assigned.</p>
                     )}
                   </CardContent>
-                  <CardFooter className="p-3 pt-0"> 
-                    <Button variant="link" size="xs" disabled={!dbAvailable} className="text-primary p-0 h-auto">Manage Medications</Button>
+                  <CardFooter className="p-3 pt-1"> 
+                    <Button variant="link" size="xs" disabled={!dbAvailable} className="text-primary p-0 h-auto text-xs">Manage Medications</Button>
                   </CardFooter>
                 </Card>
 
                  <Card className="shadow-md md:col-span-2 xl:col-span-3"> 
                   <CardHeader className="p-4 pb-2"> 
-                    <CardTitle className="text-base flex items-center gap-2"><Info className="h-4 w-4 text-primary" /> AI Suggested Interventions</CardTitle> 
+                    <CardTitle className="text-sm flex items-center gap-2"><Info className="h-4 w-4 text-primary" /> AI Suggested Interventions</CardTitle> 
                     <CardDescription className="text-xs">Review and act on AI-driven suggestions.</CardDescription>
                   </CardHeader>
-                  <CardContent className="px-4 pt-0 pb-3"> 
+                  <CardContent className="px-4 pt-1 pb-2"> 
                     {(loadingPatientDetails && !aiSuggestions.length) ? (
                       <div className="flex items-center justify-center p-3"><Loader2 className="h-5 w-5 animate-spin text-primary" /></div>
                     ) : aiSuggestions.length > 0 ? (
-                      <ScrollArea className="h-[180px] pr-2"> 
-                        <ul className="space-y-2"> 
+                      <ScrollArea className="h-[150px] pr-2"> 
+                        <ul className="space-y-1.5"> 
                           {aiSuggestions.map(suggestion => (
-                            <li key={suggestion.id} className="p-2.5 border rounded-md bg-card hover:shadow-sm transition-shadow space-y-1.5"> 
-                              <p className="text-sm" dangerouslySetInnerHTML={{ __html: formatBoldMarkdown(suggestion.suggestionText) }} />
+                            <li key={suggestion.id} className="p-2 border rounded-md bg-card hover:shadow-sm transition-shadow space-y-1"> 
+                              <p className="text-xs" dangerouslySetInnerHTML={{ __html: formatBoldMarkdown(suggestion.suggestionText) }} />
                               <div className="flex justify-between items-center">
                                 <span className="text-xs text-muted-foreground">{formatDistanceToNow(new Date(suggestion.timestamp), { addSuffix: true })}</span>
                                 {suggestion.status === 'pending' ? (
-                                  <div className="flex gap-1.5"> 
+                                  <div className="flex gap-1"> 
                                     <Button size="xs" variant="outline" className="h-6 px-1.5 py-0.5 text-xs border-green-500 text-green-700 hover:bg-green-50 hover:text-green-800 dark:border-green-600 dark:text-green-400 dark:hover:bg-green-700 dark:hover:text-green-200" onClick={() => handleSuggestionAction(suggestion.id, 'approved')} disabled={!dbAvailable}>
                                       <Check className="h-3 w-3 mr-0.5" /> Approve
                                     </Button>
@@ -779,7 +779,7 @@ function DoctorDashboardContent({ doctorId, doctorName, userRole }: DoctorDashbo
                         </ul>
                       </ScrollArea>
                     ) : (
-                      <p className="text-sm text-muted-foreground py-3 text-center">No AI suggestions available.</p>
+                      <p className="text-xs text-muted-foreground py-3 text-center">No AI suggestions available.</p>
                     )}
                   </CardContent>
                 </Card>
@@ -909,8 +909,8 @@ function DoctorDashboardPageSkeleton({ message }: { message?: string }) {
 
         <div className="grid grid-cols-1 lg:grid-cols-4 gap-4"> 
             <div className="lg:col-span-1 space-y-4"> 
-                <Skeleton className="h-40 rounded-lg" /> 
-                <Skeleton className="h-56 rounded-lg" /> 
+                <Skeleton className="h-32 rounded-lg" /> 
+                <Skeleton className="h-48 rounded-lg" /> 
             </div>
             <DashboardSkeletonCentralColumns />
         </div>
@@ -923,13 +923,13 @@ function DashboardSkeletonCentralColumns() {
   return (
     <>
       <div className="lg:col-span-3 grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4 content-start"> 
+        <Skeleton className="h-28 rounded-lg" />  
         <Skeleton className="h-32 rounded-lg" />  
         <Skeleton className="h-36 rounded-lg" />  
-        <Skeleton className="h-40 rounded-lg" />  
+        <Skeleton className="h-44 rounded-lg" />  
         <Skeleton className="h-36 rounded-lg" />  
-        <Skeleton className="h-40 rounded-lg" />  
-        <Skeleton className="h-36 rounded-lg" />  
-        <Skeleton className="h-44 rounded-lg md:col-span-2 xl:col-span-3" /> 
+        <Skeleton className="h-44 rounded-lg" />  
+        <Skeleton className="h-40 rounded-lg md:col-span-2 xl:col-span-3" /> 
       </div>
     </>
   );
