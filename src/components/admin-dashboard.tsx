@@ -9,9 +9,9 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
-import { Button } from '@/components/ui/button';
-import { Users, Activity, ShieldCheck, AlertTriangle, UserPlus, Loader2, Trash2, Edit3 } from 'lucide-react';
-import { fetchAdminDashboardData, createUserAction, type AdminUser, deleteUserAction } from '@/app/actions/adminActions';
+import { Button, buttonVariants } from '@/components/ui/button';
+import { Users, Activity, ShieldCheck, AlertTriangle, UserPlus, Loader2, Trash2, Edit3, Siren } from 'lucide-react';
+import { fetchAdminDashboardData, createUserAction, type AdminUser, deleteUserAction, simulatePatientAlertAction } from '@/app/actions/adminActions';
 import {
   Dialog,
   DialogContent,
@@ -81,6 +81,9 @@ export default function AdminDashboard({ adminUserId }: AdminDashboardProps) {
   const [isAddUserDialogOpen, setIsAddUserDialogOpen] = useState(false);
   const [addingUser, setAddingUser] = useState(false);
   const [userToDelete, setUserToDelete] = useState<AdminUser | null>(null);
+  const [userToAlert, setUserToAlert] = useState<AdminUser | null>(null);
+  const [alertSimulationMessage, setAlertSimulationMessage] = useState('');
+  const [simulatingAlert, setSimulatingAlert] = useState(false);
   const { toast } = useToast();
 
   const { register, handleSubmit, control, formState: { errors }, reset, watch } = useForm<AddUserFormValues>({
@@ -172,7 +175,7 @@ export default function AdminDashboard({ adminUserId }: AdminDashboardProps) {
 
   const handleDeleteUser = async () => {
     if (!userToDelete) return;
-    setLoadingUsers(true); // Reuse for general loading state
+    setLoadingUsers(true); 
     try {
       const result = await deleteUserAction(userToDelete.id);
       if (result.success) {
@@ -186,6 +189,25 @@ export default function AdminDashboard({ adminUserId }: AdminDashboardProps) {
     } finally {
       setUserToDelete(null);
       setLoadingUsers(false);
+    }
+  };
+
+  const handleSimulateAlert = async () => {
+    if (!userToAlert) return;
+    setSimulatingAlert(true);
+    try {
+      const result = await simulatePatientAlertAction(userToAlert.id, alertSimulationMessage || undefined);
+      if (result.success) {
+        toast({ title: "Alert Simulation Sent", description: result.message, variant: "default" });
+      } else {
+        toast({ title: "Alert Simulation Failed", description: result.message || result.error, variant: "destructive" });
+      }
+    } catch (err: any) {
+      toast({ title: "Error Simulating Alert", description: "An unexpected error occurred: " + err.message, variant: "destructive" });
+    } finally {
+      setUserToAlert(null);
+      setAlertSimulationMessage('');
+      setSimulatingAlert(false);
     }
   };
 
@@ -371,16 +393,17 @@ export default function AdminDashboard({ adminUserId }: AdminDashboardProps) {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {loadingUsers && !userToDelete ? ( // Show skeleton only if not in deletion confirmation
+              {loadingUsers && !userToDelete ? ( 
                 Array.from({ length: 5 }).map((_, index) => (
                   <TableRow key={index}>
                     <TableCell><Skeleton className="h-10 w-32" /></TableCell>
                     <TableCell><Skeleton className="h-4 w-48" /></TableCell>
                     <TableCell><Skeleton className="h-6 w-20 rounded-full" /></TableCell>
                     <TableCell><Skeleton className="h-4 w-24" /></TableCell>
-                    <TableCell className="text-right space-x-2">
-                        <Skeleton className="h-8 w-16 inline-block" />
-                        <Skeleton className="h-8 w-16 inline-block" />
+                    <TableCell className="text-right space-x-1">
+                        <Skeleton className="h-8 w-8 inline-block" />
+                        <Skeleton className="h-8 w-8 inline-block" />
+                        <Skeleton className="h-8 w-8 inline-block" />
                     </TableCell>
                   </TableRow>
                 ))
@@ -396,7 +419,7 @@ export default function AdminDashboard({ adminUserId }: AdminDashboardProps) {
                         <span className="font-medium">{u.displayName || 'N/A'}</span>
                       </div>
                     </TableCell>
-                    <TableCell>{u.loginEmail || u.email || 'N/A'}</TableCell> {/* Show login email if available, fallback to contact email */}
+                    <TableCell>{u.loginEmail || u.email || 'N/A'}</TableCell>
                     <TableCell>
                       <Badge variant={u.role === 'admin' ? 'destructive' : u.role === 'doctor' ? 'secondary' : 'outline'} className="capitalize">
                         {u.role || 'N/A'}
@@ -407,12 +430,26 @@ export default function AdminDashboard({ adminUserId }: AdminDashboardProps) {
                       <Button variant="ghost" size="icon" className="h-8 w-8" disabled={!dbAvailable} title="Edit User (Not implemented)">
                         <Edit3 className="h-4 w-4" />
                       </Button>
+                      {u.role === 'patient' && (
+                         <AlertDialogTrigger asChild>
+                             <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-8 w-8 text-orange-500 hover:text-orange-600 hover:bg-orange-500/10"
+                                disabled={!dbAvailable || simulatingAlert}
+                                onClick={() => setUserToAlert(u)}
+                                title="Simulate Critical Alert for Patient"
+                              >
+                                <Siren className="h-4 w-4" />
+                              </Button>
+                         </AlertDialogTrigger>
+                      )}
                       <AlertDialogTrigger asChild>
                          <Button
                             variant="ghost"
                             size="icon"
                             className="h-8 w-8 text-destructive hover:text-destructive hover:bg-destructive/10"
-                            disabled={!dbAvailable || u.id === adminUserId} // Prevent admin from deleting themselves easily
+                            disabled={!dbAvailable || u.id === adminUserId || loadingUsers}
                             onClick={() => setUserToDelete(u)}
                             title={u.id === adminUserId ? "Cannot delete self" : "Delete User"}
                           >
@@ -434,6 +471,7 @@ export default function AdminDashboard({ adminUserId }: AdminDashboardProps) {
         </CardContent>
       </Card>
 
+      {/* Delete User Confirmation Dialog */}
       <AlertDialog open={!!userToDelete} onOpenChange={(open) => !open && setUserToDelete(null)}>
         <AlertDialogContent>
           <AlertDialogHeader>
@@ -447,11 +485,48 @@ export default function AdminDashboard({ adminUserId }: AdminDashboardProps) {
             <AlertDialogCancel onClick={() => setUserToDelete(null)}>Cancel</AlertDialogCancel>
             <AlertDialogAction 
               onClick={handleDeleteUser} 
-              className={buttonVariants({variant: "destructive"})}
+              className={cn(buttonVariants({variant: "destructive"}))}
               disabled={loadingUsers}
             >
               {loadingUsers ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
               Yes, delete user
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Simulate Patient Alert Dialog */}
+      <AlertDialog open={!!userToAlert} onOpenChange={(open) => { if (!open) { setUserToAlert(null); setAlertSimulationMessage(''); } }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Simulate Critical Alert for {userToAlert?.displayName}?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will send a test critical alert email to the patient's emergency contact (if set) and a notification to their assigned doctor. Use for testing purposes only.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <div className="grid gap-4 py-4">
+            <div className="grid grid-cols-4 items-center gap-4">
+              <Label htmlFor="alertMessage" className="text-right col-span-1">
+                Message
+              </Label>
+              <Textarea
+                id="alertMessage"
+                value={alertSimulationMessage}
+                onChange={(e) => setAlertSimulationMessage(e.target.value)}
+                className="col-span-3"
+                placeholder="Optional: Custom alert message (defaults to a test message)"
+              />
+            </div>
+          </div>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={() => { setUserToAlert(null); setAlertSimulationMessage(''); }}>Cancel</AlertDialogCancel>
+            <AlertDialogAction 
+              onClick={handleSimulateAlert} 
+              className={cn(buttonVariants({variant: "destructive"}))} // Or a warning variant if available
+              disabled={simulatingAlert}
+            >
+              {simulatingAlert ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Siren className="mr-2 h-4 w-4"/>}
+              Send Test Alert
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
@@ -528,3 +603,4 @@ export default function AdminDashboard({ adminUserId }: AdminDashboardProps) {
     </div>
   );
 }
+
