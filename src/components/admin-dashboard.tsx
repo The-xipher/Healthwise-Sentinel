@@ -31,7 +31,7 @@ import {
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
-  AlertDialogTrigger,
+  // AlertDialogTrigger, // Not needed for programmatically opened dialogs
 } from "@/components/ui/alert-dialog"
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -431,31 +431,27 @@ export default function AdminDashboard({ adminUserId }: AdminDashboardProps) {
                         <Edit3 className="h-4 w-4" />
                       </Button>
                       {u.role === 'patient' && (
-                         <AlertDialogTrigger asChild>
-                             <Button
-                                variant="ghost"
-                                size="icon"
-                                className="h-8 w-8 text-orange-500 hover:text-orange-600 hover:bg-orange-500/10"
-                                disabled={!dbAvailable || simulatingAlert}
-                                onClick={() => setUserToAlert(u)}
-                                title="Simulate Critical Alert for Patient"
-                              >
-                                <Siren className="h-4 w-4" />
-                              </Button>
-                         </AlertDialogTrigger>
+                           <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-8 w-8 text-orange-500 hover:text-orange-600 hover:bg-orange-500/10"
+                              disabled={!dbAvailable || simulatingAlert}
+                              onClick={() => setUserToAlert(u)}
+                              title="Simulate Critical Alert for Patient"
+                            >
+                              <Siren className="h-4 w-4" />
+                            </Button>
                       )}
-                      <AlertDialogTrigger asChild>
-                         <Button
-                            variant="ghost"
-                            size="icon"
-                            className="h-8 w-8 text-destructive hover:text-destructive hover:bg-destructive/10"
-                            disabled={!dbAvailable || u.id === adminUserId || loadingUsers}
-                            onClick={() => setUserToDelete(u)}
-                            title={u.id === adminUserId ? "Cannot delete self" : "Delete User"}
-                          >
-                            <Trash2 className="h-4 w-4" />
-                          </Button>
-                      </AlertDialogTrigger>
+                       <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-8 w-8 text-destructive hover:text-destructive hover:bg-destructive/10"
+                          disabled={!dbAvailable || u.id === adminUserId || loadingUsers}
+                          onClick={() => setUserToDelete(u)}
+                          title={u.id === adminUserId ? "Cannot delete self" : "Delete User"}
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
                     </TableCell>
                   </TableRow>
                 ))
@@ -522,7 +518,7 @@ export default function AdminDashboard({ adminUserId }: AdminDashboardProps) {
             <AlertDialogCancel onClick={() => { setUserToAlert(null); setAlertSimulationMessage(''); }}>Cancel</AlertDialogCancel>
             <AlertDialogAction 
               onClick={handleSimulateAlert} 
-              className={cn(buttonVariants({variant: "destructive"}))} // Or a warning variant if available
+              className={cn(buttonVariants({variant: "destructive"}))} 
               disabled={simulatingAlert}
             >
               {simulatingAlert ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Siren className="mr-2 h-4 w-4"/>}
@@ -603,4 +599,3 @@ export default function AdminDashboard({ adminUserId }: AdminDashboardProps) {
     </div>
   );
 }
-
