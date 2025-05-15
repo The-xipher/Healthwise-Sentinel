@@ -226,7 +226,7 @@ Healthwise Sentinel is a connected care platform designed to enhance proactive h
 </video>
 
 ### Architecture Diagram
-<img src="Demo/Architecture.png" alt="Architecture Diagram" width="600" />
+<img src="Demo/arch.png" alt="Architecture Diagram" width="600" />
 
 ---
 
