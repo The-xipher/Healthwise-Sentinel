@@ -2,6 +2,7 @@
 'use server';
 import { connectToDatabase, ObjectId, toObjectId } from '@/lib/mongodb';
 import { revalidatePath } from 'next/cache';
+import { isToday, parse, getHours, getMinutes, isPast } from 'date-fns'; // Added date-fns functions
 
 // Define a more comprehensive user profile type for the profile page
 export interface UserProfileData {
@@ -12,8 +13,8 @@ export interface UserProfileData {
   loginEmail?: string; // This would be the login email from 'credentials' if needed on profile
   role: 'patient' | 'doctor' | 'admin';
   photoURL?: string | null;
-  creationTime?: string | Date; 
-  lastSignInTime?: string | Date; 
+  creationTime?: string | Date;
+  lastSignInTime?: string | Date;
   emergencyContactNumber?: string;
   emergencyContactEmail?: string; // Added for emergency email alerts
   // Patient specific
@@ -34,7 +35,7 @@ interface RawUserProfile {
     photoURL?: string | null;
     creationTime?: Date;
     lastSignInTime?: Date;
-    emergencyContactNumber?: string; 
+    emergencyContactNumber?: string;
     emergencyContactEmail?: string; // Added
     assignedDoctorId?: string;
     assignedDoctorName?: string;
@@ -44,24 +45,33 @@ interface RawUserProfile {
 }
 
 export interface NotificationItem {
-  id: string; 
-  type: 'chat' | 'alert';
-  title: string; 
-  description: string; 
+  id: string;
+  type: 'chat' | 'alert' | 'medication_reminder'; // Added 'medication_reminder'
+  title: string;
+  description: string;
   timestamp: string;
-  href: string; 
+  href: string;
   isRead?: boolean;
-  isCritical?: boolean; 
+  isCritical?: boolean;
 }
 
 interface RawChatMessageForNotification {
   _id: ObjectId;
   senderId: string;
   senderName: string;
+  receiverId: string; // Added to ensure we only fetch for the correct receiver
   text: string;
   timestamp: Date;
-  chatId: string; 
-  isRead?: boolean; // Added to filter unread messages
+  chatId: string;
+  isRead?: boolean;
+}
+
+interface RawMedicationForReminder {
+    _id: ObjectId;
+    patientId: ObjectId;
+    name: string;
+    lastTaken?: Date;
+    reminderTimes?: string[]; // e.g., ["08:00 AM", "05:00 PM"]
 }
 
 
@@ -108,58 +118,115 @@ export async function fetchNotificationItemsAction(userId: string, userRole: Use
   try {
     const { db } = await connectToDatabase();
     const chatMessagesCollection = db.collection<RawChatMessageForNotification>('chatMessages');
+    let notificationItems: NotificationItem[] = [];
+    let totalUnreadCount = 0;
 
+    // 1. Fetch unread chat messages and system alerts
     const unreadMessages = await chatMessagesCollection.find({
       receiverId: userId,
-      isRead: { $ne: true }, // Fetch messages where isRead is not true (i.e., false or undefined)
-    }).sort({ timestamp: -1 }).limit(10).toArray(); 
+      isRead: { $ne: true },
+    }).sort({ timestamp: -1 }).limit(10).toArray();
 
-    const totalUnreadCount = await chatMessagesCollection.countDocuments({
+    totalUnreadCount = await chatMessagesCollection.countDocuments({
       receiverId: userId,
       isRead: { $ne: true },
     });
 
-    const notificationItems: NotificationItem[] = unreadMessages.map(msg => {
-      let href = '/dashboard'; 
+    const chatNotificationItems: NotificationItem[] = unreadMessages.map(msg => {
+      let href = '/dashboard';
       let title = `Message from ${msg.senderName}`;
       let isCritical = false;
+      let type: NotificationItem['type'] = 'chat';
 
-      if (msg.senderName === 'System Alert') { 
-        title = `🚨 Urgent: ${msg.text.substring(0,30)}...`; 
-        isCritical = true;
+      if (msg.senderName === 'System Alert' || msg.senderName === 'System Info') {
+        title = msg.senderName === 'System Alert' ? `🚨 Urgent Alert: ${msg.text.substring(0,30)}...` : `ℹ️ System Info: ${msg.text.substring(0,30)}...`;
+        isCritical = msg.senderName === 'System Alert';
+        type = 'alert';
         if (userRole === 'doctor') {
-           href = `/dashboard/doctor?patientId=${msg.senderId}`; 
+           href = `/dashboard/doctor?patientId=${msg.senderId}`; // Assuming senderId is patientId for system alerts
         } else {
-             href = `/dashboard/patient`;
+             href = `/dashboard/patient`; // For patient, system alerts are from their own actions/AI
         }
-      } else { 
+      } else {
         if (userRole === 'doctor') {
           href = `/dashboard/doctor?patientId=${msg.senderId}`;
         } else if (userRole === 'patient') {
-          href = `/dashboard/patient`;
+          href = `/dashboard/patient`; // Patient chat notifications link to their dashboard's chat section
         }
       }
 
-
       return {
         id: msg._id.toString(),
-        type: isCritical ? 'alert' : 'chat',
+        type: type,
         title: title,
         description: msg.text.length > 50 ? `${msg.text.substring(0, 47)}...` : msg.text,
         timestamp: msg.timestamp.toISOString(),
         href: href,
-        isRead: false, 
+        isRead: false,
         isCritical: isCritical,
       };
     });
+    notificationItems.push(...chatNotificationItems);
 
+    // 2. Fetch medication reminders for patients
+    if (userRole === 'patient') {
+      const medicationsCollection = db.collection<RawMedicationForReminder>('medications');
+      const patientObjectId = toObjectId(userId);
+      if (patientObjectId) {
+        const patientMedications = await medicationsCollection.find({ patientId: patientObjectId }).toArray();
+        const now = new Date();
+
+        patientMedications.forEach(med => {
+          if (med.reminderTimes && med.reminderTimes.length > 0) {
+            med.reminderTimes.forEach(timeStr => {
+              // Parse time string like "08:00 AM" or "05:00 PM"
+              const [time, period] = timeStr.split(' ');
+              const [hoursStr, minutesStr] = time.split(':');
+              let hours = parseInt(hoursStr, 10);
+              const minutes = parseInt(minutesStr, 10);
+
+              if (period && period.toUpperCase() === 'PM' && hours !== 12) {
+                hours += 12;
+              }
+              if (period && period.toUpperCase() === 'AM' && hours === 12) { // Midnight case
+                hours = 0;
+              }
+
+              if (!isNaN(hours) && !isNaN(minutes)) {
+                const reminderDateTime = new Date(now.getFullYear(), now.getMonth(), now.getDate(), hours, minutes);
+                const medicationTakenToday = med.lastTaken ? isToday(med.lastTaken) : false;
+
+                if (isPast(reminderDateTime) && !medicationTakenToday) {
+                  notificationItems.push({
+                    id: `med-${med._id.toString()}-${timeStr.replace(/\s|:/g, '')}`, // Unique ID for reminder
+                    type: 'medication_reminder',
+                    title: `💊 Reminder: Take ${med.name}`,
+                    description: `It's time for your ${timeStr} dose of ${med.name}.`,
+                    timestamp: reminderDateTime.toISOString(), // Show reminder time
+                    href: '/dashboard/patient', // Link to patient dashboard medication section
+                    isRead: false, // These are transient, might not need read status or handle differently
+                    isCritical: false, // Can be made critical if needed
+                  });
+                }
+              }
+            });
+          }
+        });
+      }
+    }
+
+    // Sort all notifications: critical alerts first, then by timestamp descending
     notificationItems.sort((a, b) => {
         if (a.isCritical && !b.isCritical) return -1;
         if (!a.isCritical && b.isCritical) return 1;
         return new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime();
     });
+    
+    // The totalUnreadCount from chat messages is a good proxy for the badge,
+    // or we can sum unread from all types if `isRead` is consistently used.
+    // For now, using chat unread count for the badge.
+    return { items: notificationItems.slice(0, 10), unreadCount: totalUnreadCount };
 
-    return { items: notificationItems, unreadCount: totalUnreadCount };
   } catch (error: any) {
     console.error('Error fetching notification items:', error);
     if (error.message.includes('queryTxt ETIMEOUT') || error.message.includes('querySrv ENOTFOUND')) {
@@ -252,3 +319,4 @@ export async function updateUserProfileAction(
     return { success: false, message: 'An error occurred during profile update.', error: error.message || String(error) };
   }
 }
+
