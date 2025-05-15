@@ -225,6 +225,8 @@ Healthwise Sentinel is a connected care platform designed to enhance proactive h
   Your browser does not support the video tag.
 </video>
 
+[Watch the demo video on Gdrive](https://drive.google.com/file/d/1QbFdzibRsW1Kg9Rd-RfbezaEtH78uNIa/view?usp=sharing)
+
 ### Architecture Diagram
 <img src="Demo/arch.png" alt="Architecture Diagram" width="600" />
 
