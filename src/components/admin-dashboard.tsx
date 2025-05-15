@@ -86,6 +86,7 @@ const editUserSchema = z.object({
 });
 type EditUserFormValues = z.infer<typeof editUserSchema>;
 
+const NONE_DOCTOR_VALUE = "--NONE--"; // Special value for "None" doctor selection
 
 export default function AdminDashboard({ adminUserId }: AdminDashboardProps) {
   const [users, setUsers] = useState<AdminUser[]>([]);
@@ -220,33 +221,32 @@ export default function AdminDashboard({ adminUserId }: AdminDashboardProps) {
     setUpdatingUser(true);
     const formData = new FormData();
     
-    // Only append changed values or values relevant to the role
     if (data.displayName && data.displayName !== editingUser.displayName) formData.append('displayName', data.displayName);
-    if (data.contactEmail && data.contactEmail !== editingUser.email) formData.append('contactEmail', data.contactEmail);
+    if (data.contactEmail !== editingUser.email) formData.append('contactEmail', data.contactEmail || '');
     
     if (editingUser.role === 'doctor' && data.specialty !== editingUser.specialty) {
         formData.append('specialty', data.specialty || '');
     }
     if (editingUser.role === 'patient') {
-        if (data.assignedDoctorId !== editingUser.assignedDoctorId) formData.append('assignedDoctorId', data.assignedDoctorId || '');
+        const formAssignedDoctorId = data.assignedDoctorId === NONE_DOCTOR_VALUE ? "" : data.assignedDoctorId;
+        if (formAssignedDoctorId !== (editingUser.assignedDoctorId || '')) formData.append('assignedDoctorId', formAssignedDoctorId || '');
+        
         if (data.medicalHistory !== editingUser.medicalHistory) formData.append('medicalHistory', data.medicalHistory || '');
         if (data.emergencyContactNumber !== editingUser.emergencyContactNumber) formData.append('emergencyContactNumber', data.emergencyContactNumber || '');
         if (data.emergencyContactEmail !== editingUser.emergencyContactEmail) formData.append('emergencyContactEmail', data.emergencyContactEmail || '');
     }
     
-    // If formData has no entries, it means nothing changed that we track for edit.
     let hasChanges = false;
     for (const _ of formData.entries()) {
         hasChanges = true;
         break;
     }
-    if (!hasChanges && data.displayName === editingUser.displayName && data.contactEmail === editingUser.email) {
+    if (!hasChanges) {
          toast({ title: "No Changes", description: "No information was modified.", variant: "default" });
          setIsEditUserDialogOpen(false);
          setUpdatingUser(false);
          return;
     }
-
 
     try {
       const result = await updateUserByAdminAction(editingUser.id, formData);
@@ -521,7 +521,7 @@ export default function AdminDashboard({ adminUserId }: AdminDashboardProps) {
                                 <SelectValue placeholder="Select assigned doctor" />
                             </SelectTrigger>
                             <SelectContent>
-                                <SelectItem value="">None</SelectItem>
+                                <SelectItem value={NONE_DOCTOR_VALUE}>None</SelectItem>
                                 {doctorOptions.map(doc => (
                                 <SelectItem key={doc.value} value={doc.value}>{doc.label}</SelectItem>
                                 ))}
@@ -612,7 +612,7 @@ export default function AdminDashboard({ adminUserId }: AdminDashboardProps) {
                     </TableCell>
                     <TableCell>{formatDate(u.creationTime) || 'N/A'}</TableCell>
                     <TableCell className="text-right space-x-1">
-                      <Button 
+                       <Button 
                         variant="ghost" 
                         size="icon" 
                         className="h-8 w-8" 
@@ -790,4 +790,3 @@ export default function AdminDashboard({ adminUserId }: AdminDashboardProps) {
     </div>
   );
 }
-
